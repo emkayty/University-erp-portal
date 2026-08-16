@@ -1,0 +1,17 @@
+{
+  "name": "@uniportal/types",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src/ --ext .ts",
+    "openapi:types": "openapi-typescript ../../apps/api/openapi.json -o ./src/generated/api-types.ts"
+  },
+  "devDependencies": {
+    "@uniportal/tsconfig": "workspace:*",
+    "typescript": "^5.8.0"
+  }
+}

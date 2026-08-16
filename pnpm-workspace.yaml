@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tooling/*"
+
+overrides:
+  sharp: 0.35.3
+  postcss: 8.5.26
+  multer: 2.2.0
+  js-yaml: 5.2.2
+  "minimatch@3.1.5>brace-expansion": 1.1.18
+  "minimatch@10.2.5>brace-expansion": 5.0.9
+  "next>sharp": 0.35.3
+  "next>postcss": 8.5.26
+  "@nestjs/platform-express>multer": 2.2.0
+
+patchedDependencies:
+  "@nestjs/swagger@11.4.6": patches/@nestjs__swagger@11.4.6.patch

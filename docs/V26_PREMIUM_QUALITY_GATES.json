@@ -1,0 +1,41 @@
+{
+  "visual": [
+    "consistent typography",
+    "institutional color system",
+    "8pt spacing rhythm",
+    "restrained elevation",
+    "semantic status treatment"
+  ],
+  "ux": [
+    "primary action obvious",
+    "role-specific navigation",
+    "progressive disclosure",
+    "recoverable errors",
+    "clear confirmation for consequential actions"
+  ],
+  "responsive": [
+    "mobile-first layout",
+    "touch targets >=44px",
+    "tables transform or scroll safely",
+    "no hover-only critical information"
+  ],
+  "accessibility": [
+    "visible keyboard focus",
+    "semantic labels",
+    "status not conveyed by color alone",
+    "reduced motion support",
+    "adequate contrast"
+  ],
+  "enterprise": [
+    "permission-aware actions",
+    "audit-friendly state language",
+    "immutable receipt/result concepts",
+    "no destructive action without confirmation"
+  ],
+  "performance": [
+    "avoid unnecessary animation",
+    "small UI primitives",
+    "progressive loading",
+    "preserve server/API behavior"
+  ]
+}

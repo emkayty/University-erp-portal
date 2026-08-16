@@ -1,0 +1,66 @@
+{
+  "dashboard": {
+    "primary": "Review needs attention",
+    "required": [
+      "role context",
+      "quick actions",
+      "alerts",
+      "recent activity"
+    ]
+  },
+  "admissions": {
+    "primary": "Review application",
+    "required": [
+      "application status",
+      "progress",
+      "missing information",
+      "qualifications",
+      "documents",
+      "timeline"
+    ]
+  },
+  "student": {
+    "primary": "View academic status",
+    "required": [
+      "identity",
+      "programme",
+      "level",
+      "semester",
+      "academic summary",
+      "financial summary"
+    ]
+  },
+  "course-registration": {
+    "primary": "Register courses",
+    "required": [
+      "session",
+      "semester",
+      "credit limit",
+      "prerequisites",
+      "conflicts",
+      "registration receipt"
+    ]
+  },
+  "exams-results": {
+    "primary": "Enter/review results",
+    "required": [
+      "assessment context",
+      "grading scale",
+      "workflow status",
+      "validation",
+      "audit/history",
+      "publication state"
+    ]
+  },
+  "finance": {
+    "primary": "Resolve financial task",
+    "required": [
+      "invoice",
+      "amount",
+      "payment state",
+      "balance",
+      "receipt",
+      "reconciliation status"
+    ]
+  }
+}

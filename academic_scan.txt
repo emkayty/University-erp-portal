@@ -1,0 +1,153 @@
+### result methods
+apps/api/src/modules/results/results.service.spec.ts:20:  score: new FakeDecimal(72), grade: 'A', gradePoint: new FakeDecimal(5.0), attemptNumber: 1,
+apps/api/src/modules/results/results.service.spec.ts:22:  submittedById: 'staff-1', approvedByHodId: null, hodApprovedAt: null,
+apps/api/src/modules/results/results.service.spec.ts:23:  approvedByDeanId: null, deanApprovedAt: null,
+apps/api/src/modules/results/results.service.spec.ts:31:  gradePoint: new FakeDecimal(5.0), creditUnits: 3, grade: 'A', attemptNumber: 1,
+apps/api/src/modules/results/results.service.spec.ts:43:  ])('score=%i → grade=%s, gradePoint=%f', (score, grade, gp) => {
+apps/api/src/modules/results/results.service.spec.ts:44:    const result = computeGrade(score);
+apps/api/src/modules/results/results.service.spec.ts:46:    expect(result.gradePoint).toBe(gp);
+apps/api/src/modules/results/results.service.spec.ts:49:  it('absent from exam → ABS (0.0) regardless of score', () => {
+apps/api/src/modules/results/results.service.spec.ts:52:    expect(r.gradePoint).toBe(0.0);
+apps/api/src/modules/results/results.service.spec.ts:60:      { grade: 'A', gradePoint: 5.0, creditUnits: 3 },
+apps/api/src/modules/results/results.service.spec.ts:61:      { grade: 'B', gradePoint: 4.0, creditUnits: 3 },
+apps/api/src/modules/results/results.service.spec.ts:62:      { grade: 'C', gradePoint: 3.0, creditUnits: 2 },
+apps/api/src/modules/results/results.service.spec.ts:69:      { grade: 'A', gradePoint: 5.0, creditUnits: 3 },
+apps/api/src/modules/results/results.service.spec.ts:70:      { grade: 'F', gradePoint: 0.0, creditUnits: 3 },
+apps/api/src/modules/results/results.service.spec.ts:112:            makePublishedResultRow({ gradePoint: new FakeDecimal(5.0), creditUnits: 3, grade: 'A' }),
+apps/api/src/modules/results/results.service.spec.ts:113:            makePublishedResultRow({ gradePoint: new FakeDecimal(4.0), creditUnits: 3, grade: 'B' }),
+apps/api/src/modules/results/results.service.spec.ts:132:      // AUDIT-C2 fix: recomputeAndApplyCgpa() (shared by publish/amend/
+apps/api/src/modules/results/results.service.spec.ts:134:      // this was already required by the pre-fix publishToSenate() too.
+apps/api/src/modules/results/results.service.spec.ts:202:    it('computes grade from score before saving (A=5.0 for score 72)', async () => {
+apps/api/src/modules/results/results.service.spec.ts:203:      await svc.submitResult({ studentId: 'stu-1', courseOfferingId: 'co-1', semesterId: 'sem-1', score: 72 }, 'staff-1', 'STAFF');
+apps/api/src/modules/results/results.service.spec.ts:205:        data: expect.objectContaining({ grade: 'A', gradePoint: 5.0, creditUnits: 3 }),
+apps/api/src/modules/results/results.service.spec.ts:211:      await svc.submitResult({ studentId: 'stu-1', courseOfferingId: 'co-1', semesterId: 'sem-1', score: 65 }, 'staff-1', 'STAFF');
+apps/api/src/modules/results/results.service.spec.ts:218:      await expect(svc.submitResult({ studentId: 'stu-1', courseOfferingId: 'co-1', semesterId: 'sem-1', score: 65 }, 'staff-1', 'STAFF'))
+apps/api/src/modules/results/results.service.spec.ts:222:    it('marks absent student as grade F regardless of score field', async () => {
+apps/api/src/modules/results/results.service.spec.ts:223:      await svc.submitResult({ studentId: 'stu-1', courseOfferingId: 'co-1', semesterId: 'sem-1', score: 0, absentFromExam: true }, 'staff-1', 'STAFF');
+apps/api/src/modules/results/results.service.spec.ts:225:        data: expect.objectContaining({ grade: 'ABS', gradePoint: 0.0, absentFromExam: true }),
+apps/api/src/modules/results/results.service.spec.ts:235:        data: expect.objectContaining({ status: ResultStatus.HOD_APPROVED, approvedByHodId: 'hod-1' }),
+apps/api/src/modules/results/results.service.spec.ts:280:          data: expect.objectContaining({ status: ResultStatus.DEAN_APPROVED, approvedByDeanId: 'dean-1' }),
+apps/api/src/modules/results/results.service.spec.ts:300:  // ── M1: Atomic CGPA on senate-publish ─────────────────────────────────────
+apps/api/src/modules/results/results.service.spec.ts:307:      // txMock already returns 2 published results: A×3 + B×3 → CGPA = (15+12)/6 = 4.5
+apps/api/src/modules/results/results.service.spec.ts:318:    it('writes outbox event in SAME transaction as senate-publish (S1)', async () => {
+apps/api/src/modules/results/results.service.spec.ts:320:      expect(outbox.write).toHaveBeenCalledWith(txMock, 'result.senate_published', expect.objectContaining({
+apps/api/src/modules/results/results.service.spec.ts:327:        makePublishedResultRow({ gradePoint: new FakeDecimal(5.0), creditUnits: 3, grade: 'A' }),
+apps/api/src/modules/results/results.service.spec.ts:328:        makePublishedResultRow({ gradePoint: new FakeDecimal(0.0), creditUnits: 3, grade: 'F' }),
+apps/api/src/modules/results/results.service.spec.ts:347:        makeResult({ status: ResultStatus.SENATE_PUBLISHED, score: new FakeDecimal(55), grade: 'C' }),
+apps/api/src/modules/results/results.service.spec.ts:351:    it('updates score/grade and recomputes CGPA in ONE transaction', async () => {
+apps/api/src/modules/results/results.service.spec.ts:356:          score: 82, grade: 'A', isAmended: true,
+apps/api/src/modules/results/results.service.spec.ts:428:    it('publishToSenate: acquires pg_advisory_xact_lock(hashtext(studentId)) before reading published results', async () => {
+apps/api/src/modules/results/results.service.spec.ts:441:        makeResult({ status: ResultStatus.SENATE_PUBLISHED, score: new FakeDecimal(55), grade: 'C' }),
+apps/api/src/modules/results/results.service.ts:40: * score/grade and must recompute CGPA in the same transaction; that's a
+apps/api/src/modules/results/results.service.ts:65: *      of race. Without it, two of publishToSenate/amend/withhold/
+apps/api/src/modules/results/results.service.ts:135:      const { grade, gradePoint } = computeGradeForSystem(dto.score, gradingSystem, dto.absentFromExam);
+apps/api/src/modules/results/results.service.ts:136:      if (settings?.requireResultValidation && dto.absentFromExam && dto.score !== 0) {
+apps/api/src/modules/results/results.service.ts:137:        throw new BadRequestException({ code: 'ABSENCE_SCORE_CONFLICT', message: 'An absent examination cannot also have a non-zero examination score' });
+apps/api/src/modules/results/results.service.ts:152:        score: dto.score, finalScore: dto.score, grade, gradePoint, creditUnits: offering.course.creditUnits,
+apps/api/src/modules/results/results.service.ts:155:        submittedById, approvedByHodId: null, hodApprovedAt: null,
+apps/api/src/modules/results/results.service.ts:156:        approvedByDeanId: null, deanApprovedAt: null,
+apps/api/src/modules/results/results.service.ts:166:        newValues: { studentId: dto.studentId, score: dto.score, grade, course: offering.course.code, attemptNumber },
+apps/api/src/modules/results/results.service.ts:214:      return this.publishToSenate(resultId, studentId, actorId);
+apps/api/src/modules/results/results.service.ts:230:    if (action === 'HOD_APPROVE')   { extraFields['approvedByHodId'] = actorId; extraFields['hodApprovedAt'] = now; }
+apps/api/src/modules/results/results.service.ts:231:    if (action === 'DEAN_APPROVE')  { extraFields['approvedByDeanId'] = actorId; extraFields['deanApprovedAt'] = now; }
+apps/api/src/modules/results/results.service.ts:247:   * M1 FIX: Senate publish + CGPA update in ONE $transaction.
+apps/api/src/modules/results/results.service.ts:248:   * Academic integrity guarantee — a result can never be published without
+apps/api/src/modules/results/results.service.ts:251:  private async publishToSenate(resultId: string, studentId: string, actorId: string) {
+apps/api/src/modules/results/results.service.ts:253:      const published = await tx.studentResult.update({
+apps/api/src/modules/results/results.service.ts:258:      const { cgpa, totalCreditUnitsEarned } = await this.recomputeAndApplyCgpa(tx, studentId, published.semesterId);
+apps/api/src/modules/results/results.service.ts:260:      const eventPayload = { resultId, studentId, semesterId: published.semesterId, courseOfferingId: published.courseOfferingId, cgpa, totalCreditUnitsEarned, publishedAt: published.senatePublishedAt };
+apps/api/src/modules/results/results.service.ts:261:      await this.outbox.write(tx, 'result.senate_published', eventPayload);
+apps/api/src/modules/results/results.service.ts:262:      await this.outbox.write(tx, 'result.published', eventPayload);
+apps/api/src/modules/results/results.service.ts:264:        studentId, resultId, semesterId: published.semesterId, actorId,
+apps/api/src/modules/results/results.service.ts:275:        `Result ${resultId} senate-published. Student ${studentId} CGPA → ${cgpa.toFixed(2)} (${getDegreeClass(cgpa)})`,
+apps/api/src/modules/results/results.service.ts:277:      return { result: published, newCgpa: cgpa, totalCreditUnitsEarned };
+apps/api/src/modules/results/results.service.ts:283:   * updates result + recalculates CGPA". A published result's score/grade
+apps/api/src/modules/results/results.service.ts:290:      throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'Only HOD, Dean, or super_admin may amend a published result' });
+apps/api/src/modules/results/results.service.ts:301:    const oldScore = existing.score;
+apps/api/src/modules/results/results.service.ts:304:    const { grade, gradePoint } = computeGradeForSystem(dto.newScore, gradingSystem, existing.absentFromExam);
+apps/api/src/modules/results/results.service.ts:310:          score: dto.newScore, finalScore: dto.newScore, grade, gradePoint,
+apps/api/src/modules/results/results.service.ts:318:      await tx.resultVersion.create({ data: { studentResultId: resultId, version: amended.resultVersion, score: dto.newScore, grade, gradePoint, reason: dto.amendmentReason, changedById: actorId } });
+apps/api/src/modules/results/results.service.ts:325:        oldValues: { score: oldScore, grade: existing.grade },
+apps/api/src/modules/results/results.service.ts:326:        newValues: { score: dto.newScore, grade, amendmentReason: dto.amendmentReason, newCgpa: cgpa, resultVersion: amended.resultVersion },
+apps/api/src/modules/results/results.service.ts:330:      // 'result.amended' the same way it handles 'result.senate_published'
+apps/api/src/modules/results/results.service.ts:339:        `Result ${resultId} amended by ${actorId}: score ${oldScore}→${dto.newScore}, grade ${existing.grade}→${grade}. ` +
+apps/api/src/modules/results/results.service.ts:347:   * AUDIT-C2: Withhold a published result (spec §11.4: "pending clearance
+apps/api/src/modules/results/results.service.ts:407:   * Shared CGPA recompute — extracted so publishToSenate/amend/withhold/
+apps/api/src/modules/results/results.service.ts:446:        message: `Cannot compute CGPA or transcript across mixed grading systems: ${Array.from(systems).sort().join(', ')}. Normalize or correct the published result snapshots first.`,
+apps/api/src/modules/results/results.service.ts:460:          gradePoint: true, creditUnits: true, grade: true, attemptNumber: true,
+apps/api/src/modules/results/results.service.ts:475:      gradePoint:       typeof r.gradePoint === 'object' ? (r.gradePoint as { toNumber(): number }).toNumber() : Number(r.gradePoint),
+apps/api/src/modules/results/results.service.ts:587:    const published=results.filter(r=>r.status===ResultStatus.SENATE_PUBLISHED); const dist=published.reduce<Record<string,number>>((a,r)=>(a[r.grade]=(a[r.grade]??0)+1,a),{});
+apps/api/src/modules/results/results.service.ts:588:    const scores=published.map(r=>Number(r.score)); const mean=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+apps/api/src/modules/results/results.service.ts:589:    return {courseOfferingId,semesterId,total:results.length,published:published.length,pending:results.length-published.length,passRate:published.length?Math.round(published.filter(r=>!['F','ABS'].includes(r.grade)).length/published.length*10000)/100:0,meanScore:Math.round(mean*100)/100,gradeDistribution:dist,results};
+apps/api/src/modules/results/results.service.ts:593:    const results=await this.prisma.forRequest(this.rlsContext).studentResult.findMany({where:{semesterId,status:ResultStatus.SENATE_PUBLISHED},select:{studentId:true,score:true,grade:true,gradePoint:true,creditUnits:true,gradingSystemSnapshot:true,courseOfferingId:true}});
+apps/api/src/modules/results/results.service.ts:596:    const gpas=[]; for(const [studentId,rs] of byStudent){let w=0,cu=0;for(const r of rs){w+=Number(r.gradePoint)*r.creditUnits;cu+=r.creditUnits;}gpas.push({studentId,gpa:cu?Math.round(w/cu*100)/100:0});}
+apps/api/src/modules/results/results.service.ts:631:            ? ' — use amend()/withhold()/releaseWithhold() instead of the generic action endpoint for a published or withheld result'
+apps/api/src/modules/results/results.controller.ts:55:  // AUDIT-C2: these three did not exist before this fix — a published
+apps/api/src/modules/results/results.controller.ts:59:  @ApiOperation({ summary: 'Amend a SENATE_PUBLISHED result. Single transaction: updates score/grade + recomputes CGPA (spec §11.4/§7B).' })
+apps/api/src/modules/results/results.controller.ts:70:  @ApiOperation({ summary: 'Withhold a published result pending clearance or disciplinary action (spec §11.4). Excludes it from CGPA until released.' })
+apps/api/src/modules/results/dto/results.dto.ts:16:  @ApiProperty({ minimum: 0, maximum: 100 }) @IsNumber() @Min(0) @Max(100) score: number;
+apps/api/src/modules/assessment/assessment.service.ts:22:    const scheme = await this.prisma.assessmentScheme.create({ data: { courseOfferingId: dto.courseOfferingId, name: dto.name, version, createdById: actorId } });
+apps/api/src/modules/assessment/assessment.service.ts:23:    await this.audit.log({ action: AuditAction.CREATE, targetTable: 'assessment_schemes', targetId: scheme.id, newValues: { courseOfferingId: dto.courseOfferingId, version } }, actorId);
+apps/api/src/modules/assessment/assessment.service.ts:28:    const schemeScope = await this.prisma.assessmentScheme.findUnique({ where: { id: schemeId }, select: { courseOfferingId: true } });
+apps/api/src/modules/assessment/assessment.service.ts:33:    if (components.some(c => c.maxScore <= 0)) throw new BadRequestException('Every assessment component must have a positive maximum score');
+apps/api/src/modules/assessment/assessment.service.ts:35:      const scheme = await tx.assessmentScheme.findUniqueOrThrow({ where: { id: schemeId } });
+apps/api/src/modules/assessment/assessment.service.ts:36:      if (scheme.status !== 'DRAFT') throw new ConflictException('Only draft assessment schemes can be configured');
+apps/api/src/modules/assessment/assessment.service.ts:37:      await tx.assessmentComponent.deleteMany({ where: { schemeId } });
+apps/api/src/modules/assessment/assessment.service.ts:38:      const rows = await Promise.all(components.map((c, i) => tx.assessmentComponent.create({ data: { schemeId, name: c.name, code: c.code, category: c.category, maxScore: c.maxScore, weight: c.weight, sequence: c.sequence ?? i + 1, isRequired: c.isRequired ?? true } })));
+apps/api/src/modules/assessment/assessment.service.ts:39:      await tx.auditLog.create({ data: { action: AuditAction.UPDATE, targetTable: 'assessment_schemes', targetId: schemeId, newValues: { componentCount: rows.length, totalWeight: total }, actorId } });
+apps/api/src/modules/assessment/assessment.service.ts:46:    const scheme = await this.prisma.assessmentScheme.findFirst({ where: { courseOfferingId, status: 'DRAFT' }, orderBy: { version: 'desc' }, include: { components: true } });
+apps/api/src/modules/assessment/assessment.service.ts:47:    if (!scheme) throw new BadRequestException('No draft assessment scheme exists');
+apps/api/src/modules/assessment/assessment.service.ts:50:    return this.prisma.assessmentScheme.update({ where: { id: scheme.id }, data: { status: 'ACTIVE', approvedById: actorId, approvedAt: new Date(), effectiveFrom: new Date() }, include: { components: true } });
+apps/api/src/modules/assessment/assessment.service.ts:55:    const component = await this.prisma.assessmentComponent.findUniqueOrThrow({ where: { id: dto.componentId }, include: { scheme: true } });
+apps/api/src/modules/assessment/assessment.service.ts:58:    if (dto.score > Number(component.maxScore)) throw new BadRequestException(`Score cannot exceed ${component.maxScore}`);
+apps/api/src/modules/assessment/assessment.service.ts:61:    const existing = await this.prisma.assessmentMark.findUnique({ where: { uq_assessment_mark_student_component: { studentId: dto.studentId, componentId: dto.componentId } }, select: { status: true } });
+apps/api/src/modules/assessment/assessment.service.ts:62:    if (existing?.status === 'FINALIZED') throw new ConflictException('Finalized assessment marks require a controlled amendment workflow.');
+apps/api/src/modules/assessment/assessment.service.ts:63:    return this.prisma.assessmentMark.upsert({ where: { uq_assessment_mark_student_component: { studentId: dto.studentId, componentId: dto.componentId } }, create: { studentId: dto.studentId, courseOfferingId: dto.courseOfferingId, componentId: dto.componentId, score: dto.score, enteredById: actorId }, update: { score: dto.score, enteredById: actorId, version: { increment: 1 } } });
+apps/api/src/modules/assessment/assessment.service.ts:68:    const scheme = await this.prisma.assessmentScheme.findFirst({ where: { courseOfferingId, status: 'ACTIVE' }, orderBy: { version: 'desc' }, include: { components: { orderBy: { sequence: 'asc' } } } });
+apps/api/src/modules/assessment/assessment.service.ts:69:    if (!scheme) throw new BadRequestException('No active assessment scheme');
+apps/api/src/modules/assessment/assessment.service.ts:71:    const marks = await this.prisma.assessmentMark.findMany({ where: { courseOfferingId }, select: { studentId:true, componentId:true, score:true, status:true, version:true, examTimetableId:true } });
+apps/api/src/modules/assessment/assessment.service.ts:72:    const byStudent = new Map<string, any[]>(); for (const m of marks) { if (!byStudent.has(m.studentId)) byStudent.set(m.studentId,[]); byStudent.get(m.studentId)!.push(m); }
+apps/api/src/modules/assessment/assessment.service.ts:73:    const rows = registrations.map(r => { const ms = byStudent.get(r.student.id) ?? []; let final=0; for (const c of scheme.components) { const m=ms.find(x=>x.componentId===c.id); if(m) final += (Number(m.score)/Number(c.maxScore))*Number(c.weight); } const required = scheme.components.filter(c => c.isRequired); const complete=required.every(c=>ms.some(m=>m.componentId===c.id)); const finalized = complete && required.every(c=>ms.some(m=>m.componentId===c.id && m.status === 'FINALIZED')); return { student:r.student, marks:ms, finalScore:Math.round(final*100)/100, complete, finalized }; });
+apps/api/src/modules/assessment/assessment.service.ts:80:    const lines=[headers.join(',')]; for(const r of gb.rows){ const vals=gb.scheme.components.map(c=>{const m=r.marks.find(x=>x.componentId===c.id); return m?.score??''}); const gr=r.complete?computeGradeForSystem(r.finalScore,system):{grade:'',gradePoint:''}; lines.push([r.student.id,r.student.matricNo,`${r.student.firstName} ${r.student.lastName}`,...vals,r.finalScore,gr.grade,gr.gradePoint].map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')); }
+apps/api/src/modules/assessment/assessment.service.ts:86:    if(gb.summary.incomplete) throw new BadRequestException(`${gb.summary.incomplete} student(s) have incomplete assessment marks`);
+apps/api/src/modules/assessment/assessment.service.ts:87:    if(gb.summary.unfinalized) throw new ConflictException(`${gb.summary.unfinalized} student(s) have unfinalized assessment marks`);
+apps/api/src/modules/assessment/assessment.service.ts:111:        const assessmentEvidence = {
+apps/api/src/modules/assessment/assessment.service.ts:116:            const mark = row.marks.find((candidate) => candidate.componentId === component.id);
+apps/api/src/modules/assessment/assessment.service.ts:117:            return { id: component.id, code: component.code, category: component.category, maxScore: Number(component.maxScore), weight: Number(component.weight), isRequired: component.isRequired, score: mark ? Number(mark.score) : null, markVersion: mark?.version ?? null, examTimetableId: mark?.examTimetableId ?? null };
+apps/api/src/modules/assessment/assessment.service.ts:123:        const data={studentId:row.student.id,courseOfferingId,semesterId:offering.semesterId,score:effectiveFinalScore,finalScore:effectiveFinalScore,grade:calc.grade,gradePoint:calc.gradePoint,creditUnits:offering.course.creditUnits,gradingSystemSnapshot:system,gradingPolicyVersion:settings?.gradePolicyVersion??1,assessmentEvidence,attemptNumber:prior,absentFromExam,status:'DRAFT' as const,submittedById:actorId,approvedByHodId:null,hodApprovedAt:null,approvedByDeanId:null,deanApprovedAt:null,senatePendingAt:null,senatePublishedAt:null,rejectionReason:null};
+apps/api/src/modules/assessment/assessment.service.ts:132:    const scheme=await this.prisma.assessmentScheme.findFirst({where:{courseOfferingId,status:'ACTIVE'},orderBy:{version:'desc'},include:{components:true}}); if(!scheme) throw new BadRequestException('No active assessment scheme');
+apps/api/src/modules/assessment/assessment.service.ts:140:    const scheme=await this.prisma.assessmentScheme.findFirst({where:{courseOfferingId:dto.courseOfferingId,status:'ACTIVE'},orderBy:{version:'desc'},include:{components:true}}); if(!scheme) throw new BadRequestException('No active assessment scheme');
+apps/api/src/modules/assessment/assessment.service.ts:141:    const errors:any[]=[]; let valid=0; for(let i=1;i<lines.length;i++){ const cols=lines[i]!.split(',').map(x=>x.trim().replace(/^"|"$/g,'')); const studentId=cols[studentIdx]; if(!studentId){errors.push({row:i+1,error:'Missing Student ID'});continue;} for(const c of scheme.components){ const ci=idx(c.code); if(ci<0) continue; const raw=cols[ci]; if(raw==='') { if(c.isRequired) errors.push({row:i+1,studentId,error:`Missing ${c.code}`}); continue; } const score=Number(raw); if(!Number.isFinite(score)||score<0||score>Number(c.maxScore)){errors.push({row:i+1,studentId,error:`${c.code} must be between 0 and ${c.maxScore}`}); continue;} valid++; } }
+apps/api/src/modules/assessment/assessment.service.ts:148:    if (gradebook.summary.incomplete) throw new BadRequestException(`${gradebook.summary.incomplete} student(s) have incomplete assessment marks`);
+apps/api/src/modules/assessment/assessment.service.ts:150:    const result = await this.prisma.assessmentMark.updateMany({
+apps/api/src/modules/assessment/assessment.service.ts:154:    await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'assessment_marks', targetId: courseOfferingId, newValues: { status: 'FINALIZED', count: result.count } }, actorId);
+apps/api/src/modules/assessment/assessment.module.ts:2:import { AssessmentController } from './assessment.controller';
+apps/api/src/modules/assessment/assessment.module.ts:3:import { AssessmentService } from './assessment.service';
+apps/api/src/modules/assessment/assessment.controller.ts:6:import { AssessmentService } from './assessment.service';
+apps/api/src/modules/assessment/assessment.controller.ts:9:@ApiTags('Assessment & Gradebook') @Controller({path:'assessment',version:'1'}) @UseGuards(RolesGuard) @ApiBearerAuth('access-token')
+apps/api/src/modules/assessment/assessment.controller.ts:15:  @Post('offerings/:id/finalize-marks') @Roles('HOD','DEAN','REGISTRAR','SUPER_ADMIN') finalizeMarks(@Param('id',ParseUUIDPipe)id:string,@CurrentUser()u:JwtPayload){return this.svc.finalizeMarks(id,u.sub,u.role);}
+apps/api/src/modules/assessment/assessment.controller.ts:17:  @Post('marks') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') mark(@Body()d:MarkDto,@CurrentUser()u:JwtPayload){return this.svc.saveMark(d,u.sub,u.role);}
+apps/api/src/modules/assessment/dto.ts:5:export class MarkDto { @IsUUID('4') studentId!: string; @IsUUID('4') componentId!: string; @IsUUID('4') courseOfferingId!: string; @IsNumber() @Min(0) score!: number; }
+apps/api/src/modules/assessment/assessment.service.spec.ts:6:import { AssessmentService } from './assessment.service';
+apps/api/src/modules/assessment/assessment.service.spec.ts:14:    assessmentScheme: { findUnique: jest.fn().mockResolvedValue({ courseOfferingId: 'offering-1' }), findFirst: jest.fn() },
+apps/api/src/modules/assessment/assessment.service.spec.ts:15:    assessmentComponent: { findUniqueOrThrow: jest.fn() },
+apps/api/src/modules/assessment/assessment.service.spec.ts:17:    assessmentMark: { findUnique: jest.fn(), upsert: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
+apps/api/src/modules/assessment/assessment.service.spec.ts:30:    prisma.assessmentComponent.findUniqueOrThrow.mockResolvedValue({
+apps/api/src/modules/assessment/assessment.service.spec.ts:34:    prisma.assessmentMark.findUnique.mockResolvedValue(null);
+apps/api/src/modules/assessment/assessment.service.spec.ts:35:    prisma.assessmentMark.upsert.mockResolvedValue({ id: 'mark-1' });
+apps/api/src/modules/assessment/assessment.service.spec.ts:37:    await service.saveMark({ studentId: 'student-1', componentId: 'component-1', courseOfferingId: 'offering-1', score: 75 }, 'staff-1', 'STAFF');
+apps/api/src/modules/assessment/assessment.service.spec.ts:40:    expect(prisma.assessmentMark.upsert).toHaveBeenCalled();
+apps/api/src/modules/assessment/assessment.service.spec.ts:43:  it('rejects edits to finalized marks', async () => {
+apps/api/src/modules/assessment/assessment.service.spec.ts:44:    prisma.assessmentComponent.findUniqueOrThrow.mockResolvedValue({
+apps/api/src/modules/assessment/assessment.service.spec.ts:48:    prisma.assessmentMark.findUnique.mockResolvedValue({ status: 'FINALIZED' });
+apps/api/src/modules/assessment/assessment.service.spec.ts:50:    await expect(service.saveMark({ studentId: 'student-1', componentId: 'component-1', courseOfferingId: 'offering-1', score: 75 }, 'staff-1', 'STAFF'))
+apps/api/src/modules/assessment/assessment.service.spec.ts:52:    expect(prisma.assessmentMark.upsert).not.toHaveBeenCalled();
+apps/api/src/modules/assessment/assessment.service.spec.ts:55:  it('does not generate draft results from incomplete or unfinalized marks', async () => {
+apps/api/src/modules/assessment/assessment.service.spec.ts:64:  it('finalizes all draft marks only after a complete gradebook check', async () => {
+apps/api/src/modules/assessment/assessment.service.spec.ts:69:    prisma.assessmentMark.updateMany.mockResolvedValue({ count: 3 });
+apps/api/src/modules/assessment/assessment.service.spec.ts:74:    expect(prisma.assessmentMark.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+### numeric database checks
+apps/api/prisma/migrations/0017_exam_assessment_grading_v4/migration.sql:2:  ADD COLUMN IF NOT EXISTS assessment_final_exam_weight NUMERIC(5,2) NOT NULL DEFAULT 60.00,
+apps/api/prisma/migrations/0017_exam_assessment_grading_v4/migration.sql:3:  ADD COLUMN IF NOT EXISTS assessment_continuous_assessment_weight NUMERIC(5,2) NOT NULL DEFAULT 40.00,
+apps/api/prisma/migrations/0017_exam_assessment_grading_v4/migration.sql:17:  total_weight NUMERIC(5,2) NOT NULL DEFAULT 100, status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
+apps/api/prisma/migrations/0017_exam_assessment_grading_v4/migration.sql:27:  max_score NUMERIC(6,2) NOT NULL, weight NUMERIC(5,2) NOT NULL, sequence SMALLINT NOT NULL DEFAULT 1,

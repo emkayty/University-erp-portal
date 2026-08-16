@@ -1,0 +1,8 @@
+{
+  "version": "V28",
+  "focus": "institutional UI/UX consolidation",
+  "source_snapshot": "uniportal-erp-v27-interaction-excellence.zip",
+  "single_design_authority": "v28-institutional-system.css",
+  "backend_logic_preserved": true,
+  "legacy_layers_marked_for_migration": true
+}

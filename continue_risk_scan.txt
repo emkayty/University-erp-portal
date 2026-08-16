@@ -1,0 +1,287 @@
+### privacy methods
+3:import { pseudonymiseAuditPayload, pseudonymiseForErasure } from '@uniportal/utils';
+54:  async requestAccess(subjectUserId: string, requestedById: string) {
+85:      action: AuditAction.EXPORT, targetTable: 'users', targetId: subjectUserId,
+99:  async intakePersonRequest(personId: string, requestedById: string, dto: PersonDsrIntakeDto) {
+127:      targetId: dsr.id,
+146:  async rectify(subjectUserId: string, requestedById: string, dto: RectifyUserDto) {
+170:        action: AuditAction.UPDATE, targetTable: 'users', targetId: subjectUserId,
+185:   * Implements docs/CHANGELOG.md M7 ("NDPR audit log pseudonymisation
+191: * scrubbed. User accounts are never physically deleted: pseudonymization and
+192: * `deletedAt` preserve referential integrity, notification history, auditability,
+196:  async erase(subjectUserId: string, requestedById: string, dto: ErasureRequestDto) {
+211:      const { legalHold } = await this.prisma.$transaction(async (tx) => {
+220:        const legalHold = !!student && student._count.results > 0;
+224:        // physically delete it; pseudonymization plus deletedAt is the only
+226:        await this.pseudonymiseInPlace(subjectUserId, tx);
+232:            oldValues: pseudonymiseAuditPayload(row.oldValues as Record<string, unknown> | null, subjectUserId) as Prisma.InputJsonValue | undefined,
+233:            newValues: pseudonymiseAuditPayload(row.newValues as Record<string, unknown> | null, subjectUserId) as Prisma.InputJsonValue | undefined,
+238:      return { legalHold };
+244:          status: legalHold ? 'LEGAL_HOLD' : 'COMPLETED',
+245:          legalHoldNote: legalHold
+246:            ? '7-year academic record hold applies (spec §8.3) — pseudonymised and retained.'
+247:            : 'User account pseudonymised and deactivated; physical deletion is prohibited to preserve referential integrity and auditability.',
+253:        action: AuditAction.ERASURE, targetTable: 'users', targetId: subjectUserId,
+254:        metadata: { dsrRequestId: completed.id, legalHold, pseudonymised: true, hardDeleteProhibited: true, vcApprovalReference: dto.vcApprovalReference },
+257:      this.logger.log(`Erasure completed for ${subjectUserId} (pseudonymised=true, legalHold=${legalHold})`);
+258:      return { requestId: completed.id, pseudonymised: true, hardDeleted: false, legalHold };
+266:  async exportData(subjectUserId: string, requestedById: string) {
+285:      action: AuditAction.EXPORT, targetTable: 'users', targetId: subjectUserId,
+293:  async restrictProcessing(subjectUserId: string, requestedById: string, dto: RestrictProcessingDto) {
+303:        action: AuditAction.UPDATE, targetTable: 'users', targetId: subjectUserId,
+326:  private async pseudonymiseInPlace(userId: string, db = this.db()): Promise<void> {
+331:        email: `${pseudonymiseForErasure(userId, 'email')}@erased.uniportal.invalid`,
+333:        passwordHash: pseudonymiseForErasure(userId, 'passwordHash'),
+335:        isActive: false, deletedAt: new Date(),
+345:          phone: pseudonymiseForErasure(userId, 'studentPhone'),
+346:          email: `${pseudonymiseForErasure(userId, 'studentEmail')}@erased.uniportal.invalid`,
+369:        stateOfOrigin: null, lga: null, phone: pseudonymiseForErasure(userId, 'applicantPhone'),
+370:        email: `${pseudonymiseForErasure(userId, 'applicantEmail')}@erased.uniportal.invalid`,
+374:        deletedAt: new Date(),
+384:          stateOfOrigin: null, lga: null, primaryEmail: `${pseudonymiseForErasure(userId, 'personEmail')}@erased.uniportal.invalid`,
+385:          primaryPhone: pseudonymiseForErasure(userId, 'personPhone'),
+### storage methods
+11:  headers?: Record<string, string>;
+22:  sizeBytes: number;
+23:  contentType: string | null;
+41:  async presignPut(key: string, contentType: string, sizeBytes: number): Promise<PresignedObject> {
+44:    this.validateUploadInputs(contentType, sizeBytes);
+50:      headers: { 'Content-Type': contentType },
+55:   * SigV4 POST policies enforce the content-length range at the storage edge.
+56:   * This is stronger than validating the requested size while signing a PUT,
+59:  async presignPost(key: string, contentType: string, sizeBytes: number): Promise<PresignedUploadPost> {
+62:    this.validateUploadInputs(contentType, sizeBytes);
+64:    const endpoint = this.resolveEndpoint(bucket);
+68:    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+72:      'Content-Type': contentType,
+81:      { 'Content-Type': contentType },
+82:      ['content-length-range', 1, sizeBytes],
+89:    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+95:      url: endpoint.url,
+99:      maxSizeBytes: sizeBytes,
+103:  async presignGet(key: string, bucketName?: string): Promise<PresignedObject> {
+110:  async putObject(bucketName: string, key: string, body: Buffer, contentType: string, extraHeaders: Record<string, string> = {}): Promise<void> {
+113:    if (!contentType.trim() || contentType.length > 255) throw new BadRequestException('Object content type is required and must be at most 255 characters.');
+115:    const endpoint = this.resolveEndpoint(bucketName.trim());
+119:    const headers: Record<string, string> = {
+120:      host: endpoint.host,
+121:      'content-type': contentType,
+122:      'x-amz-content-sha256': payloadHash,
+126:    if (credentials.sessionToken) headers['x-amz-security-token'] = credentials.sessionToken;
+127:    const signedHeaders = Object.keys(headers).sort();
+128:    const canonicalHeaders = signedHeaders.map((name) => `${name}:${headers[name].trim()}\n`).join('');
+129:    const canonicalUri = endpoint.objectPath(key);
+131:    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+133:    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+136:    const requestHeaders = { ...headers, Authorization: authorization };
+138:      const response = await fetch(`${endpoint.protocol}//${endpoint.host}${canonicalUri}`, { method: 'PUT', headers: requestHeaders, body, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+139:      if (!response.ok) throw new ServiceUnavailableException(`Object storage upload failed with status ${response.status}.`);
+142:      throw new ServiceUnavailableException('Object storage upload could not be completed.');
+146:  /** Verify the object that was uploaded before accepting its metadata in a submission. */
+147:  async verifyObject(key: string, expectedSizeBytes: number, expectedContentType: string): Promise<VerifiedObject> {
+150:      throw new BadRequestException('Attachment size must be between 1 byte and 10 MiB.');
+162:    const actualSize = Number(response.headers.get('content-length'));
+164:      throw new BadRequestException('Attachment size does not match the presigned upload contract.');
+166:    const actualContentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() || null;
+168:      throw new BadRequestException('Attachment MIME type does not match the presigned upload contract.');
+170:    return { key, sizeBytes: actualSize, contentType: actualContentType };
+173:  private validateUploadInputs(contentType: string, sizeBytes: number): void {
+174:    this.validateContentType(contentType);
+175:    if (!Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 10 * 1024 * 1024) {
+176:      throw new BadRequestException('Attachment size must be between 1 byte and 10 MiB.');
+180:  private validateContentType(contentType: string): void {
+181:    if (!/^(application\/pdf|text\/plain|image\/(jpeg|png)|application\/zip)$/.test(contentType)) {
+187:    const bucket = this.config.get<string>('S3_UPLOADS_BUCKET')?.trim();
+194:    const endpoint = this.resolveEndpoint(bucket);
+198:    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+199:    const canonicalUri = endpoint.objectPath(key);
+209:    const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuery}\nhost:${endpoint.host}\n\nhost\nUNSIGNED-PAYLOAD`;
+211:    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+213:    return `${endpoint.protocol}//${endpoint.host}${canonicalUri}?${this.canonicalQuery(params)}`;
+218:    const configured = this.config.get<string>('S3_ENDPOINT_URL')?.trim();
+224:    try { parsed = new URL(configured); } catch { throw new ServiceUnavailableException('S3_ENDPOINT_URL is invalid.'); }
+225:    if (!['http:', 'https:'].includes(parsed.protocol)) throw new ServiceUnavailableException('S3_ENDPOINT_URL must use HTTP or HTTPS.');
+226:    const forcePathStyle = this.config.get<boolean>('S3_FORCE_PATH_STYLE', true);
+263:    const endpoint = full ?? (relative ? `http://169.254.170.2${relative}` : undefined);
+264:    if (endpoint) {
+266:        const response = await fetch(endpoint, {
+267:          headers: process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN ? { Authorization: process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN } : undefined,
+278:      const tokenResponse = await fetch('http://169.254.169.254/latest/api/token', { method: 'PUT', headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+281:        const roleResponse = await fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/', { headers: { 'X-aws-ec2-metadata-token': token }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+284:          const credentialResponse = await fetch(`http://169.254.169.254/latest/meta-data/iam/security-credentials/${encodeURIComponent(role)}`, { headers: { 'X-aws-ec2-metadata-token': token }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+### payment methods
+14:import { WebhookVerificationService } from './webhook-verification.service';
+23:  reference:   string;
+24:  amount:      string;
+35: * PaymentsService — payment initiation, webhook confirmation, TSA manual entry.
+47: * advisory-lock pattern (idempotencyKey / providerRef, both already
+62:    private readonly webhookVerify: WebhookVerificationService,
+87:  private paymentProviderReference(feeId: string, idempotencyKey: string): string {
+88:    const digest = createHash('sha256').update(`${feeId}:${idempotencyKey}`).digest('hex').slice(0, 30);
+93:    id: string; providerRef: string; provider: PaymentProvider; amount: { toFixed: (digits: number) => string }; metadata: unknown;
+102:      // RRR/bank reference is itself the payer-facing reference.
+103:      reference: payment.provider === PaymentProvider.PAYSTACK && typeof authorizationUrl === 'string'
+105:      amount: payment.amount.toFixed(2),
+111:   * Creates a PENDING Payment row and returns provider-specific reference
+116:   * previously generated a fake local reference for both providers
+119:   * REST of the pipeline was. confirmPayment()'s webhook-confirmation
+122:   * callbacks, it just never had a real reference to receive them for.
+131:   *    webhook side. The RRR-generation endpoint URL is therefore
+135:   *    before go-live — same TODO the webhook side already carries.
+137:  async initiatePayment(dto: InitiatePaymentDto, studentId: string, idempotencyKey?: string): Promise<PaymentInitResult> {
+138:    if (!idempotencyKey || idempotencyKey.length < 16) {
+139:      throw new BadRequestException('An idempotency key is required to initiate a payment');
+154:    const outstanding = fee.amount.sub(fee.waiverAmount).sub(fee.amountPaid);
+155:    const amount      = dto.amount ?? outstanding.toNumber();
+157:    if (amount <= 0 || amount > outstanding.toNumber() + 0.01) {
+161:    // P1-07: reserve a durable local row BEFORE provider I/O. The advisory
+162:    // lock serializes a given idempotency key, while the committed INITIATING
+166:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+168:      const existing = await tx.payment.findFirst({ where: { idempotencyKey }, orderBy: { createdAt: 'desc' } });
+170:        const existingAmount = typeof (existing.amount as unknown as { toNumber?: unknown }).toNumber === 'function'
+171:          ? (existing.amount as unknown as { toNumber: () => number }).toNumber()
+172:          : Number(existing.amount);
+178:          Math.abs(existingAmount - amount) > 0.01
+182:            message: 'This idempotency key is already bound to a different payment request, amount, or provider.',
+192:            message: 'Payment initialization is already in progress. Retry with the same idempotency key shortly.',
+206:        ? this.paymentProviderReference(fee.id, idempotencyKey)
+212:          amount,
+217:          idempotencyKey,
+226:    let reference: string;
+232:          const rrr = await this.generateRemitaRrr(amount, fee.student, orderId);
+233:          providerRef = rrr;
+234:          reference = rrr;
+240:            fee.id, amount, fee.student.email, staged.payment.providerRef,
+242:          providerRef = init.reference;
+243:          reference = init.authorizationUrl;
+249:          reference = providerRef;
+258:        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+268:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+288:    feeId: string, amountNaira: number, email: string, reference: string,
+289:  ): Promise<{ reference: string; authorizationUrl: string }> {
+306:          amount: Math.round(amountNaira * 100), // kobo
+307:          reference,
+308:          callback_url: process.env.FRONTEND_ORIGIN ? `${process.env.FRONTEND_ORIGIN}/dashboard/fees?ref=${reference}` : undefined,
+317:    const body = await res.json().catch(() => ({})) as { status?: boolean; data?: { reference: string; authorization_url: string }; message?: string };
+323:    return { reference: body.data.reference, authorizationUrl: body.data.authorization_url };
+329:   * this reference, then confirmPayment()'s webhook/status-check path
+335:   * already flags this for the webhook side, and the same caveat applies
+341:   * go-live, same as the existing TODO on the webhook side.
+344:    amountNaira: number,
+358:    const amountStr = amountNaira.toFixed(2);
+359:    const apiHash    = this.webhookVerify.computeRemitaRrrHash(serviceTypeId, orderId, amountStr);
+372:          serviceTypeId, amount: amountStr, orderId,
+377:          currency:    'NGN',
+388:      throw new ServiceUnavailableException({ code: 'PROVIDER_ERROR', message: 'Could not generate a payment reference — please try again shortly' });
+398:   * from webhook retries).
+402:   *   2. StudentFee.amountPaid += amount (Decimal-safe .add())
+407:  async confirmPayment(
+409:    amountPaid:  number,
+416:      // Payment model doc) — without a lock, two concurrent webhook
+419:      // the fee. The advisory lock (same pattern used elsewhere in this
+421:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${providerRef}))`;
+425:        throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: `No payment found for reference ${providerRef}` });
+427:      const expectedAmount = Number(payment.amount);
+428:      if (!Number.isFinite(amountPaid) || amountPaid <= 0 || Math.abs(expectedAmount - amountPaid) > 0.01) {
+431:          message: `Confirmed amount ${amountPaid} does not match initiated amount ${expectedAmount.toFixed(2)}`,
+435:      // Idempotency: webhook retries are common — never double-credit
+453:      // 2-3. StudentFee.amountPaid += amount, recompute status
+457:        data:  { amountPaid: fee.amountPaid.add(amountPaid) },
+464:        studentFeeId: fee.id, amount: amountPaid,
+471:          newValues: { status: 'SUCCESS', amount: amountPaid, providerRef },
+475:      this.logger.log(`Payment confirmed: ${providerRef} → ₦${amountPaid} (fee ${fee.invoiceNo} now ${feeStatus}, feeCleared=${feeCleared})`);
+481:  // ── Paystack webhook ─────────────────────────────────────────────────────
+482:  async handlePaystackWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: boolean }> {
+483:    if (!this.webhookVerify.verifyPaystack(rawBody, signature)) {
+489:      data: { reference: string; amount: number; status: string; channel?: string; paid_at?: string };
+493:      this.logger.debug(`Paystack webhook ignored: event=${body.event}, status=${body.data.status}`);
+497:    const amountNaira = body.data.amount / 100; // Paystack amounts are in kobo
+499:      body.data.reference, amountNaira,
+507:  // ── Remita webhook (ping → verify-callback pattern) ─────────────────────
+508:  async handleRemitaWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: boolean }> {
+510:    this.webhookVerify.verifyRemitaWebhookAdvisory(rawBody, signature);
+512:    const body = JSON.parse(rawBody.toString('utf8')) as { rrr: string; status?: string; transactionId?: string };
+513:    if (!body.rrr) throw new BadRequestException('Missing rrr in Remita webhook payload');
+518:    const statusHash = this.webhookVerify.computeRemitaStatusHash(body.rrr);
+519:    this.logger.debug(`Remita status-check hash computed for RRR ${body.rrr}: ${statusHash.slice(0, 16)}...`);
+521:    // NEW-3 FIX: Remita webhook is treated as a PING ONLY — we do NOT confirm
+522:    // payment based solely on the webhook payload's status field. Any attacker
+524:    // could POST { rrr: "RRR123", status: "00" } and trigger confirmPayment()
+527:    // SAFE PATTERN: Acknowledge the webhook (return 200 so Remita stops retrying),
+528:    // then queue a reconciliation job that will perform a server-to-server
+535:        where: { providerRef: body.rrr }, select: { id: true, provider: true, status: true },
+538:      await this.outbox.write(tx, 'payment.reconciliation_requested', {
+540:        providerRef: body.rrr,
+546:      // Preserve provider idempotency without revealing internal payment state.
+547:      this.logger.warn(`Remita callback has no pending matching payment for RRR ${body.rrr}`);
+551:    this.logger.log(`Remita webhook received for RRR ${body.rrr} (status: ${body.status}) — durable reconciliation event recorded`);
+559:   * GIFMIS API reconciliation is deferred (docs/CHANGELOG.md M18) —
+562:  async recordTsaPayment(dto: TsaManualPaymentDto, actorId: string): Promise<ConfirmPaymentResult> {
+572:    const outstanding = fee.amount.sub(fee.waiverAmount).sub(fee.amountPaid).toNumber();
+576:    if (!Number.isFinite(dto.amount) || dto.amount <= 0 || dto.amount > outstanding + 0.01) {
+577:      throw new BadRequestException(`TSA amount must be between 0 and ${outstanding.toFixed(2)}`);
+581:      throw new BadRequestException('A TSA receipt reference is required.');
+589:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsa-receipt:${receiptReference}`}))`;
+609:          amount: dto.amount,
+629:      newValues: { provider: 'TSA_MANUAL', tsaReference: receiptReference, amount: dto.amount },
+633:      payment.providerRef, dto.amount,
+639:  // ── Provider reconciliation ───────────────────────────────────────────────
+642:   * webhook payload. It is safe to invoke repeatedly from queue retries: the
+643:   * final ledger mutation remains idempotent in confirmPayment().
+645:  async reconcilePendingPayment(paymentId: string): Promise<{ reconciled: boolean; reason?: string }> {
+651:    if (!payment) return { reconciled: false, reason: 'PAYMENT_NOT_FOUND' };
+652:    if (payment.status !== PaymentStatus.PENDING) return { reconciled: false, reason: `PAYMENT_${payment.status}` };
+656:        return this.reconcilePaystack(payment.providerRef);
+658:        return this.reconcileRemita(payment.providerRef);
+660:        return { reconciled: false, reason: `UNSUPPORTED_PROVIDER_${payment.provider}` };
+664:  private async reconcilePaystack(providerRef: string): Promise<{ reconciled: boolean; reason?: string }> {
+666:    if (!secretKey) return { reconciled: false, reason: 'PAYSTACK_NOT_CONFIGURED' };
+669:    const res = await this.providerFetch(`${apiBase}/transaction/verify/${encodeURIComponent(providerRef)}`, {
+674:      data?: { status?: string; amount?: number; currency?: string; paid_at?: string; channel?: string };
+678:      this.logger.warn(`Paystack reconciliation unavailable for ${providerRef}: HTTP ${res.status}`);
+679:      return { reconciled: false, reason: 'PAYSTACK_VERIFY_UNAVAILABLE' };
+681:    if (verified.status !== 'success') return { reconciled: false, reason: `PAYSTACK_${verified.status ?? 'PENDING'}` };
+682:    if (verified.currency && verified.currency !== 'NGN') return { reconciled: false, reason: 'PAYSTACK_CURRENCY_MISMATCH' };
+683:    const amountKobo = verified.amount;
+684:    if (typeof amountKobo !== 'number' || !Number.isInteger(amountKobo) || amountKobo <= 0) {
+685:      return { reconciled: false, reason: 'PAYSTACK_INVALID_AMOUNT' };
+689:    if (Number.isNaN(paidAt.valueOf())) return { reconciled: false, reason: 'PAYSTACK_INVALID_PAID_AT' };
+690:    await this.confirmPayment(providerRef, amountKobo / 100, paidAt, verified.channel ?? 'paystack');
+691:    return { reconciled: true };
+694:  private async reconcileRemita(providerRef: string): Promise<{ reconciled: boolean; reason?: string }> {
+699:      // inbound webhook as proof of funds. A university must configure its
+701:      return { reconciled: false, reason: 'REMITA_STATUS_VERIFICATION_DISABLED' };
+704:    const verificationHash = this.webhookVerify.computeRemitaStatusHash(providerRef);
+708:      body: JSON.stringify({ rrr: providerRef, verificationHash }),
+711:      status?: string | number; statuscode?: string | number; amount?: number | string;
+712:      paidAt?: string; paid_at?: string; channel?: string; currency?: string;
+713:      data?: { status?: string | number; statuscode?: string | number; amount?: number | string; paidAt?: string; paid_at?: string; channel?: string; currency?: string };
+715:    if (!res.ok) return { reconciled: false, reason: `REMITA_VERIFY_HTTP_${res.status}` };
+719:    if (!['00', '01', 'SUCCESS', 'COMPLETED'].includes(status)) return { reconciled: false, reason: `REMITA_${status || 'PENDING'}` };
+720:    if (payload.currency && payload.currency !== 'NGN') return { reconciled: false, reason: 'REMITA_CURRENCY_MISMATCH' };
+721:    const amount = Number(payload.amount);
+722:    if (!Number.isFinite(amount) || amount <= 0) return { reconciled: false, reason: 'REMITA_INVALID_AMOUNT' };
+724:    if (Number.isNaN(paidAt.valueOf())) return { reconciled: false, reason: 'REMITA_INVALID_PAID_AT' };
+726:    await this.confirmPayment(providerRef, amount, paidAt, payload.channel ?? 'remita');
+727:    return { reconciled: true };
+731:  async getPaymentHistory(studentId: string) {
+### outbox schema
+1934:model DomainEvent {
+1935-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+1936-  eventType   String    @db.VarChar(100)
+1937-  payload     Json
+1938-  createdAt   DateTime  @default(now())
+1939-  processedAt DateTime?
+1940-  attempts    Int       @default(0) @db.SmallInt
+1941-  lastError   String?   @db.Text
+1942-
+1943-  @@index([processedAt, createdAt], map: "idx_outbox_unprocessed")
+1944-  @@map("domain_events")
+1945-}
+1946-
+1947-// ═══════════════════════════════════════════════════════════════════════════════
+1948-// PHASE 5: Exams & Results
+1949-// ═══════════════════════════════════════════════════════════════════════════════
+1950-
+1951-// ── M2 FIX: Semester model (was just a string field on CourseOffering) ───────
+1952-model Semester {

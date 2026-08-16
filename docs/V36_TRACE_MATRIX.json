@@ -1,0 +1,83 @@
+{
+  "admissions_decision": {
+    "frontend": "UNVERIFIED",
+    "api": "UNVERIFIED",
+    "auth": "UNVERIFIED",
+    "validation": "UNVERIFIED",
+    "service": "UNVERIFIED",
+    "database": "UNVERIFIED",
+    "audit": "UNVERIFIED",
+    "response": "UNVERIFIED",
+    "invariants": [
+      "only authorized staff can decide",
+      "decision transition validated against current state",
+      "audit records actor/time/action",
+      "duplicate submission is safe"
+    ]
+  },
+  "course_registration": {
+    "frontend": "UNVERIFIED",
+    "api": "UNVERIFIED",
+    "auth": "UNVERIFIED",
+    "validation": "UNVERIFIED",
+    "service": "UNVERIFIED",
+    "database": "UNVERIFIED",
+    "audit": "UNVERIFIED",
+    "response": "UNVERIFIED",
+    "invariants": [
+      "server is authoritative",
+      "no duplicate enrollment",
+      "capacity/eligibility enforced server-side",
+      "locked registration cannot be mutated without authorized workflow"
+    ]
+  },
+  "grade_upload": {
+    "frontend": "UNVERIFIED",
+    "api": "UNVERIFIED",
+    "auth": "UNVERIFIED",
+    "validation": "UNVERIFIED",
+    "service": "UNVERIFIED",
+    "database": "UNVERIFIED",
+    "audit": "UNVERIFIED",
+    "response": "UNVERIFIED",
+    "invariants": [
+      "preview before commit",
+      "invalid rows do not silently commit",
+      "grading scale is institution-configured",
+      "retry cannot duplicate grades",
+      "published results require controlled correction"
+    ]
+  },
+  "result_publication": {
+    "frontend": "UNVERIFIED",
+    "api": "UNVERIFIED",
+    "auth": "UNVERIFIED",
+    "validation": "UNVERIFIED",
+    "service": "UNVERIFIED",
+    "database": "UNVERIFIED",
+    "audit": "UNVERIFIED",
+    "response": "UNVERIFIED",
+    "invariants": [
+      "only approved results can publish",
+      "published state is authoritative",
+      "publication is auditable",
+      "correction is controlled"
+    ]
+  },
+  "payment": {
+    "frontend": "UNVERIFIED",
+    "api": "UNVERIFIED",
+    "auth": "UNVERIFIED",
+    "validation": "UNVERIFIED",
+    "service": "UNVERIFIED",
+    "database": "UNVERIFIED",
+    "audit": "UNVERIFIED",
+    "response": "UNVERIFIED",
+    "invariants": [
+      "client cannot declare success",
+      "duplicate callback/payment is safe",
+      "receipt follows authoritative success",
+      "reversal is permission-controlled"
+    ]
+  }
+}

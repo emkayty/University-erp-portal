@@ -1,0 +1,36 @@
+{
+  "async_list": [
+    "initial",
+    "loading",
+    "success-with-data",
+    "success-empty",
+    "error",
+    "retrying"
+  ],
+  "form": [
+    "initial",
+    "dirty",
+    "saving",
+    "saved",
+    "validation-error",
+    "server-error",
+    "unauthorized"
+  ],
+  "transaction": [
+    "ready",
+    "processing",
+    "success",
+    "duplicate-safe-retry",
+    "failure",
+    "unknown-state"
+  ],
+  "academic_result": [
+    "draft",
+    "submitted",
+    "under-review",
+    "approved",
+    "published",
+    "correction-requested",
+    "superseded"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "names": [
+    "Support long compound names and multiple surnames.",
+    "Do not impose short fixed name lengths in UI."
+  ],
+  "money": [
+    "Use locale-aware Naira formatting.",
+    "Never infer payment success from client UI."
+  ],
+  "location": [
+    "State -> LGA dependent selection for Nigerian addresses.",
+    "Foreign applicant: country -> region/province/state where applicable.",
+    "Use authoritative options instead of unnecessary free text."
+  ],
+  "education": [
+    "Keep examination body and internal/external distinctions explicit."
+  ],
+  "academic": [
+    "Support configured Nigerian 5.0 and American 4.0 grading scales; never hard-code one shared scale."
+  ]
+}

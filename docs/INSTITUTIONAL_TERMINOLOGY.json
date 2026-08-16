@@ -1,0 +1,29 @@
+{
+  "person_roles": {
+    "applicant": "Person who has submitted an admission application.",
+    "student": "Admitted/enrolled learner with an institutional student record.",
+    "staff": "Institutional employee/user."
+  },
+  "academic": {
+    "course": "A credit-bearing academic offering identified by a course code.",
+    "programme": "Degree/diploma programme of study.",
+    "result": "An academic outcome; distinguish draft and official result.",
+    "grade": "The grade assigned to a validated score according to the configured grading scale.",
+    "score": "Numeric assessment mark before grade conversion."
+  },
+  "admissions": {
+    "application": "A submitted admission request.",
+    "admission_decision": "The authoritative institutional decision on an application."
+  },
+  "finance": {
+    "invoice": "An authoritative charge document.",
+    "payment": "A transaction record/attempt against an invoice or obligation.",
+    "receipt": "Evidence generated from an authoritative successful transaction."
+  },
+  "rules": [
+    "Do not use labels interchangeably when they represent different business states.",
+    "Student-facing screens must distinguish Official/Published results from drafts.",
+    "Draft must never be presented as an official result.",
+    "Actions must use verbs that describe the actual business operation."
+  ]
+}

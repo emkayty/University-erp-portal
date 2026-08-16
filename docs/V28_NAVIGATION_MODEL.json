@@ -1,0 +1,39 @@
+{
+  "workspace": [
+    "Overview",
+    "My Tasks",
+    "Notifications"
+  ],
+  "academic": [
+    "Admissions",
+    "Students",
+    "Registration",
+    "Courses & Curriculum",
+    "Exams & Results",
+    "Academic Calendar"
+  ],
+  "finance": [
+    "Fees & Billing",
+    "Payments",
+    "Reconciliation",
+    "Financial Reports"
+  ],
+  "people": [
+    "Staff",
+    "HR",
+    "Payroll"
+  ],
+  "campus": [
+    "Library",
+    "Learning",
+    "Hostel",
+    "Health",
+    "Transport"
+  ],
+  "institution": [
+    "Reports",
+    "Audit & Security",
+    "Policies",
+    "Settings"
+  ]
+}

@@ -1,0 +1,156 @@
+name: uniportal
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-uniportal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a strong PostgreSQL owner password}
+      POSTGRES_DB: ${POSTGRES_DB:-uniportal}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set a strong runtime application database password}
+      POSTGRES_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:?Set a strong system database password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/00-uniportal-init.sh:/docker-entrypoint-initdb.d/00-uniportal-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--requirepass",
+        "${REDIS_PASSWORD:?Set a strong Redis password}",
+      ]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set a strong Redis password}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [private]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment: &api_environment
+      NODE_ENV: production
+      PROCESS_ROLE: api
+      API_PORT: 3001
+      RUN_DB_SCHEMA: "false"
+      DATABASE_URL: postgresql://uniportal_app:${POSTGRES_APP_PASSWORD}@postgres:5432/${POSTGRES_DB:-uniportal}
+      DATABASE_DIRECT_URL: postgresql://uniportal_system:${POSTGRES_SYSTEM_PASSWORD}@postgres:5432/${POSTGRES_DB:-uniportal}
+      MIGRATE_DATABASE_URL: postgresql://${POSTGRES_USER:-uniportal}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-uniportal}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      JWT_PRIVATE_KEY_B64: ${JWT_PRIVATE_KEY_B64:?Set an RS256 private key in base64}
+      JWT_PUBLIC_KEY_B64: ${JWT_PUBLIC_KEY_B64:?Set an RS256 public key in base64}
+      ENCRYPTION_KEY_HEX: ${ENCRYPTION_KEY_HEX:?Set a 64-character AES-256 key in hex}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set the deployed frontend origin}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      SMTP_FROM: ${SMTP_FROM:?Set a verified sender email address}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      PAYSTACK_WEBHOOK_SECRET: ${PAYSTACK_WEBHOOK_SECRET:-}
+      REMITA_MERCHANT_ID: ${REMITA_MERCHANT_ID:-}
+      REMITA_API_KEY: ${REMITA_API_KEY:-}
+      REMITA_WEBHOOK_SECRET: ${REMITA_WEBHOOK_SECRET:-}
+      REMITA_SERVICE_TYPE_ID: ${REMITA_SERVICE_TYPE_ID:-}
+      REMITA_RRR_ENDPOINT: ${REMITA_RRR_ENDPOINT:-}
+      REMITA_STATUS_ENDPOINT: ${REMITA_STATUS_ENDPOINT:-}
+      REMITA_STATUS_VERIFICATION_ENABLED: ${REMITA_STATUS_VERIFICATION_ENABLED:-false}
+      REPORTING_DATABASE_URL: ${REPORTING_DATABASE_URL:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_HOST_PORT:-3001}:3001"
+    networks: [private, public]
+
+  schema:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    profiles: [maintenance]
+    command: ["/app/scripts/db/deploy-schema.sh"]
+    environment:
+      <<: *api_environment
+      PROCESS_ROLE: api
+      RUN_DB_SCHEMA: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    command: ["/app/scripts/start-worker.sh"]
+    environment:
+      <<: *api_environment
+      PROCESS_ROLE: worker
+      RUN_DB_SCHEMA: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    networks: [private]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?Set the deployed API origin for the browser}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    networks: [public]
+
+networks:
+  private:
+    internal: true
+  public:
+
+volumes:
+  postgres_data:
+  redis_data:

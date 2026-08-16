@@ -1,0 +1,29 @@
+{
+  "frontend_to_backend": [
+    "API client",
+    "endpoint",
+    "request schema",
+    "auth context",
+    "response schema",
+    "error envelope",
+    "cache/state invalidation"
+  ],
+  "backend_to_frontend": [
+    "authoritative state",
+    "validation errors",
+    "permission state",
+    "pagination",
+    "loading/empty/error states"
+  ],
+  "transactional": [
+    "idempotency",
+    "concurrency/version check",
+    "audit",
+    "atomic transaction where required"
+  ],
+  "privacy": [
+    "minimum necessary data",
+    "no secrets in client",
+    "no privileged infrastructure endpoints"
+  ]
+}

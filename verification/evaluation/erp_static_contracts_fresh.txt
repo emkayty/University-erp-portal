@@ -1,0 +1,70 @@
+===== p1 =====
+exit=0
+
+> uniportal-erp@0.0.0 p1:verify-academic-integrity /home/ubuntu/deep_audit
+> python3 scripts/verify/p1-academic-integrity.py
+
+P1 academic-integrity contract validation passed (11 invariants).
+===== p2 =====
+exit=0
+
+> uniportal-erp@0.0.0 p2:verify-operational-contract /home/ubuntu/deep_audit
+> python3 scripts/verify/p2-operational-contract.py
+
+P2 operational-contract validation passed (9 invariants).
+===== p4 =====
+exit=0
+
+> uniportal-erp@0.0.0 p4:verify-rules /home/ubuntu/deep_audit
+> ! grep -R --line-number --exclude='*.spec.ts' -E 'eval\(|new Function\(' apps/api/src/intelligence
+
+===== p5static =====
+exit=0
+
+> uniportal-erp@0.0.0 p5:static-audit /home/ubuntu/deep_audit
+> python tests/p5/static_security_audit.py
+
+Static P5 security-pattern audit: PASS
+===== p5contract =====
+exit=0
+
+> uniportal-erp@0.0.0 p5:validate-contract /home/ubuntu/deep_audit
+> python -m json.tool docs/P5_MODULE_COVERAGE.json > /dev/null
+
+===== p5integration =====
+exit=0
+
+> uniportal-erp@0.0.0 p5:integration-contract-audit /home/ubuntu/deep_audit
+> python tests/p5/integration_contract_audit.py
+
+PASS Sparkles import
+PASS GET intelligence alerts
+PASS GET intelligence tasks
+PASS listAlerts service
+PASS listTasks service
+PASS smart alerts client
+PASS smart tasks client
+===== route =====
+exit=0
+PASS src/route-contracts.spec.ts
+  API route contracts
+    ✓ alumni uses a relative v1 controller declaration (2 ms)
+    ✓ clinic uses a relative v1 controller declaration
+    ✓ reports uses a relative v1 controller declaration (1 ms)
+    ✓ research uses a relative v1 controller declaration
+    ✓ audit logs uses a relative v1 controller declaration (1 ms)
+    ✓ search uses a relative v1 controller declaration
+    ✓ transport uses a relative v1 controller declaration
+    ✓ notifications uses a relative v1 controller declaration
+    ✓ exposes the target user id in the administrative MFA recovery route (1 ms)
+  PaymentsController boundary controls
+    ✓ passes the resolved Student.id, not User.id, to payment initiation (1 ms)
+    ✓ rejects payment initiation without the required idempotency key
+    ✓ does not permit payment initialization to retain a request-wide RLS transaction during provider I/O (1 ms)
+    ✓ rejects provider webhooks when the original raw bytes were not captured
+
+Test Suites: 1 passed, 1 total
+Tests:       13 passed, 13 total
+Snapshots:   0 total
+Time:        1.419 s, estimated 2 s
+Ran all test suites matching /src\/route-contracts.spec.ts/i.

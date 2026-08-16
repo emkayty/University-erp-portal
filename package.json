@@ -1,0 +1,52 @@
+{
+  "name": "uniportal-erp",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "prebuild": "pnpm db:generate",
+    "pretype-check": "pnpm db:generate",
+    "pretest": "pnpm db:generate",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint --concurrency=1",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "test:e2e:hermetic": "bash scripts/test/run-e2e-hermetic.sh",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+    "db:generate": "turbo run prisma:generate",
+    "db:validate": "pnpm --filter @uniportal/api prisma:validate",
+    "db:migrate": "turbo run prisma:migrate",
+    "db:migrate:dev": "cd apps/api && pnpm prisma migrate dev",
+    "db:bootstrap-roles": "bash scripts/db/bootstrap-local-roles.sh",
+    "db:studio": "cd apps/api && pnpm prisma studio",
+    "db:seed": "cd apps/api && pnpm prisma db seed",
+    "db:backup": "bash scripts/db/backup.sh",
+    "db:restore": "bash scripts/db/restore.sh",
+    "verify:production": "bash scripts/verify/production-certification.sh",
+    "verify:cert-stack": "bash scripts/verify/start-certification-stack.sh",
+    "p1:verify-academic-integrity": "python3 scripts/verify/p1-academic-integrity.py",
+    "p2:verify-operational-contract": "python3 scripts/verify/p2-operational-contract.py",
+    "p4:verify-rules": "! grep -R --line-number --exclude='*.spec.ts' -E 'eval\\(|new Function\\(' apps/api/src/intelligence",
+    "p5:static-audit": "python tests/p5/static_security_audit.py",
+    "p5:validate-contract": "python -m json.tool docs/P5_MODULE_COVERAGE.json > /dev/null",
+    "p5:integration-contract-audit": "python tests/p5/integration_contract_audit.py",
+    "p5:execution-audit": "python tests/p5/static_security_audit.py && python tests/p5/integration_contract_audit.py"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^9.39.4",
+    "@uniportal/eslint-config": "workspace:*",
+    "eslint": "^9.39.4",
+    "prettier": "^3.5.0",
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

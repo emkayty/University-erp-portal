@@ -1,0 +1,85 @@
+{
+  "family": "uniportal-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/uniportalEcsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/uniportal-api:TAG",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3001,
+          "hostPort": 3001,
+          "protocol": "tcp",
+          "name": "http"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PROCESS_ROLE", "value": "api" },
+        { "name": "API_PORT", "value": "3001" },
+        { "name": "RUN_DB_SCHEMA", "value": "false" },
+        { "name": "TRUST_PROXY", "value": "true" },
+        { "name": "TRUST_PROXY_HOPS", "value": "1" },
+        { "name": "FRONTEND_ORIGIN", "value": "https://YOUR_VERCEL_DOMAIN" },
+        { "name": "LOG_LEVEL", "value": "info" }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/database-url"
+        },
+        {
+          "name": "DATABASE_DIRECT_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/database-direct-url"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/redis-url"
+        },
+        {
+          "name": "JWT_PRIVATE_KEY_B64",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/jwt-private-key"
+        },
+        {
+          "name": "JWT_PUBLIC_KEY_B64",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/jwt-public-key"
+        },
+        {
+          "name": "ENCRYPTION_KEY_HEX",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/encryption-key"
+        },
+        {
+          "name": "SMTP_FROM",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/smtp-from"
+        },
+        {
+          "name": "SMTP_HOST",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/smtp-host"
+        },
+        {
+          "name": "SMTP_USER",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/smtp-user"
+        },
+        {
+          "name": "SMTP_PASS",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:uniportal/smtp-password"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/uniportal-api",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "linuxParameters": { "initProcessEnabled": true }
+    }
+  ]
+}

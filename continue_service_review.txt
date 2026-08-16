@@ -1,0 +1,867 @@
+### privacy
+     1	import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+     2	import { AuditAction, Prisma } from '@prisma/client';
+     3	import { pseudonymiseAuditPayload, pseudonymiseForErasure } from '@uniportal/utils';
+     4	
+     5	import { PrismaService } from '../../database/prisma.service';
+     6	import { RlsContextService } from '../../common/rls/rls-context.service';
+     7	import { AuditService } from '../../common/audit/audit.service';
+     8	import { OutboxService } from '../../common/outbox/outbox.service';
+     9	import type { ErasureRequestDto, PersonDsrIntakeDto, RectifyUserDto, RestrictProcessingDto } from './dto/privacy.dto';
+    10	
+    11	const SAR_SLA_HOURS = 48;        // spec §16.1: "delivered to verified email in 48h"
+    12	const DEFAULT_DSR_SLA_DAYS = 30; // NDPR/GDPR-style default SLA for the remaining DSR types
+    13	
+    14	/**
+    15	 * PrivacyService — NDPR 2019 Data Subject Rights (spec §16.1).
+    16	 *
+    17	 * Every action here creates a DataSubjectRequest row FIRST (durable proof a
+    18	 * request was received and when it's due), then performs the action. This
+    19	 * order matters: if the action itself fails partway, the DPO still has a
+    20	 * record that the request came in and can follow up manually — silently
+    21	 * losing a DSR request is itself an NDPR compliance failure.
+    22	 *
+    23	 * AUTHORIZATION NOTE (audit remediation R2 — was: "RLS is decorative"):
+    24	 * this service still does its OWN "self, or DPO, or SUPER_ADMIN" checks at
+    25	 * the controller/guard layer — that check stays, RLS is defense-in-depth,
+    26	 * not a replacement for it. What changed: every query below now goes
+    27	 * through `this.db()`, which resolves to the ambient RLS transaction
+    28	 * client that RlsInterceptor opens per-request (see
+    29	 * common/rls/rls.interceptor.ts), instead of the plain PrismaService
+    30	 * client. That means `app.current_user_id`/`app.current_role`/
+    31	 * `app.current_dept_id` are actually set on these connections now, and the
+    32	 * RLS policies on data_subject_requests/security_incidents (migration
+    33	 * 0009_p10_ndpr_security_rls) are genuinely enforced for this service —
+    34	 * this is the reference migration for the other ~31 services; see
+    35	 * docs/CHANGELOG.md item R2.
+    36	 */
+    37	@Injectable()
+    38	export class PrivacyService {
+    39	  private readonly logger = new Logger(PrivacyService.name);
+    40	
+    41	  constructor(
+    42	    private readonly prisma: PrismaService,
+    43	    private readonly rlsContext: RlsContextService,
+    44	    private readonly audit: AuditService,
+    45	    private readonly outbox: OutboxService,
+    46	  ) {}
+    47	
+    48	  /** The ambient, RLS-enforced client for the current request (falls back to the plain client outside a request — e.g. unit tests that don't go through RlsInterceptor). */
+    49	  private db() {
+    50	    return this.prisma.forRequest(this.rlsContext);
+    51	  }
+    52	
+    53	  /** Right of Access (SAR) — GET /privacy/sar/:userId */
+    54	  async requestAccess(subjectUserId: string, requestedById: string) {
+    55	    const subject = await this.assertSubjectExists(subjectUserId);
+    56	    const subjectPersonId = await this.resolveSubjectPersonId(subjectUserId);
+    57	    const dueBy = addHours(new Date(), SAR_SLA_HOURS);
+    58	
+    59	    // AUDIT-H2 fix: this used to enqueue only { reportJobId, subjectUserId }
+    60	    // — ReportGenerationProcessor.process() destructures
+    61	    // { reportJobId, reportType, reportFormat, parameters } from job.data,
+    62	    // so reportType/reportFormat/parameters all arrived undefined and
+    63	    // fetchReportData()'s switch had no case for CUSTOM anyway (fell
+    64	    // through to `default: return []`), meaning a SAR was silently marked
+    65	    // COMPLETED with an export containing no data — worse than an error,
+    66	    // for a request whose entire point is completeness. Fixed on both
+    67	    // ends: the full payload shape is enqueued here, and
+    68	    // report-generation.processor.ts now has a real CUSTOM/ndpr_sar branch.
+    69	    const parameters = { kind: 'ndpr_sar', subjectUserId };
+    70	    const { reportJob, dsr, eventId } = await this.prisma.$transaction(async (tx) => {
+    71	      const reportJob = await tx.reportJob.create({
+    72	        data: { reportType: 'CUSTOM', reportFormat: 'XLSX', status: 'PENDING', parameters, triggeredBy: requestedById },
+    73	      });
+    74	      const dsr = await tx.dataSubjectRequest.create({
+    75	        data: { type: 'ACCESS', status: 'IN_PROGRESS', subjectPersonId, subjectUserId, requestedById, reportJobId: reportJob.id, dueBy },
+    76	      });
+    77	      const eventId = await this.outbox.write(tx, 'privacy.sar_export_requested', {
+    78	        reportJobId: reportJob.id, reportType: 'CUSTOM', reportFormat: 'XLSX',
+    79	        triggeredBy: requestedById, parameters,
+    80	      });
+    81	      return { reportJob, dsr, eventId };
+    82	    });
+    83	
+    84	    await this.audit.log({
+    85	      action: AuditAction.EXPORT, targetTable: 'users', targetId: subjectUserId,
+    86	      metadata: { dsrType: 'ACCESS', dsrRequestId: dsr.id, eventId },
+    87	    }, requestedById);
+    88	
+    89	    this.logger.log(`SAR requested for user ${subjectUserId} — due by ${dueBy.toISOString()}`);
+    90	    return { requestId: dsr.id, dueBy, subject: { id: subject.id, email: subject.email } };
+    91	  }
+    92	
+    93	  /**
+    94	   * Canonical Person DSR intake for pre-account applicants. The method records
+    95	   * the request and identity graph, but deliberately does not claim that a
+    96	   * right has been completed before identity verification and operational
+    97	   * processing occur.
+    98	   */
+    99	  async intakePersonRequest(personId: string, requestedById: string, dto: PersonDsrIntakeDto) {
+   100	    const db = this.db();
+   101	    const person = await db.person.findUnique({
+   102	      where: { id: personId },
+   103	      select: { id: true, students: { select: { userId: true } } },
+   104	    });
+   105	    if (!person) {
+   106	      throw new NotFoundException({ code: 'RESOURCE_NOT_FOUND', message: 'No such canonical Person' });
+   107	    }
+   108	
+   109	    const linkedUserIds = [...new Set(person.students.map((student) => student.userId))];
+   110	    const subjectUserId = linkedUserIds.length === 1 ? linkedUserIds[0] : null;
+   111	    const dueBy = addDays(new Date(), DEFAULT_DSR_SLA_DAYS);
+   112	    const dsr = await db.dataSubjectRequest.create({
+   113	      data: {
+   114	        type: dto.type,
+   115	        status: 'IDENTITY_VERIFICATION_REQUIRED',
+   116	        subjectPersonId: personId,
+   117	        subjectUserId,
+   118	        requestedById,
+   119	        reason: dto.reason ?? null,
+   120	        dueBy,
+   121	      },
+   122	    });
+   123	
+   124	    await this.audit.log({
+   125	      action: AuditAction.CREATE,
+   126	      targetTable: 'data_subject_requests',
+   127	      targetId: dsr.id,
+   128	      metadata: {
+   129	        dsrType: dto.type,
+   130	        subjectPersonId: personId,
+   131	        subjectUserId,
+   132	        identityVerificationRequired: true,
+   133	      },
+   134	    }, requestedById);
+   135	
+   136	    return {
+   137	      requestId: dsr.id,
+   138	      status: 'IDENTITY_VERIFICATION_REQUIRED' as const,
+   139	      subjectPersonId: personId,
+   140	      subjectUserId,
+   141	      dueBy,
+   142	    };
+   143	  }
+   144	
+   145	  /** Right to Rectification — POST /privacy/rectify/:userId */
+   146	  async rectify(subjectUserId: string, requestedById: string, dto: RectifyUserDto) {
+   147	    await this.assertSubjectExists(subjectUserId);
+   148	    if (!dto.email && !dto.phone) {
+   149	      throw new BadRequestException('At least one of email or phone must be provided');
+   150	    }
+   151	
+   152	    const subjectPersonId = await this.resolveSubjectPersonId(subjectUserId);
+   153	    const dueBy = addDays(new Date(), DEFAULT_DSR_SLA_DAYS);
+   154	    const dsr = await this.db().dataSubjectRequest.create({
+   155	      data: { type: 'RECTIFICATION', status: 'IN_PROGRESS', subjectPersonId, subjectUserId, requestedById, reason: dto.reason ?? null, dueBy },
+   156	    });
+   157	
+   158	    try {
+   159	      const before = await this.db().user.findUnique({
+   160	        where: { id: subjectUserId }, select: { email: true, phone: true },
+   161	      });
+   162	      const updated = await this.db().user.update({
+   163	        where: { id: subjectUserId },
+   164	        data: { ...(dto.email && { email: dto.email }), ...(dto.phone && { phone: dto.phone }) },
+   165	        select: { email: true, phone: true },
+   166	      });
+   167	      await this.db().dataSubjectRequest.update({ where: { id: dsr.id }, data: { status: 'COMPLETED', completedAt: new Date() } });
+   168	
+   169	      await this.audit.log({
+   170	        action: AuditAction.UPDATE, targetTable: 'users', targetId: subjectUserId,
+   171	        oldValues: before ?? undefined, newValues: updated,
+   172	        metadata: { dsrType: 'RECTIFICATION', dsrRequestId: dsr.id },
+   173	      }, requestedById);
+   174	      return { requestId: dsr.id, updated };
+   175	    } catch (error) {
+   176	      await this.db().dataSubjectRequest.update({ where: { id: dsr.id }, data: { status: 'FAILED', reason: `${dto.reason ?? ''}\nProcessing failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 4000) } });
+   177	      throw error;
+   178	    }
+   179	  }
+   180	
+   181	  /**
+   182	   * Right to Erasure — DELETE /privacy/erase/:userId
+   183	   * super_admin only, VC sign-off reference required (route guard + DTO).
+   184	   *
+   185	   * Implements docs/CHANGELOG.md M7 ("NDPR audit log pseudonymisation
+   186	   * on erasure"): if the subject has any published academic record
+   187	   * (StudentResult rows), the 7-year academic-record legal hold (spec
+   188	   * §8.3) applies and we PSEUDONYMISE instead of hard-deleting — the
+   189	   * record must still exist for transcripts/audits, but the PII inside it
+   190	    * (and inside every historical audit_log row about this user) is
+   191	 * scrubbed. User accounts are never physically deleted: pseudonymization and
+   192	 * `deletedAt` preserve referential integrity, notification history, auditability,
+   193	 * and the canonical identity graph even when no legal hold is present.
+   194	
+   195	   */
+   196	  async erase(subjectUserId: string, requestedById: string, dto: ErasureRequestDto) {
+   197	    const db = this.db();
+   198	    const vc = await db.user.findUnique({
+   199	      where: { id: dto.vcApprovalReference },
+   200	      select: { id: true, isActive: true, roles: { select: { roleName: true } } },
+   201	    });
+   202	    if (!vc || !vc.isActive || vc.id === requestedById || !vc.roles.some((role) => role.roleName === 'VC')) {
+   203	      throw new ForbiddenException({ code: 'VC_APPROVAL_REQUIRED', message: 'A distinct active VC account must approve the erasure.' });
+   204	    }
+   205	    const subjectPersonId = await this.resolveSubjectPersonId(subjectUserId);
+   206	    const durableDsr = await this.db().dataSubjectRequest.create({
+   207	      data: { type: 'ERASURE', status: 'IN_PROGRESS', subjectPersonId, subjectUserId, requestedById, reason: dto.reason ?? null, vcApprovalId: dto.vcApprovalReference, dueBy: addDays(new Date(), DEFAULT_DSR_SLA_DAYS) },
+   208	    });
+   209	
+   210	    try {
+   211	      const { legalHold } = await this.prisma.$transaction(async (tx) => {
+   212	        await tx.user.findUniqueOrThrow({ where: { id: subjectUserId }, select: { id: true } });
+   213	        const student = await tx.student.findUnique({
+   214	          where: { userId: subjectUserId },
+   215	          select: { _count: { select: { results: true } } },
+   216	        });
+   217	        const pastLogs = await tx.auditLog.findMany({
+   218	          where: { actorId: subjectUserId }, select: { id: true, oldValues: true, newValues: true },
+   219	        });
+   220	        const legalHold = !!student && student._count.results > 0;
+   221	
+   222	        // User is a durable identity anchor for notifications, incidents,
+   223	        // audit records, DSR approvals, and other institutional history. Never
+   224	        // physically delete it; pseudonymization plus deletedAt is the only
+   225	        // erasure path, regardless of whether a separate legal hold applies.
+   226	        await this.pseudonymiseInPlace(subjectUserId, tx);
+   227	
+   228	        for (const row of pastLogs) {
+   229	        await tx.auditLog.update({
+   230	          where: { id: row.id },
+   231	          data: {
+   232	            oldValues: pseudonymiseAuditPayload(row.oldValues as Record<string, unknown> | null, subjectUserId) as Prisma.InputJsonValue | undefined,
+   233	            newValues: pseudonymiseAuditPayload(row.newValues as Record<string, unknown> | null, subjectUserId) as Prisma.InputJsonValue | undefined,
+   234	          },
+   235	        });
+   236	      }
+   237	
+   238	      return { legalHold };
+   239	      });
+   240	
+   241	      const completed = await this.db().dataSubjectRequest.update({
+   242	        where: { id: durableDsr.id },
+   243	        data: {
+   244	          status: legalHold ? 'LEGAL_HOLD' : 'COMPLETED',
+   245	          legalHoldNote: legalHold
+   246	            ? '7-year academic record hold applies (spec §8.3) — pseudonymised and retained.'
+   247	            : 'User account pseudonymised and deactivated; physical deletion is prohibited to preserve referential integrity and auditability.',
+   248	          completedAt: new Date(),
+   249	        },
+   250	      });
+   251	
+   252	      await this.audit.log({
+   253	        action: AuditAction.ERASURE, targetTable: 'users', targetId: subjectUserId,
+   254	        metadata: { dsrRequestId: completed.id, legalHold, pseudonymised: true, hardDeleteProhibited: true, vcApprovalReference: dto.vcApprovalReference },
+   255	      }, requestedById);
+   256	
+   257	      this.logger.log(`Erasure completed for ${subjectUserId} (pseudonymised=true, legalHold=${legalHold})`);
+   258	      return { requestId: completed.id, pseudonymised: true, hardDeleted: false, legalHold };
+   259	    } catch (error) {
+   260	      await this.db().dataSubjectRequest.update({ where: { id: durableDsr.id }, data: { status: 'FAILED', reason: `${dto.reason ?? ''}\nProcessing failed: ${error instanceof Error ? error.message : String(error)}`.slice(0, 4000) } }).catch(() => undefined);
+### storage
+     1	import { BadRequestException, Injectable, ServiceUnavailableException } from '@nestjs/common';
+     2	import { ConfigService } from '@nestjs/config';
+     3	import { createHash, createHmac } from 'node:crypto';
+     4	
+     5	interface AwsCredentials { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
+     6	
+     7	export interface PresignedObject {
+     8	  key: string;
+     9	  url: string;
+    10	  expiresAt: Date;
+    11	  headers?: Record<string, string>;
+    12	}
+    13	
+    14	export interface PresignedUploadPost extends PresignedObject {
+    15	  method: 'POST';
+    16	  fields: Record<string, string>;
+    17	  maxSizeBytes: number;
+    18	}
+    19	
+    20	export interface VerifiedObject {
+    21	  key: string;
+    22	  sizeBytes: number;
+    23	  contentType: string | null;
+    24	}
+    25	
+    26	type HttpMethod = 'GET' | 'HEAD';
+    27	
+    28	@Injectable()
+    29	export class PrivateObjectStorageService {
+    30	  private readonly ttlSeconds = 900;
+    31	  private readonly metadataTimeoutMs = 5000;
+    32	
+    33	  constructor(private readonly config: ConfigService) {}
+    34	
+    35	  validateObjectKey(key: string): void {
+    36	    if (!/^(?!\/)(?!.*\.\.)(?!.*:\/\/)[A-Za-z0-9_./-]+$/.test(key)) {
+    37	      throw new BadRequestException('Object key must be a relative opaque storage key.');
+    38	    }
+    39	  }
+    40	
+    41	  async presignPut(key: string, contentType: string, sizeBytes: number): Promise<PresignedObject> {
+    42	    this.validateObjectKey(key);
+    43	    const bucket = this.requireBucket();
+    44	    this.validateUploadInputs(contentType, sizeBytes);
+    45	    const url = await this.sign(bucket, key, 'PUT', this.ttlSeconds);
+    46	    return {
+    47	      key,
+    48	      url,
+    49	      expiresAt: new Date(Date.now() + this.ttlSeconds * 1000),
+    50	      headers: { 'Content-Type': contentType },
+    51	    };
+    52	  }
+    53	
+    54	  /**
+    55	   * SigV4 POST policies enforce the content-length range at the storage edge.
+    56	   * This is stronger than validating the requested size while signing a PUT,
+    57	   * because a caller cannot reuse the form policy for a larger body.
+    58	   */
+    59	  async presignPost(key: string, contentType: string, sizeBytes: number): Promise<PresignedUploadPost> {
+    60	    this.validateObjectKey(key);
+    61	    const bucket = this.requireBucket();
+    62	    this.validateUploadInputs(contentType, sizeBytes);
+    63	    const credentials = await this.resolveAwsCredentials();
+    64	    const endpoint = this.resolveEndpoint(bucket);
+    65	    const now = new Date();
+    66	    const amzDate = this.toAmzDate(now);
+    67	    const date = amzDate.slice(0, 8);
+    68	    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+    69	    const expiresAt = new Date(now.getTime() + this.ttlSeconds * 1000);
+    70	    const fields: Record<string, string> = {
+    71	      key,
+    72	      'Content-Type': contentType,
+    73	      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    74	      'X-Amz-Credential': `${credentials.accessKeyId}/${scope}`,
+    75	      'X-Amz-Date': amzDate,
+    76	    };
+    77	    if (credentials.sessionToken) fields['X-Amz-Security-Token'] = credentials.sessionToken;
+    78	
+    79	    const conditions: unknown[] = [
+    80	      { key },
+    81	      { 'Content-Type': contentType },
+    82	      ['content-length-range', 1, sizeBytes],
+    83	      { 'X-Amz-Algorithm': fields['X-Amz-Algorithm'] },
+    84	      { 'X-Amz-Credential': fields['X-Amz-Credential'] },
+    85	      { 'X-Amz-Date': fields['X-Amz-Date'] },
+    86	    ];
+    87	    if (credentials.sessionToken) conditions.push({ 'X-Amz-Security-Token': credentials.sessionToken });
+    88	    const policy = Buffer.from(JSON.stringify({ expiration: expiresAt.toISOString(), conditions })).toString('base64');
+    89	    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+    90	    fields.Policy = policy;
+    91	    fields['X-Amz-Signature'] = createHmac('sha256', signingKey).update(policy).digest('hex');
+    92	
+    93	    return {
+    94	      key,
+    95	      url: endpoint.url,
+    96	      expiresAt,
+    97	      method: 'POST',
+    98	      fields,
+    99	      maxSizeBytes: sizeBytes,
+   100	    };
+   101	  }
+   102	
+   103	  async presignGet(key: string, bucketName?: string): Promise<PresignedObject> {
+   104	    this.validateObjectKey(key);
+   105	    const bucket = bucketName?.trim() || this.requireBucket();
+   106	    const url = await this.sign(bucket, key, 'GET', this.ttlSeconds);
+   107	    return { key, url, expiresAt: new Date(Date.now() + this.ttlSeconds * 1000) };
+   108	  }
+   109	
+   110	  async putObject(bucketName: string, key: string, body: Buffer, contentType: string, extraHeaders: Record<string, string> = {}): Promise<void> {
+   111	    this.validateObjectKey(key);
+   112	    if (!bucketName.trim()) throw new ServiceUnavailableException('Object storage bucket is not configured.');
+   113	    if (!contentType.trim() || contentType.length > 255) throw new BadRequestException('Object content type is required and must be at most 255 characters.');
+   114	    const credentials = await this.resolveAwsCredentials();
+   115	    const endpoint = this.resolveEndpoint(bucketName.trim());
+   116	    const amzDate = this.toAmzDate(new Date());
+   117	    const date = amzDate.slice(0, 8);
+   118	    const payloadHash = createHash('sha256').update(body).digest('hex');
+   119	    const headers: Record<string, string> = {
+   120	      host: endpoint.host,
+   121	      'content-type': contentType,
+   122	      'x-amz-content-sha256': payloadHash,
+   123	      'x-amz-date': amzDate,
+   124	      ...Object.fromEntries(Object.entries(extraHeaders).map(([name, value]) => [name.toLowerCase(), value])),
+   125	    };
+   126	    if (credentials.sessionToken) headers['x-amz-security-token'] = credentials.sessionToken;
+   127	    const signedHeaders = Object.keys(headers).sort();
+   128	    const canonicalHeaders = signedHeaders.map((name) => `${name}:${headers[name].trim()}\n`).join('');
+   129	    const canonicalUri = endpoint.objectPath(key);
+   130	    const canonicalRequest = `PUT\n${canonicalUri}\n\n${canonicalHeaders}\n${signedHeaders.join(';')}\n${payloadHash}`;
+   131	    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+   132	    const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${createHash('sha256').update(canonicalRequest).digest('hex')}`;
+   133	    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+   134	    const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+   135	    const authorization = `AWS4-HMAC-SHA256 Credential=${credentials.accessKeyId}/${scope}, SignedHeaders=${signedHeaders.join(';')}, Signature=${signature}`;
+   136	    const requestHeaders = { ...headers, Authorization: authorization };
+   137	    try {
+   138	      const response = await fetch(`${endpoint.protocol}//${endpoint.host}${canonicalUri}`, { method: 'PUT', headers: requestHeaders, body, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+   139	      if (!response.ok) throw new ServiceUnavailableException(`Object storage upload failed with status ${response.status}.`);
+   140	    } catch (error) {
+   141	      if (error instanceof ServiceUnavailableException) throw error;
+   142	      throw new ServiceUnavailableException('Object storage upload could not be completed.');
+   143	    }
+   144	  }
+   145	
+   146	  /** Verify the object that was uploaded before accepting its metadata in a submission. */
+   147	  async verifyObject(key: string, expectedSizeBytes: number, expectedContentType: string): Promise<VerifiedObject> {
+   148	    this.validateObjectKey(key);
+   149	    if (!Number.isInteger(expectedSizeBytes) || expectedSizeBytes < 1 || expectedSizeBytes > 10 * 1024 * 1024) {
+   150	      throw new BadRequestException('Attachment size must be between 1 byte and 10 MiB.');
+   151	    }
+   152	    this.validateContentType(expectedContentType);
+   153	    const bucket = this.requireBucket();
+   154	    const url = await this.sign(bucket, key, 'HEAD', 60);
+   155	    let response: Response;
+   156	    try {
+   157	      response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+   158	    } catch {
+   159	      throw new ServiceUnavailableException('Attachment storage could not be reached for verification.');
+   160	    }
+   161	    if (!response.ok) throw new BadRequestException('Attachment was not found in private object storage.');
+   162	    const actualSize = Number(response.headers.get('content-length'));
+   163	    if (!Number.isInteger(actualSize) || actualSize !== expectedSizeBytes) {
+   164	      throw new BadRequestException('Attachment size does not match the presigned upload contract.');
+   165	    }
+   166	    const actualContentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() || null;
+   167	    if (actualContentType && actualContentType !== expectedContentType) {
+   168	      throw new BadRequestException('Attachment MIME type does not match the presigned upload contract.');
+   169	    }
+   170	    return { key, sizeBytes: actualSize, contentType: actualContentType };
+   171	  }
+   172	
+   173	  private validateUploadInputs(contentType: string, sizeBytes: number): void {
+   174	    this.validateContentType(contentType);
+   175	    if (!Number.isInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 10 * 1024 * 1024) {
+   176	      throw new BadRequestException('Attachment size must be between 1 byte and 10 MiB.');
+   177	    }
+   178	  }
+   179	
+   180	  private validateContentType(contentType: string): void {
+   181	    if (!/^(application\/pdf|text\/plain|image\/(jpeg|png)|application\/zip)$/.test(contentType)) {
+   182	      throw new BadRequestException('Attachment MIME type is not permitted.');
+   183	    }
+   184	  }
+   185	
+   186	  private requireBucket(): string {
+   187	    const bucket = this.config.get<string>('S3_UPLOADS_BUCKET')?.trim();
+   188	    if (!bucket) throw new ServiceUnavailableException('LMS object storage is not configured.');
+   189	    return bucket;
+   190	  }
+   191	
+   192	  private async sign(bucket: string, key: string, method: HttpMethod | 'PUT', expires: number): Promise<string> {
+   193	    const credentials = await this.resolveAwsCredentials();
+   194	    const endpoint = this.resolveEndpoint(bucket);
+   195	    const now = new Date();
+   196	    const amzDate = this.toAmzDate(now);
+   197	    const date = amzDate.slice(0, 8);
+   198	    const scope = `${date}/${endpoint.region}/s3/aws4_request`;
+   199	    const canonicalUri = endpoint.objectPath(key);
+   200	    const params = new URLSearchParams({
+   201	      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+   202	      'X-Amz-Credential': `${credentials.accessKeyId}/${scope}`,
+   203	      'X-Amz-Date': amzDate,
+   204	      'X-Amz-Expires': String(expires),
+   205	      'X-Amz-SignedHeaders': 'host',
+   206	    });
+   207	    if (credentials.sessionToken) params.set('X-Amz-Security-Token', credentials.sessionToken);
+   208	    const canonicalQuery = this.canonicalQuery(params);
+   209	    const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuery}\nhost:${endpoint.host}\n\nhost\nUNSIGNED-PAYLOAD`;
+   210	    const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${scope}\n${createHash('sha256').update(canonicalRequest).digest('hex')}`;
+   211	    const signingKey = this.deriveSigningKey(credentials.secretAccessKey, date, endpoint.region);
+   212	    params.set('X-Amz-Signature', createHmac('sha256', signingKey).update(stringToSign).digest('hex'));
+   213	    return `${endpoint.protocol}//${endpoint.host}${canonicalUri}?${this.canonicalQuery(params)}`;
+   214	  }
+   215	
+   216	  private resolveEndpoint(bucket: string): { protocol: string; host: string; region: string; url: string; objectPath: (key: string) => string } {
+   217	    const region = this.config.get<string>('AWS_REGION', 'us-east-1');
+   218	    const configured = this.config.get<string>('S3_ENDPOINT_URL')?.trim();
+   219	    if (!configured) {
+   220	      const host = `${bucket}.s3.${region}.amazonaws.com`;
+   221	      return { protocol: 'https:', host, region, url: `https://${host}/`, objectPath: (key) => `/${this.encodeKey(key)}` };
+   222	    }
+   223	    let parsed: URL;
+   224	    try { parsed = new URL(configured); } catch { throw new ServiceUnavailableException('S3_ENDPOINT_URL is invalid.'); }
+   225	    if (!['http:', 'https:'].includes(parsed.protocol)) throw new ServiceUnavailableException('S3_ENDPOINT_URL must use HTTP or HTTPS.');
+   226	    const forcePathStyle = this.config.get<boolean>('S3_FORCE_PATH_STYLE', true);
+   227	    const basePath = parsed.pathname.replace(/\/+$/, '');
+   228	    const prefix = forcePathStyle ? `${basePath}/${encodeURIComponent(bucket)}` : basePath;
+   229	    const objectPath = (key: string) => `${prefix}/${this.encodeKey(key)}`.replace(/\/\/+/g, '/');
+   230	    return { protocol: parsed.protocol, host: parsed.host, region, url: `${parsed.protocol}//${parsed.host}${prefix || '/'}`, objectPath };
+   231	  }
+   232	
+   233	  private encodeKey(key: string): string {
+   234	    return key.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+   235	  }
+   236	
+   237	  private canonicalQuery(params: URLSearchParams): string {
+   238	    return [...params.entries()]
+   239	      .sort(([aKey, aValue], [bKey, bValue]) => aKey.localeCompare(bKey) || aValue.localeCompare(bValue))
+   240	      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+   241	      .join('&');
+   242	  }
+   243	
+   244	  private toAmzDate(value: Date): string {
+   245	    return value.toISOString().replace(/[:-]|\.\d{3}/g, '');
+   246	  }
+   247	
+   248	  private deriveSigningKey(secret: string, date: string, region: string): Buffer {
+   249	    const kDate = createHmac('sha256', `AWS4${secret}`).update(date).digest();
+   250	    const kRegion = createHmac('sha256', kDate).update(region).digest();
+   251	    const kService = createHmac('sha256', kRegion).update('s3').digest();
+   252	    return createHmac('sha256', kService).update('aws4_request').digest();
+   253	  }
+   254	
+   255	  private async resolveAwsCredentials(): Promise<AwsCredentials> {
+   256	    const envCredentials = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY
+   257	      ? { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY, sessionToken: process.env.AWS_SESSION_TOKEN }
+   258	      : undefined;
+   259	    if (envCredentials) return envCredentials;
+   260	
+   261	    const relative = process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI;
+   262	    const full = process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI;
+   263	    const endpoint = full ?? (relative ? `http://169.254.170.2${relative}` : undefined);
+   264	    if (endpoint) {
+   265	      try {
+   266	        const response = await fetch(endpoint, {
+   267	          headers: process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN ? { Authorization: process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN } : undefined,
+   268	          signal: AbortSignal.timeout(this.metadataTimeoutMs),
+   269	        });
+   270	        if (response.ok) {
+   271	          const data = await response.json() as { AccessKeyId?: string; SecretAccessKey?: string; Token?: string };
+   272	          if (data.AccessKeyId && data.SecretAccessKey) return { accessKeyId: data.AccessKeyId, secretAccessKey: data.SecretAccessKey, sessionToken: data.Token };
+   273	        }
+   274	      } catch { /* Workload metadata is intentionally best-effort. */ }
+   275	    }
+   276	
+   277	    try {
+   278	      const tokenResponse = await fetch('http://169.254.169.254/latest/api/token', { method: 'PUT', headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+   279	      if (tokenResponse.ok) {
+   280	        const token = await tokenResponse.text();
+   281	        const roleResponse = await fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/', { headers: { 'X-aws-ec2-metadata-token': token }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+   282	        if (roleResponse.ok) {
+   283	          const role = (await roleResponse.text()).trim();
+   284	          const credentialResponse = await fetch(`http://169.254.169.254/latest/meta-data/iam/security-credentials/${encodeURIComponent(role)}`, { headers: { 'X-aws-ec2-metadata-token': token }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+   285	          if (credentialResponse.ok) {
+   286	            const data = await credentialResponse.json() as { AccessKeyId?: string; SecretAccessKey?: string; Token?: string };
+   287	            if (data.AccessKeyId && data.SecretAccessKey) return { accessKeyId: data.AccessKeyId, secretAccessKey: data.SecretAccessKey, sessionToken: data.Token };
+   288	          }
+   289	        }
+   290	      }
+   291	    } catch { /* Workload metadata is intentionally best-effort. */ }
+   292	
+   293	    throw new ServiceUnavailableException('LMS object-storage credentials are unavailable.');
+   294	  }
+   295	}
+### payment
+   430	          code: 'PAYMENT_AMOUNT_MISMATCH',
+   431	          message: `Confirmed amount ${amountPaid} does not match initiated amount ${expectedAmount.toFixed(2)}`,
+   432	        });
+   433	      }
+   434	
+   435	      // Idempotency: webhook retries are common — never double-credit
+   436	      if (payment.status === PaymentStatus.SUCCESS) {
+   437	        const fee = await tx.studentFee.findUniqueOrThrow({ where: { id: payment.studentFeeId } });
+   438	        const student = await tx.student.findUniqueOrThrow({
+   439	          where: { id: payment.studentId }, select: { feeCleared: true },
+   440	        });
+   441	        return {
+   442	          alreadyProcessed: true, paymentId: payment.id,
+   443	          feeStatus: fee.status, feeCleared: student.feeCleared,
+   444	        };
+   445	      }
+   446	
+   447	      // 1. Payment → SUCCESS
+   448	      await tx.payment.update({
+   449	        where: { id_createdAt: { id: payment.id, createdAt: payment.createdAt } },
+   450	        data:  { status: PaymentStatus.SUCCESS, paidAt, channel: channel ?? null },
+   451	      });
+   452	
+   453	      // 2-3. StudentFee.amountPaid += amount, recompute status
+   454	      const fee = await tx.studentFee.findUniqueOrThrow({ where: { id: payment.studentFeeId } });
+   455	      await tx.studentFee.update({
+   456	        where: { id: fee.id },
+   457	        data:  { amountPaid: fee.amountPaid.add(amountPaid) },
+   458	      });
+   459	      const { feeStatus, feeCleared } = await this.clearance.recomputeStudentFee(tx, fee.id);
+   460	
+   461	      // 5. Outbox — durable event for notifications/side-effects (S1/H9)
+   462	      await this.outbox.write(tx, 'payment.completed', {
+   463	        paymentId: payment.id, studentId: payment.studentId,
+   464	        studentFeeId: fee.id, amount: amountPaid,
+   465	        invoiceNo: fee.invoiceNo, feeStatus, feeCleared,
+   466	      });
+   467	
+   468	      await tx.auditLog.create({
+   469	        data: {
+   470	          action: AuditAction.UPDATE, targetTable: 'payments', targetId: payment.id,
+   471	          newValues: { status: 'SUCCESS', amount: amountPaid, providerRef },
+   472	        },
+   473	      });
+   474	
+   475	      this.logger.log(`Payment confirmed: ${providerRef} → ₦${amountPaid} (fee ${fee.invoiceNo} now ${feeStatus}, feeCleared=${feeCleared})`);
+   476	
+   477	      return { alreadyProcessed: false, paymentId: payment.id, feeStatus, feeCleared };
+   478	    });
+   479	  }
+   480	
+   481	  // ── Paystack webhook ─────────────────────────────────────────────────────
+   482	  async handlePaystackWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: boolean }> {
+   483	    if (!this.webhookVerify.verifyPaystack(rawBody, signature)) {
+   484	      throw new UnauthorizedException({ code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid Paystack signature' });
+   485	    }
+   486	
+   487	    const body = JSON.parse(rawBody.toString('utf8')) as {
+   488	      event: string;
+   489	      data: { reference: string; amount: number; status: string; channel?: string; paid_at?: string };
+   490	    };
+   491	
+   492	    if (body.event !== 'charge.success' || body.data.status !== 'success') {
+   493	      this.logger.debug(`Paystack webhook ignored: event=${body.event}, status=${body.data.status}`);
+   494	      return { received: true };
+   495	    }
+   496	
+   497	    const amountNaira = body.data.amount / 100; // Paystack amounts are in kobo
+   498	    await this.confirmPayment(
+   499	      body.data.reference, amountNaira,
+   500	      body.data.paid_at ? new Date(body.data.paid_at) : new Date(),
+   501	      body.data.channel,
+   502	    );
+   503	
+   504	    return { received: true };
+   505	  }
+   506	
+   507	  // ── Remita webhook (ping → verify-callback pattern) ─────────────────────
+   508	  async handleRemitaWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: boolean }> {
+   509	    // Advisory check only — never blocks (see WebhookVerificationService doc)
+   510	    this.webhookVerify.verifyRemitaWebhookAdvisory(rawBody, signature);
+   511	
+   512	    const body = JSON.parse(rawBody.toString('utf8')) as { rrr: string; status?: string; transactionId?: string };
+   513	    if (!body.rrr) throw new BadRequestException('Missing rrr in Remita webhook payload');
+   514	
+   515	    // BINDING verification: compute status-check hash and (in production)
+   516	    // call Remita's status API server-to-server. Stubbed here pending
+   517	    // credentials — see TODO in WebhookVerificationService.
+   518	    const statusHash = this.webhookVerify.computeRemitaStatusHash(body.rrr);
+   519	    this.logger.debug(`Remita status-check hash computed for RRR ${body.rrr}: ${statusHash.slice(0, 16)}...`);
+   520	
+   521	    // NEW-3 FIX: Remita webhook is treated as a PING ONLY — we do NOT confirm
+   522	    // payment based solely on the webhook payload's status field. Any attacker
+   523	    // who knows a valid RRR (visible to the student in their payment history)
+   524	    // could POST { rrr: "RRR123", status: "00" } and trigger confirmPayment()
+   525	    // without paying a single kobo.
+   526	    //
+   527	    // SAFE PATTERN: Acknowledge the webhook (return 200 so Remita stops retrying),
+   528	    // then queue a reconciliation job that will perform a server-to-server
+   529	    // checkStatus() call before crediting. The PaymentReconciliationProcessor
+   530	    // handles this — it already sweeps PENDING > 24h. For faster confirmation,
+   531	    // we queue an immediate check-status job here.
+   532	    //
+   533	    const payment = await this.prisma.runSystem(async (tx) => {
+   534	      const pending = await tx.payment.findFirst({
+   535	        where: { providerRef: body.rrr }, select: { id: true, provider: true, status: true },
+   536	      });
+   537	      if (!pending || pending.provider !== PaymentProvider.REMITA || pending.status !== PaymentStatus.PENDING) return null;
+   538	      await this.outbox.write(tx, 'payment.reconciliation_requested', {
+   539	        paymentId: pending.id,
+   540	        providerRef: body.rrr,
+   541	        provider: PaymentProvider.REMITA,
+   542	      });
+   543	      return pending;
+   544	    });
+   545	    if (!payment) {
+   546	      // Preserve provider idempotency without revealing internal payment state.
+   547	      this.logger.warn(`Remita callback has no pending matching payment for RRR ${body.rrr}`);
+   548	      return { received: true };
+   549	    }
+   550	
+   551	    this.logger.log(`Remita webhook received for RRR ${body.rrr} (status: ${body.status}) — durable reconciliation event recorded`);
+   552	    return { received: true };
+   553	  }
+   554	
+   555	  // ── TSA Manual (M18 partial fix) ─────────────────────────────────────────
+   556	  /**
+   557	   * Bursar-only manual payment entry for institutions with tsaEnabled=true.
+   558	   * Represents an offline-confirmed TSA/GIFMIS receipt. Full automated
+   559	   * GIFMIS API reconciliation is deferred (docs/CHANGELOG.md M18) —
+   560	   * this gives Bursars a functional workflow today.
+   561	   */
+   562	  async recordTsaPayment(dto: TsaManualPaymentDto, actorId: string): Promise<ConfirmPaymentResult> {
+   563	    const settings = await this.prisma.institutionSettings.findFirst({ select: { tsaEnabled: true } });
+   564	    if (!settings?.tsaEnabled) {
+   565	      throw new UnprocessableEntityException({
+   566	        code: 'BUSINESS_RULE_INVALID_STATE',
+   567	        message: 'TSA mode is not enabled for this institution. Enable it in Settings first.',
+   568	      });
+   569	    }
+   570	
+   571	    const fee = await this.prisma.studentFee.findUniqueOrThrow({ where: { id: dto.studentFeeId } });
+   572	    const outstanding = fee.amount.sub(fee.waiverAmount).sub(fee.amountPaid).toNumber();
+   573	    if (fee.status === 'PAID' || fee.status === 'WAIVED') {
+   574	      throw new ConflictException({ code: 'DUPLICATE_RESOURCE', message: 'This fee is already settled.' });
+   575	    }
+   576	    if (!Number.isFinite(dto.amount) || dto.amount <= 0 || dto.amount > outstanding + 0.01) {
+   577	      throw new BadRequestException(`TSA amount must be between 0 and ${outstanding.toFixed(2)}`);
+   578	    }
+   579	    const receiptReference = dto.tsaReference.trim().toUpperCase();
+   580	    if (!receiptReference) {
+   581	      throw new BadRequestException('A TSA receipt reference is required.');
+   582	    }
+   583	    const providerRef = `TSA_${receiptReference}`;
+   584	
+   585	    // P1-08: a receipt claim is deliberately stored outside partitioned
+   586	    // payments. This gives an immutable global uniqueness boundary even when
+   587	    // a manual submission is repeated months later in a different partition.
+   588	    const payment = await this.prisma.runExclusive(this.rlsContext, async (tx) => {
+   589	      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsa-receipt:${receiptReference}`}))`;
+   590	      const claimed = await tx.paymentReceiptClaim.findUnique({ where: { receiptReference } });
+   591	      if (claimed) {
+   592	        throw new ConflictException({
+   593	          code: 'DUPLICATE_TSA_RECEIPT',
+   594	          message: 'This TSA receipt has already been recorded and cannot be submitted again.',
+   595	        });
+   596	      }
+   597	      // Protect records created before the claim registry was deployed.
+   598	      const legacyPayment = await tx.payment.findFirst({ where: { providerRef } });
+   599	      if (legacyPayment) {
+   600	        throw new ConflictException({
+   601	          code: 'DUPLICATE_TSA_RECEIPT',
+   602	          message: 'This TSA receipt has already been recorded and cannot be submitted again.',
+   603	        });
+   604	      }
+   605	      const created = await tx.payment.create({
+   606	        data: {
+   607	          studentFeeId: fee.id,
+   608	          studentId: fee.studentId,
+   609	          amount: dto.amount,
+   610	          provider: PaymentProvider.TSA_MANUAL,
+   611	          providerRef,
+   612	          status: PaymentStatus.PENDING,
+   613	          metadata: { tsaReference: receiptReference, recordedBy: actorId } as unknown as Prisma.InputJsonValue,
+   614	        },
+   615	      });
+   616	      await tx.paymentReceiptClaim.create({
+   617	        data: {
+   618	          receiptReference,
+   619	          paymentId: created.id,
+   620	          studentFeeId: fee.id,
+   621	          provider: PaymentProvider.TSA_MANUAL,
+   622	        },
+   623	      });
+   624	      return created;
+   625	    });
+   626	
+   627	    await this.audit.log({
+   628	      action: AuditAction.CREATE, targetTable: 'payments', targetId: payment.id,
+   629	      newValues: { provider: 'TSA_MANUAL', tsaReference: receiptReference, amount: dto.amount },
+   630	    }, actorId);
+   631	
+   632	    return this.confirmPayment(
+   633	      payment.providerRef, dto.amount,
+   634	      dto.paidAt ? new Date(dto.paidAt) : new Date(),
+   635	      'tsa',
+   636	    );
+   637	  }
+   638	
+   639	  // ── Provider reconciliation ───────────────────────────────────────────────
+   640	  /**
+   641	   * Reconciles one pending payment without trusting the browser or inbound
+   642	   * webhook payload. It is safe to invoke repeatedly from queue retries: the
+   643	   * final ledger mutation remains idempotent in confirmPayment().
+   644	   */
+   645	  async reconcilePendingPayment(paymentId: string): Promise<{ reconciled: boolean; reason?: string }> {
+   646	    const payment = await this.prisma.runSystem((tx) => tx.payment.findFirst({
+   647	      where: { id: paymentId },
+   648	      select: { id: true, provider: true, providerRef: true, status: true },
+   649	    }));
+   650	
+   651	    if (!payment) return { reconciled: false, reason: 'PAYMENT_NOT_FOUND' };
+   652	    if (payment.status !== PaymentStatus.PENDING) return { reconciled: false, reason: `PAYMENT_${payment.status}` };
+   653	
+   654	    switch (payment.provider) {
+   655	      case PaymentProvider.PAYSTACK:
+   656	        return this.reconcilePaystack(payment.providerRef);
+   657	      case PaymentProvider.REMITA:
+   658	        return this.reconcileRemita(payment.providerRef);
+   659	      default:
+   660	        return { reconciled: false, reason: `UNSUPPORTED_PROVIDER_${payment.provider}` };
+   661	    }
+   662	  }
+   663	
+   664	  private async reconcilePaystack(providerRef: string): Promise<{ reconciled: boolean; reason?: string }> {
+   665	    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+   666	    if (!secretKey) return { reconciled: false, reason: 'PAYSTACK_NOT_CONFIGURED' };
+   667	
+   668	    const apiBase = (process.env.PAYSTACK_API_BASE_URL ?? 'https://api.paystack.co').replace(/\/$/, '');
+   669	    const res = await this.providerFetch(`${apiBase}/transaction/verify/${encodeURIComponent(providerRef)}`, {
+   670	      method: 'GET', headers: { Authorization: `Bearer ${secretKey}` },
+   671	    });
+   672	    const body = await res.json().catch(() => ({})) as {
+   673	      status?: boolean;
+   674	      data?: { status?: string; amount?: number; currency?: string; paid_at?: string; channel?: string };
+   675	    };
+   676	    const verified = body.data;
+   677	    if (!res.ok || !body.status || !verified) {
+   678	      this.logger.warn(`Paystack reconciliation unavailable for ${providerRef}: HTTP ${res.status}`);
+   679	      return { reconciled: false, reason: 'PAYSTACK_VERIFY_UNAVAILABLE' };
+   680	    }
+   681	    if (verified.status !== 'success') return { reconciled: false, reason: `PAYSTACK_${verified.status ?? 'PENDING'}` };
+   682	    if (verified.currency && verified.currency !== 'NGN') return { reconciled: false, reason: 'PAYSTACK_CURRENCY_MISMATCH' };
+   683	    const amountKobo = verified.amount;
+   684	    if (typeof amountKobo !== 'number' || !Number.isInteger(amountKobo) || amountKobo <= 0) {
+   685	      return { reconciled: false, reason: 'PAYSTACK_INVALID_AMOUNT' };
+   686	    }
+   687	
+   688	    const paidAt = verified.paid_at ? new Date(verified.paid_at) : new Date();
+   689	    if (Number.isNaN(paidAt.valueOf())) return { reconciled: false, reason: 'PAYSTACK_INVALID_PAID_AT' };
+   690	    await this.confirmPayment(providerRef, amountKobo / 100, paidAt, verified.channel ?? 'paystack');
+   691	    return { reconciled: true };
+   692	  }
+   693	
+   694	  private async reconcileRemita(providerRef: string): Promise<{ reconciled: boolean; reason?: string }> {
+   695	    const enabled = process.env.REMITA_STATUS_VERIFICATION_ENABLED === 'true';
+   696	    const endpoint = process.env.REMITA_STATUS_ENDPOINT;
+   697	    if (!enabled || !endpoint) {
+   698	      // Do not make up a merchant-specific Remita endpoint or accept the
+   699	      // inbound webhook as proof of funds. A university must configure its
+   700	      // verified status-adapter contract before enabling this provider.
+   701	      return { reconciled: false, reason: 'REMITA_STATUS_VERIFICATION_DISABLED' };
+   702	    }
+   703	
+   704	    const verificationHash = this.webhookVerify.computeRemitaStatusHash(providerRef);
+   705	    const res = await this.providerFetch(endpoint, {
+   706	      method: 'POST',
+   707	      headers: { 'Content-Type': 'application/json' },
+   708	      body: JSON.stringify({ rrr: providerRef, verificationHash }),
+   709	    });
+   710	    const body = await res.json().catch(() => ({})) as {
+   711	      status?: string | number; statuscode?: string | number; amount?: number | string;
+   712	      paidAt?: string; paid_at?: string; channel?: string; currency?: string;
+   713	      data?: { status?: string | number; statuscode?: string | number; amount?: number | string; paidAt?: string; paid_at?: string; channel?: string; currency?: string };
+   714	    };
+   715	    if (!res.ok) return { reconciled: false, reason: `REMITA_VERIFY_HTTP_${res.status}` };
+   716	
+   717	    const payload = body.data ?? body;
+   718	    const status = String(payload.statuscode ?? payload.status ?? '').toUpperCase();
+   719	    if (!['00', '01', 'SUCCESS', 'COMPLETED'].includes(status)) return { reconciled: false, reason: `REMITA_${status || 'PENDING'}` };
+   720	    if (payload.currency && payload.currency !== 'NGN') return { reconciled: false, reason: 'REMITA_CURRENCY_MISMATCH' };
+   721	    const amount = Number(payload.amount);
+   722	    if (!Number.isFinite(amount) || amount <= 0) return { reconciled: false, reason: 'REMITA_INVALID_AMOUNT' };
+   723	    const paidAt = new Date(payload.paidAt ?? payload.paid_at ?? Date.now());
+   724	    if (Number.isNaN(paidAt.valueOf())) return { reconciled: false, reason: 'REMITA_INVALID_PAID_AT' };
+   725	
+   726	    await this.confirmPayment(providerRef, amount, paidAt, payload.channel ?? 'remita');
+   727	    return { reconciled: true };
+   728	  }
+   729	
+   730	  // ── Queries ───────────────────────────────────────────────────────────────
+   731	  async getPaymentHistory(studentId: string) {
+   732	    return this.prisma.forRequest(this.rlsContext).payment.findMany({
+   733	      where:   { studentId },
+   734	      include: { studentFee: { select: { invoiceNo: true, academicYear: true } } },
+   735	      orderBy: { createdAt: 'desc' },
+   736	    });
+   737	  }
+   738	}

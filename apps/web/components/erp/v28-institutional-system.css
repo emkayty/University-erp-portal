@@ -1,0 +1,72 @@
+
+/* V28 — UniPortal Institutional Design System
+   Single source of truth for ERP visual tokens.
+   Prefer these variables/components over legacy glass/duplicate ERP tokens. */
+:root{
+  --u-bg:#f5f7fa;
+  --u-surface:#ffffff;
+  --u-surface-2:#f8fafc;
+  --u-surface-3:#eef2f6;
+  --u-text:#16202a;
+  --u-text-2:#475467;
+  --u-text-3:#667085;
+  --u-border:#d9e0e8;
+  --u-border-strong:#bfc9d6;
+  --u-primary:#175cd3;
+  --u-primary-hover:#1249a6;
+  --u-primary-soft:#eff4ff;
+  --u-success:#18794e;
+  --u-success-soft:#ecfdf3;
+  --u-warning:#a15c00;
+  --u-warning-soft:#fff7e6;
+  --u-danger:#b42318;
+  --u-danger-soft:#fff1f0;
+  --u-info:#026aa2;
+  --u-info-soft:#eff8ff;
+  --u-radius-sm:7px;
+  --u-radius:10px;
+  --u-radius-lg:14px;
+  --u-shadow-1:0 1px 2px rgba(16,24,40,.05);
+  --u-shadow-2:0 6px 18px rgba(16,24,40,.07);
+  --u-focus:0 0 0 3px rgba(23,92,211,.18);
+  --u-font:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --u-content-max:1440px;
+  --u-touch:44px;
+}
+html,body{font-family:var(--u-font);background:var(--u-bg);color:var(--u-text)}
+button,input,select,textarea{font:inherit}
+:where(button,a,input,select,textarea):focus-visible{outline:0;box-shadow:var(--u-focus)}
+.u-app{min-height:100dvh;background:var(--u-bg)}
+.u-container{width:min(100% - 32px,var(--u-content-max));margin-inline:auto}
+.u-surface{background:var(--u-surface);border:1px solid var(--u-border);border-radius:var(--u-radius-lg);box-shadow:var(--u-shadow-1)}
+.u-button{min-height:var(--u-touch);padding:0 14px;border-radius:var(--u-radius-sm);border:1px solid var(--u-border);background:var(--u-surface);color:var(--u-text);font-weight:650;font-size:.8rem;cursor:pointer}
+.u-button:hover:not(:disabled){background:var(--u-surface-2)}
+.u-button:disabled{opacity:.5;cursor:not-allowed}
+.u-button--primary{background:var(--u-primary);border-color:var(--u-primary);color:#fff}
+.u-button--primary:hover:not(:disabled){background:var(--u-primary-hover)}
+.u-button--danger{background:var(--u-danger-soft);border-color:#efc4bf;color:var(--u-danger)}
+.u-status{display:inline-flex;align-items:center;gap:6px;min-height:28px;padding:4px 9px;border-radius:999px;border:1px solid var(--u-border);font-size:.72rem;font-weight:700}
+.u-status::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.u-status--success{color:var(--u-success);background:var(--u-success-soft);border-color:#b7e4cc}
+.u-status--warning{color:var(--u-warning);background:var(--u-warning-soft);border-color:#f2d39b}
+.u-status--danger{color:var(--u-danger);background:var(--u-danger-soft);border-color:#f4c7c2}
+.u-status--info{color:var(--u-info);background:var(--u-info-soft);border-color:#b9ddf2}
+.u-field{display:grid;gap:6px}
+.u-field label{font-size:.78rem;font-weight:650}
+.u-field-help{font-size:.72rem;color:var(--u-text-3);line-height:1.45}
+.u-field-error{font-size:.72rem;color:var(--u-danger);line-height:1.45}
+.u-input{width:100%;min-height:var(--u-touch);padding:9px 11px;border:1px solid var(--u-border-strong);border-radius:var(--u-radius-sm);background:var(--u-surface);color:var(--u-text)}
+.u-input:focus{border-color:var(--u-primary)}
+.u-table-wrap{overflow:auto;border:1px solid var(--u-border);border-radius:var(--u-radius-lg);background:var(--u-surface);-webkit-overflow-scrolling:touch}
+.u-table{width:100%;border-collapse:separate;border-spacing:0;min-width:720px}
+.u-table th,.u-table td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--u-border);font-size:.78rem;vertical-align:middle}
+.u-table th{position:sticky;top:0;background:var(--u-surface-2);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--u-text-3);z-index:1}
+.u-table tr:last-child td{border-bottom:0}
+.u-table tr:hover td{background:#fbfcfe}
+.u-skip{position:absolute;left:-9999px;z-index:9999;padding:10px 14px;background:var(--u-text);color:#fff}
+.u-skip:focus{left:12px;top:12px}
+@media(max-width:700px){
+  .u-container{width:min(100% - 24px,var(--u-content-max))}
+  .u-table-wrap{border-radius:var(--u-radius)}
+}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}

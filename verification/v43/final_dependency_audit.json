@@ -1,0 +1,134 @@
+{
+  "actions": [
+    {
+      "action": "update",
+      "resolves": [
+        {
+          "id": 1138115,
+          "path": "tooling__eslint>@typescript-eslint/eslint-plugin>eslint>@eslint/eslintrc>js-yaml",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "module": null,
+      "target": null,
+      "depth": 3
+    },
+    {
+      "action": "review",
+      "module": "js-yaml",
+      "resolves": [
+        {
+          "id": 1139509,
+          "path": "apps__api>@nestjs/swagger>js-yaml",
+          "dev": false,
+          "optional": false,
+          "bundled": false
+        }
+      ]
+    }
+  ],
+  "advisories": {
+    "1138115": {
+      "findings": [
+        {
+          "version": "4.3.0",
+          "paths": [
+            "tooling/eslint > @typescript-eslint/eslint-plugin@8.62.1 > @typescript-eslint/parser@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > @typescript-eslint/eslint-plugin@8.62.1 > @typescript-eslint/type-utils@8.62.1 > @typescript-eslint/utils@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > @typescript-eslint/eslint-plugin@8.62.1 > @typescript-eslint/type-utils@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > @typescript-eslint/eslint-plugin@8.62.1 > @typescript-eslint/utils@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > @typescript-eslint/eslint-plugin@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > @typescript-eslint/parser@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > eslint-config-prettier@9.1.2 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > eslint-plugin-import@2.32.0 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > eslint-plugin-import@2.32.0 > eslint-module-utils@2.14.0 > @typescript-eslint/parser@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > eslint-plugin-import@2.32.0 > eslint-module-utils@2.14.0 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0",
+            "tooling/eslint > eslint-plugin-import@2.32.0 > @typescript-eslint/parser@8.62.1 > eslint@9.39.4 > @eslint/eslintrc@3.3.5 > js-yaml@4.3.0"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nodeca/js-yaml/security/advisories/GHSA-5p4m-2wfm-xmqj\n- https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+      "created": "2026-08-06T20:27:32.000Z",
+      "id": 1138115,
+      "npm_advisory_id": null,
+      "overview": "# Quadratic CPU consumption in `!!omap` resolution (js-yaml 3.x and 4.x)\n\n## Summary\n\n`resolveYamlOmap()` enforces key uniqueness for `!!omap` sequences with a linear\nscan (`objectKeys.indexOf(...)`) inside the per-element loop, making resolution\n**O(n²)** in the number of entries. A modestly sized YAML document therefore\nconsumes disproportionate CPU inside `yaml.load()`, giving a denial of service\nagainst any consumer that parses untrusted YAML.\n\n`!!omap` is registered in the **default schema**\n(`lib/schema/default.js` → `require('../type/omap')`), so a plain\n`yaml.load(untrustedInput)` with no options is affected — no custom schema or\nnon-default configuration is required.\n\n**This is the same weakness as CVE-2026-59870 / GHSA-724g-mxrg-4qvm**, which was\nfixed in the 5.x line in 5.2.1. That fix was never backported: both currently\nmaintained legacy lines still carry the original implementation.\n\n## Affected versions\n\n| Line | Latest tested | Status |\n|---|---|---|\n| 3.x | **3.15.0** | Affected — `objectKeys.indexOf(pairKey)` at `lib/type/omap.js:29` |\n| 4.x | **4.3.0** | Affected — `objectKeys.indexOf(pairKey)` at `lib/type/omap.js:30` |\n| 5.x | 5.2.2 | **Not affected** — fixed in 5.2.1 (uses a `Set`) |\n\nBoth figures are the newest release of each line at the time of writing, so\nthis is not a \"you are on an old version\" issue.\n\n## Details\n\n`lib/type/omap.js` (js-yaml 4.3.0):\n\n```js\nif (objectKeys.indexOf(pairKey) === -1) objectKeys.push(pairKey)\nelse return false\n```\n\n`objectKeys` grows by one element per entry, and `Array.prototype.indexOf` is a\nlinear scan, so resolving an `n`-entry `!!omap` performs roughly\n`1 + 2 + … + n` comparisons — quadratic in `n`. The work happens synchronously\ninside `yaml.load()`, blocking the event loop for its whole duration.\n\nThe 5.x line already solves exactly this by tracking seen keys in a `Set`\n(`src/tag/sequence/omap.ts`):\n\n```ts\nif (carrier.seen.has(key)) return 'duplicate key in ordered map'\ncarrier.seen.add(key)\n```\n\n## Proof of concept\n\n```js\n// poc.js  —  node poc.js\nconst yaml = require('js-yaml');\nconst doc = n => '!!omap\\n' + Array.from({length: n}, (_, i) => `- k${i}: ${i}`).join('\\n') + '\\n';\n\nfor (const n of [10000, 20000, 40000, 80000]) {\n  const d = doc(n), t = Date.now();\n  yaml.load(d);                      // default schema, no options\n  console.log(`n=${n} bytes=${d.length} load=${Date.now() - t}ms`);\n}\n```\n\n### Measured (node v20.20.2, default heap, no flags)\n\n**js-yaml 4.3.0**\n\n```\nn=10000  bytes=137787   load=54ms\nn=20000  bytes=297787   load=169ms\nn=40000  bytes=617787   load=646ms\nn=80000  bytes=1257787  load=2607ms\n```\n\n**js-yaml 3.15.0**\n\n```\nn=10000  bytes=137787   load=53ms\nn=20000  bytes=297787   load=166ms\nn=40000  bytes=617787   load=641ms\nn=80000  bytes=1257787  load=2567ms\n```\n\nRuntime grows by a factor of ~4 for each doubling of `n`, which is the\nsignature of O(n²) (linear growth would be ~2×).\n\nScaling further: a **2.48 MB** document with 150,000 entries blocked\n`yaml.load()` for **10.8 seconds**.\n\n## Impact\n\nAny service that parses attacker-influenced YAML with js-yaml 3.x or 4.x can be\nstalled with a small input. Because the loop is synchronous, a single request\nblocks the Node.js event loop and stalls every other request in the process —\nso the amplification is per-process, not just per-request.\n\nSuggested severity: consistent with **CVE-2026-59870** (the same weakness in\n5.x), i.e. Availability-only impact, network attack vector, no privileges or\nuser interaction required.\n\n## Suggested fix\n\nMirror the 5.x fix — replace the linear scan with a `Set`:\n\n```js\n// lib/type/omap.js\nconst seen = new Set()\n// ...\nif (seen.has(pairKey)) return false\nseen.add(pairKey)\n```\n\nThis preserves the existing duplicate-key rejection semantics exactly while\nmaking resolution O(n). A `maxOmapLength`-style cap would also work, but the\n`Set` matches what 5.x already ships and requires no new option.\n\n## References\n\n- CVE-2026-59870 / GHSA-724g-mxrg-4qvm — same weakness in 5.0.0–5.2.0, fixed in 5.2.1\n- `lib/type/omap.js` (3.x, 4.x) — the affected resolver\n- `lib/schema/default.js` — registers `!!omap` in the default schema\n\n## Discovery\n\nFound by an automated static-analysis and executed-proof-of-concept scanner run\nagainst js-yaml 4.2.0, then manually verified against 3.15.0 and 4.3.0 by\nexecuting the proof of concept above. All timings in this report were measured\non the **current** releases of each line, not on the version originally scanned.",
+      "reported_by": null,
+      "title": "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported",
+      "metadata": null,
+      "cves": [],
+      "access": "public",
+      "severity": "high",
+      "module_name": "js-yaml",
+      "vulnerable_versions": ">=4.0.0 <4.3.1",
+      "github_advisory_id": "GHSA-5p4m-2wfm-xmqj",
+      "recommendation": "Upgrade to version 4.3.1 or later",
+      "patched_versions": ">=4.3.1",
+      "updated": "2026-08-06T20:27:32.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-407"
+      ],
+      "url": "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj"
+    },
+    "1139509": {
+      "findings": [
+        {
+          "version": "5.2.1",
+          "paths": [
+            "apps/api > @nestjs/swagger@11.4.6 > js-yaml@5.2.1"
+          ]
+        }
+      ],
+      "found_by": null,
+      "deleted": null,
+      "references": "- https://github.com/nodeca/js-yaml/security/advisories/GHSA-pm4m-ph32-ghv5\n- https://github.com/nodeca/js-yaml/commit/3e5240f9cbe645ce5afb58524954a13c8539c853\n- https://github.com/nodeca/js-yaml/releases/tag/5.2.2\n- https://github.com/advisories/GHSA-pm4m-ph32-ghv5",
+      "created": "2026-07-24T16:47:36.000Z",
+      "id": 1139509,
+      "npm_advisory_id": null,
+      "overview": "### Summary\nParsing a small YAML document can take exponential time. An application that calls `load()` or `loadAll()` on untrusted input can be hung by a payload under 200 bytes.\n\n### Details\nWhen an entry in a flow sequence turns out to be a `key: value` pair, the parser rewinds and parses that entry a second time as the key.\nIf the key is itself a nested flow sequence of the same shape, every level is parsed twice, so the total work is O(2^n) in the nesting depth. The default `maxDepth` of 100 does not help, because the time is already unmanageable at about 30 to 40 levels.\n\nRoot cause, potentially the: `readFlowCollection` in [parser.ts](https://github.com/nodeca/js-yaml/blob/master/src/parser/parser.ts), the `restoreState` followed by a second `parseNode` further down.\n\n\n### PoC\n\n```javascript\nconst yaml = require('js-yaml')\nconst n = 30\nyaml.load('[ '.repeat(n) + '1' + ' ]: 0'.repeat(n))\n```\n\nWith default options: 22 levels takes about 1 second, 26 levels about 17 seconds, 30 levels over 2 minutes. The input stays under 200 bytes and grows linearly with `n`.\n\n### Impact\nDenial of service. A single small request can keep one CPU busy for minutes or longer and blocks the Node event loop, so one request can stall the whole process. No anchors, aliases, merges, tags, or non default options are required, and it reproduces on the default schema.",
+      "reported_by": null,
+      "title": "js-yaml: Exponential parsing time in flow collections leads to denial of service",
+      "metadata": null,
+      "cves": [
+        "CVE-2026-73643"
+      ],
+      "access": "public",
+      "severity": "high",
+      "module_name": "js-yaml",
+      "vulnerable_versions": ">=5.0.0 <=5.2.1",
+      "github_advisory_id": "GHSA-pm4m-ph32-ghv5",
+      "recommendation": "Upgrade to version 5.2.2 or later",
+      "patched_versions": ">=5.2.2",
+      "updated": "2026-08-13T17:47:37.000Z",
+      "cvss": {
+        "score": 7.5,
+        "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+      },
+      "cwe": [
+        "CWE-407"
+      ],
+      "url": "https://github.com/advisories/GHSA-pm4m-ph32-ghv5"
+    }
+  },
+  "muted": [],
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 2,
+      "critical": 0
+    },
+    "dependencies": 623,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 623
+  }
+}

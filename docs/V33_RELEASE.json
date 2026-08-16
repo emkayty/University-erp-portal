@@ -1,0 +1,10 @@
+{
+  "version": "V33",
+  "focus": "repository integration validation and legacy compatibility hardening",
+  "legacy_consumers": 14,
+  "native_confirm_consumers": 4,
+  "safe_delete_candidates": [],
+  "domain_logic_modified": false,
+  "security_principle": "backend authorization is authoritative",
+  "status": "ready-for-build-and-runtime-validation"
+}

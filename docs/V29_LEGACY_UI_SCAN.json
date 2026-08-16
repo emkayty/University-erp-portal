@@ -1,0 +1,25 @@
+{
+  "legacy_glass": [
+    "apps/web/app/globals.css",
+    "apps/web/app/auth/forgot-password/forgot-password-form.tsx",
+    "apps/web/app/auth/reset-password/page.tsx",
+    "apps/web/app/auth/login/login-form.tsx"
+  ],
+  "legacy_erp_tokens": [
+    "apps/web/app/globals.css",
+    "apps/web/components/erp/v27-workflow-ux.css",
+    "apps/web/components/erp/v26-premium.css"
+  ],
+  "legacy_button_class": [
+    "apps/web/app/globals.css",
+    "apps/web/components/erp/ui.tsx",
+    "apps/web/components/erp/confirm-action.tsx"
+  ],
+  "legacy_status_class": [
+    "apps/web/app/globals.css",
+    "apps/web/components/erp/premium-primitives.tsx",
+    "apps/web/components/erp/ui.tsx",
+    "apps/web/components/erp/dashboard.tsx",
+    "apps/web/components/erp/v26-premium.css"
+  ]
+}

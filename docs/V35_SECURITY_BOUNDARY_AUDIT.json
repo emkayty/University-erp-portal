@@ -1,0 +1,56 @@
+{
+  "status": "critical finding requires remediation",
+  "browser_metadata_endpoint": [
+    {
+      "file": "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "url": "http://169.254.169.254/latest/api/token",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/${encodeURIComponent(role)}",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "docs/V34_API_ROUTE_INVENTORY.json",
+      "url": "http://169.254.169.254/latest/api/token",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "docs/V34_API_ROUTE_INVENTORY.json",
+      "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "docs/V34_API_ROUTE_INVENTORY.json",
+      "url": "http://169.254.169.254/latest/meta-data/iam/security-credentials/${encodeURIComponent(role)}",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    },
+    {
+      "file": "docs/V34_BACKEND_FRONTEND_WIRING_AUDIT.json",
+      "url": "http://169.254.169.254",
+      "severity": "critical",
+      "reason": "cloud instance metadata endpoint must never be directly exposed to browser code"
+    }
+  ],
+  "rules": [
+    "Never call 169.254.169.254 from browser/client bundles.",
+    "Secrets and privileged infrastructure calls belong server-side.",
+    "External provider calls should be proxied through an authenticated server boundary when credentials or privileged operations are involved.",
+    "Frontend must receive only the minimum data needed.",
+    "CORS, CSRF/session protection and authorization must be enforced server-side.",
+    "Never use a cloud metadata endpoint as a client-side source of configuration."
+  ],
+  "safe_fix": "Replace client-side metadata lookup with an application-owned server configuration endpoint or build-time public configuration that contains no secrets."
+}

@@ -1,0 +1,107 @@
+{
+  "admissions": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "students": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  },
+  "courses": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  },
+  "curriculum": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  },
+  "registration": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "exams": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "grades": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "results": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "grading-config": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  },
+  "finance": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "payments": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "users": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "roles": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "required"
+  },
+  "notifications": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  },
+  "audit": {
+    "frontend": "required",
+    "backend": "required",
+    "auth": "required",
+    "validation": "required",
+    "audit": "as-applicable"
+  }
+}

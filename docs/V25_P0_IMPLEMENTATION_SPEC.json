@@ -1,0 +1,91 @@
+{
+  "dashboard": {
+    "states": [
+      "loading",
+      "empty",
+      "error",
+      "normal"
+    ],
+    "rules": [
+      "prioritize actionable items",
+      "avoid KPI overload",
+      "respect role permissions"
+    ]
+  },
+  "admissions": {
+    "states": [
+      "draft",
+      "submitted",
+      "under-review",
+      "correction-required",
+      "approved",
+      "rejected",
+      "withdrawn"
+    ],
+    "rules": [
+      "decision actions require confirmation",
+      "missing requirements are surfaced first",
+      "restricted applicant data is permission-aware"
+    ]
+  },
+  "student": {
+    "states": [
+      "active",
+      "deferred",
+      "graduated",
+      "withdrawn",
+      "suspended"
+    ],
+    "rules": [
+      "programme/session/semester context is explicit",
+      "sensitive information is minimized"
+    ]
+  },
+  "course-registration": {
+    "states": [
+      "not-open",
+      "open",
+      "draft",
+      "submitted",
+      "approved",
+      "locked"
+    ],
+    "rules": [
+      "prerequisites and conflicts are explained",
+      "credit limits are enforced by domain logic",
+      "blocked actions explain why"
+    ]
+  },
+  "exams-results": {
+    "states": [
+      "draft",
+      "submitted",
+      "moderation",
+      "approved",
+      "published",
+      "locked"
+    ],
+    "rules": [
+      "grading scale is configuration-driven",
+      "bulk uploads require validation preview",
+      "publication is permission-protected and audited"
+    ]
+  },
+  "finance": {
+    "states": [
+      "unpaid",
+      "part-paid",
+      "paid",
+      "pending",
+      "failed",
+      "reversed",
+      "waived",
+      "overdue"
+    ],
+    "rules": [
+      "payment state is explicit",
+      "receipts are immutable records",
+      "reconciliation exceptions are visible to authorized users"
+    ]
+  }
+}

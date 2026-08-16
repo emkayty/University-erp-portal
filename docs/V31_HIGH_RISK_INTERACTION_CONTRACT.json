@@ -1,0 +1,42 @@
+{
+  "low_risk": [
+    "view",
+    "search",
+    "filter",
+    "sort"
+  ],
+  "medium_risk": [
+    "draft",
+    "save",
+    "submit",
+    "request-correction"
+  ],
+  "high_risk": [
+    "approve",
+    "publish",
+    "lock",
+    "finalize",
+    "reverse-payment",
+    "change-academic-record"
+  ],
+  "high_risk_requirements": [
+    "server-side authorization",
+    "clear consequence before action",
+    "confirmation when action is irreversible or materially consequential",
+    "actor/time audit event where applicable",
+    "idempotent request handling",
+    "clear success/failure outcome",
+    "no duplicate submission on retry"
+  ],
+  "academic_records": [
+    "published results must have controlled correction workflow",
+    "grade changes after publication require authorization and audit",
+    "student-facing result must distinguish draft from official",
+    "bulk uploads require validation preview before commit"
+  ],
+  "finance": [
+    "payment state must not be inferred solely from client UI",
+    "reversal/refund requires permission and traceability",
+    "receipts must reflect authoritative transaction state"
+  ]
+}

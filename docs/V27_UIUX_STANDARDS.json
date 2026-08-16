@@ -1,0 +1,43 @@
+{
+  "navigation": {
+    "max_primary_items": 8,
+    "rule": "group secondary tools by domain; do not overload the sidebar"
+  },
+  "page": {
+    "rule": "one clear title, one primary task, contextual description, secondary actions de-emphasized"
+  },
+  "actions": {
+    "rule": "primary action appears once per task context; destructive actions are separated and confirmed"
+  },
+  "data": {
+    "rule": "show context before data; expose filters/search before long lists; preserve user selections"
+  },
+  "forms": {
+    "rule": "progressive disclosure; structured choices where authoritative data exists; inline validation; preserve entered data on errors"
+  },
+  "mobile": {
+    "rule": "critical actions remain reachable; tables become cards or safe horizontal scroll; fixed bottom actions only for primary task completion"
+  },
+  "states": {
+    "required": [
+      "loading",
+      "empty",
+      "error",
+      "unauthorized",
+      "success",
+      "offline-or-network-failure where applicable"
+    ]
+  },
+  "accessibility": {
+    "required": [
+      "keyboard focus",
+      "semantic labels",
+      "status not color-only",
+      "44px touch targets",
+      "reduced motion"
+    ]
+  },
+  "tone": {
+    "rule": "institutional, calm, respectful, precise and empathetic; never blame the user for validation errors"
+  }
+}

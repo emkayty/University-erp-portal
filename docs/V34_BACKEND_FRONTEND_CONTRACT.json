@@ -1,0 +1,33 @@
+{
+  "request_contract": [
+    "same endpoint semantics",
+    "same HTTP method",
+    "validated request shape",
+    "auth context",
+    "idempotency for consequential mutations"
+  ],
+  "response_contract": [
+    "stable status semantics",
+    "typed/validated response shape",
+    "consistent error envelope",
+    "pagination metadata where applicable"
+  ],
+  "business_consistency": [
+    "frontend labels must reflect backend state",
+    "frontend must not invent derived financial/academic truth",
+    "server remains authority for permissions and state transitions"
+  ],
+  "academic": [
+    "grade scale comes from university configuration",
+    "published results are authoritative",
+    "corrections create controlled state transitions"
+  ],
+  "finance": [
+    "payment state comes from authoritative transaction state",
+    "receipt generated only from successful authoritative transaction"
+  ],
+  "admissions": [
+    "application status comes from server",
+    "decision transition is permission-controlled and audited"
+  ]
+}

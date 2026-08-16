@@ -1,0 +1,8 @@
+{
+  "version": "V36",
+  "focus": "cross-layer backend/frontend workflow tracing",
+  "domains": 15,
+  "critical_workflows": 5,
+  "static_redflags": 4,
+  "status": "static trace map prepared; runtime tracing is required to prove end-to-end consistency"
+}

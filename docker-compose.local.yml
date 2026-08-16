@@ -1,0 +1,91 @@
+# Lightweight localhost infrastructure for older Intel Macs.
+# Run the API, worker, and Next.js web app natively with pnpm; keep only
+# PostgreSQL and Redis inside Docker to minimize Docker Desktop memory use.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: uniportal_postgres_local
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: uniportal
+      POSTGRES_PASSWORD: uniportal_dev_pass
+      POSTGRES_DB: uniportal_dev
+    volumes:
+      - uniportal_local_postgres:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uniportal -d uniportal_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    mem_limit: 768m
+    cpus: 1.0
+    networks:
+      - uniportal_local
+
+  redis:
+    image: redis:7-alpine
+    container_name: uniportal_redis_local
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "everysec",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "noeviction"
+      ]
+    volumes:
+      - uniportal_local_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    mem_limit: 192m
+    cpus: 0.25
+    networks:
+      - uniportal_local
+
+volumes:
+  uniportal_local_postgres:
+    name: uniportal_local_postgres
+  uniportal_local_redis:
+    name: uniportal_local_redis
+
+networks:
+  uniportal_local:
+    name: uniportal_local
+    driver: bridge
+
+# No pgAdmin or Redis Commander are included intentionally. If needed on a
+# stronger development machine, use docker-compose.yml with --profile tools.
+
+# Expected local application URLs:
+#   API: http://localhost:3001
+#   Web: http://localhost:3000
+#   PostgreSQL: localhost:5432 / uniportal_dev
+#   Redis: localhost:6379
+
+# Compose command examples:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml down
+#   docker compose -f docker-compose.local.yml down -v  # destructive: removes data
+
+# On Docker Compose implementations that do not support mem_limit/cpus, remove
+# only those keys; the service topology and health checks remain portable.
+
+# This file intentionally does not start application containers. Native Node
+# processes are materially lighter on a 4–8 GB MacBook Air.
+
+# End of file
+

@@ -1,0 +1,19 @@
+{
+  "version": "V24",
+  "focus": "P0 screen-level implementation blueprint",
+  "primitives": [
+    "MetricCard",
+    "SearchBar",
+    "FilterBar",
+    "WorkflowSteps",
+    "FormSection"
+  ],
+  "domains": [
+    "dashboard",
+    "admissions",
+    "student",
+    "course-registration",
+    "exams-results",
+    "finance"
+  ]
+}

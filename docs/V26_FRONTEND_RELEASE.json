@@ -1,0 +1,15 @@
+{
+  "version": "V26",
+  "focus": "premium university ERP design refinement",
+  "status": "design-system and UX-quality layer applied",
+  "source_snapshot": "uniportal-erp-v25-p0-pages.zip",
+  "domains": [
+    "dashboard",
+    "admissions",
+    "student",
+    "course-registration",
+    "exams-results",
+    "finance"
+  ],
+  "preserve_backend_logic": true
+}

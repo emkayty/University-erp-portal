@@ -1,0 +1,87 @@
+name: Deploy (AWS CodeDeploy blue/green)
+
+# P10: the AWS-native deploy path, now that infra/ provisions real
+# CodeDeploy resources. Runs alongside (not instead of) the existing
+# SSH+pm2 jobs in ci.yml — see infra/README.md "CodeDeploy vs. the existing
+# SSH+pm2 deploy job" for the cutover plan. Manually triggered until it's
+# been exercised a few times in staging.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'staging or production'
+        required: true
+        type: choice
+        options: [staging, production]
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '9'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }} # production requires manual approval (GitHub Environments)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: Build runtime workspace
+        run: |
+          pnpm --filter @uniportal/config run build
+          pnpm --filter @uniportal/types run build
+          pnpm --filter @uniportal/utils run build
+          pnpm --filter @uniportal/api run prisma:generate
+          pnpm --filter @uniportal/api run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Package revision
+        run: |
+          set -euo pipefail
+          rm -rf dist-deploy revision.zip
+          mkdir -p dist-deploy/apps/api dist-deploy/packages
+          cp -r apps/api/dist dist-deploy/apps/api/dist
+          cp -r apps/api/prisma dist-deploy/apps/api/prisma
+          cp apps/api/package.json dist-deploy/apps/api/package.json
+          cp apps/api/ecosystem.config.js dist-deploy/ecosystem.config.js
+          cp package.json pnpm-lock.yaml pnpm-workspace.yaml dist-deploy/
+          for package in config types utils prisma-client; do
+            mkdir -p "dist-deploy/packages/${package}"
+            cp "packages/${package}/package.json" "dist-deploy/packages/${package}/package.json"
+            if [ -d "packages/${package}/dist" ]; then cp -r "packages/${package}/dist" "dist-deploy/packages/${package}/dist"; fi
+          done
+          cp -r scripts dist-deploy/scripts
+          cp scripts/deploy/appspec.yml dist-deploy/appspec.yml
+          cd dist-deploy && zip -qr ../revision.zip .
+
+      - name: Upload revision to S3
+        run: |
+          aws s3 cp revision.zip s3://uniportal-${{ inputs.environment }}-deploy-artifacts/revision-${{ github.sha }}.zip
+
+      - name: Create CodeDeploy deployment (blue/green OneAtATime)
+        id: deploy
+        run: |
+          DEPLOYMENT_ID=$(aws deploy create-deployment \
+            --application-name uniportal-${{ inputs.environment }}-api \
+            --deployment-group-name uniportal-${{ inputs.environment }}-api-dg \
+            --revision "revisionType=S3,s3Location={bucket=uniportal-${{ inputs.environment }}-deploy-artifacts,key=revision-${{ github.sha }}.zip,bundleType=zip}" \
+            --description "GHA run ${{ github.run_id }} — ${{ github.sha }} — blue/green OneAtATime" \
+            --query 'deploymentId' --output text)
+          echo "deployment_id=$DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for deployment (auto-rollback configured in Terraform on failure/alarm)
+        run: |
+          aws deploy wait deployment-successful --deployment-id ${{ steps.deploy.outputs.deployment_id }}
+
+      - name: Smoke test
+        run: |
+          curl --fail --retry 5 --retry-delay 5 "https://${{ inputs.environment == 'production' && 'api' || 'staging-api' }}.university.edu.ng/api/health/live" \
+          || (aws deploy stop-deployment --deployment-id ${{ steps.deploy.outputs.deployment_id }} --auto-rollback-enabled && exit 1)

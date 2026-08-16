@@ -1,0 +1,32 @@
+{
+  "extends": "@uniportal/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@uniportal/types": [
+        "../../packages/types/src"
+      ],
+      "@uniportal/config": [
+        "../../packages/config/src"
+      ],
+      "@uniportal/utils": [
+        "../../packages/utils/src"
+      ]
+    },
+    "incremental": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "test/pact/**/*.ts"
+  ]
+}

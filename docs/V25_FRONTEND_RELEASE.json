@@ -1,0 +1,13 @@
+{
+  "version": "V25",
+  "focus": "P0 screen-level implementation foundation",
+  "domains": [
+    "dashboard",
+    "admissions",
+    "student",
+    "course-registration",
+    "exams-results",
+    "finance"
+  ],
+  "preserve_backend_logic": true
+}

@@ -1,0 +1,56 @@
+{
+  "dashboard": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  },
+  "admissions": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  },
+  "student": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  },
+  "course-registration": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  },
+  "exams-results": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  },
+  "finance": {
+    "primary_task_obvious": true,
+    "role_adaptive": true,
+    "mobile_task_completion": true,
+    "keyboard_accessible": true,
+    "all_core_states": true,
+    "confirmation_for_consequential_actions": true,
+    "backend_logic_untouched": true
+  }
+}

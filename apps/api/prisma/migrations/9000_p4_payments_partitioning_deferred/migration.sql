@@ -1,0 +1,38 @@
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Migration 9000: Payments/Payslips Partitioning — DEFERRED TO P10
+-- ═══════════════════════════════════════════════════════════════════════════════
+--
+-- This migration is intentionally a NO-OP placeholder.
+--
+-- DECISION (recorded in docs/CHANGELOG.md):
+-- PostgreSQL partitioned tables require the partition key to be part of the
+-- PRIMARY KEY — i.e. PRIMARY KEY (id, created_at) instead of PRIMARY KEY (id).
+-- This has cascading implications:
+--   1. Any future FK referencing payments.id or payslips.id would need to
+--      reference the composite key, or use a separate UNIQUE(id) index.
+--   2. Prisma's @id directive generates a single-column PK -- achieving the
+--      composite PK requires raw SQL ALTER TABLE ... DROP CONSTRAINT ... ADD
+--      PRIMARY KEY (id, created_at), which Prisma's schema cannot express.
+--   3. Converting an existing populated table to partitioned requires a full
+--      table rebuild (CREATE new partitioned parent, COPY data, swap names).
+--
+-- Implementing this NOW (P4), before payslips exist (P6) and before production
+-- data exists, would mean doing it twice or doing it incorrectly once.
+--
+-- P4 SHIPS WITH (sufficient through P9 scale, ~20k students):
+--   - payments: standard table with indexes on (student_id, status),
+--     (provider_ref), (created_at), (status, created_at)
+--   - PartitionManagerService.isTablePartitioned() gracefully skips this
+--     table (logs debug, does not error)
+--
+-- P10 WILL:
+--   1. Define payslips schema (P6 dependency)
+--   2. In ONE coordinated migration: convert both payments AND payslips to
+--      PARTITION BY RANGE (created_at) with PRIMARY KEY (id, created_at)
+--   3. Update PartitionManagerService -- isTablePartitioned() will then
+--      return true and the existing monthly-partition cron logic activates
+--      with ZERO code changes (it already checks relkind='p')
+--
+-- No SQL runs from this file. It exists so the migration history documents
+-- the decision at the point it was made.
+SELECT 1; -- no-op

@@ -1,0 +1,39 @@
+{
+  "version": 18,
+  "country": "NG",
+  "authorities": [
+    {
+      "code": "WAEC",
+      "name": "West African Examinations Council",
+      "types": [
+        "INTERNAL",
+        "EXTERNAL"
+      ]
+    },
+    {
+      "code": "NECO",
+      "name": "National Examinations Council",
+      "types": [
+        "INTERNAL",
+        "EXTERNAL"
+      ]
+    },
+    {
+      "code": "NABTEB",
+      "name": "National Business and Technical Examinations Board",
+      "types": [
+        "CERTIFICATE"
+      ]
+    },
+    {
+      "code": "NBAIS",
+      "name": "National Board for Arabic and Islamic Studies",
+      "types": [
+        "SAISSCE_INTERNAL",
+        "SAISSCE_EXTERNAL",
+        "SCIENCE",
+        "TAHFEEZ"
+      ]
+    }
+  ]
+}

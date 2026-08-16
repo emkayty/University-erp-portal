@@ -1,0 +1,51 @@
+# Dependency and generated build artifacts
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+coverage
+**/coverage
+test-results
+**/test-results
+.artifacts
+**/.artifacts
+.turbo
+**/.turbo
+*.tsbuildinfo
+*.map
+__pycache__
+**/__pycache__
+.pytest_cache
+**/.pytest_cache
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets
+
+# Development/editor state
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+
+# Local databases, uploads, reports, and archives
+pgdata
+redisdata
+uploads
+reports
+backups
+*.zip
+*.tar
+*.gz

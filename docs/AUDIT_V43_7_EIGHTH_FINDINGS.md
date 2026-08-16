@@ -1,0 +1,9 @@
+# Eighth Forensic Review — Key Findings and Disposition
+
+Source attachment: `/home/ubuntu/upload/pasted_content_8.txt` (read in full, 1,252 lines; 15 August 2026).
+
+The independent verification confirms V43.6 capacity locking is genuine. It identifies a new P1 source-level LMS authorization gap: staff-facing LMS operations were role-gated but lacked assignment/department/faculty scope checks. Target operations include add/publish/read content, announcements, question authoring and reads, submission/quiz marking, quiz grading, attachment access, and discussions. V43.7 implementation introduces a central `assertStaffOfferingScope()` using current schema relations: STAFF requires the offering lecturer’s user ID; HOD requires the department HOD; DEAN requires the faculty dean; REGISTRAR and SUPER_ADMIN are institution-wide. Controller routes now pass actor identity and role.
+
+The review identifies a P1 effective-date inconsistency in admission-clearance governance: V43.6 recorded a future effective date only in audit metadata but applied the setting immediately. V43.7 adds pending policy fields to InstitutionSettings and migration `0040_scheduled_admission_clearance_policy_v43_7`; future approved changes are stored as pending, while due/past changes apply immediately. The DTO now distinguishes an approval document reference from the approver user ID.
+
+Other findings remain residual gates or planned architecture: selective (not universal) RLS, durable outbox conversion for admissions/privacy/reports/fees/reconciliation, canonical pre-account DSR subjects, live provider certification, refund lifecycle, finance adversarial scope review, legacy clinic plaintext re-encryption, migration baseline, abandoned-attempt policy, absence-policy variants, multi-audience OfferingAudience, TeachingAssignment/workload, workflow engine, QA/accreditation, SIWES/practicum, and outcome mapping.

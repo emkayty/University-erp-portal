@@ -1,0 +1,23 @@
+
+.u-topbar{position:sticky;top:0;z-index:60;min-height:60px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px;padding:0 18px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--u-border);backdrop-filter:blur(8px)}
+.u-topbar-brand{font-weight:800;letter-spacing:-.02em;color:var(--u-text);white-space:nowrap}
+.u-topbar-center{min-width:0;display:flex;justify-content:center}
+.u-topbar-user{display:flex;align-items:center;gap:9px;font-size:.76rem;color:var(--u-text-2);white-space:nowrap}
+.u-topbar-role{font-size:.66rem;font-weight:700;color:var(--u-text-3);padding:4px 7px;border:1px solid var(--u-border);border-radius:999px}
+.u-domain-nav{display:grid;gap:18px;padding:18px 12px}
+.u-domain{display:grid;gap:7px}
+.u-domain h2{margin:0 8px;text-transform:uppercase;letter-spacing:.07em;font-size:.63rem;color:var(--u-text-3)}
+.u-domain>div{display:grid;gap:2px}
+.u-domain a{display:flex;align-items:center;min-height:40px;padding:0 10px;border-radius:7px;color:var(--u-text-2);text-decoration:none;font-size:.78rem;font-weight:600}
+.u-domain a:hover{background:var(--u-surface-2);color:var(--u-text)}
+.u-domain a[aria-current="page"]{background:var(--u-primary-soft);color:var(--u-primary);font-weight:750}
+.u-mobile-nav{display:none}
+@media(max-width:700px){
+ .u-topbar{grid-template-columns:auto 1fr;min-height:56px;padding:0 12px}
+ .u-topbar-center{display:none}.u-topbar-user{justify-content:flex-end}
+ .u-domain-nav{display:none}
+ .u-mobile-nav{position:fixed;left:0;right:0;bottom:0;z-index:70;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;padding:7px 8px calc(7px + env(safe-area-inset-bottom));background:rgba(255,255,255,.97);border-top:1px solid var(--u-border);box-shadow:0 -8px 24px rgba(16,24,40,.07)}
+ .u-mobile-nav a{display:grid;place-items:center;min-height:44px;color:var(--u-text-3);text-decoration:none;font-size:.66rem;font-weight:650;border-radius:7px}
+ .u-mobile-nav a[aria-current="page"]{background:var(--u-primary-soft);color:var(--u-primary)}
+}
+@media(prefers-reduced-transparency:reduce){.u-topbar{backdrop-filter:none;background:var(--u-surface)}}

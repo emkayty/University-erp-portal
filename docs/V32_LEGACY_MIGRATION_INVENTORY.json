@@ -1,0 +1,49 @@
+{
+  "apps/web/app/globals.css": [
+    "glass",
+    "legacy_tokens",
+    "legacy_button",
+    "legacy_status"
+  ],
+  "apps/web/app/auth/forgot-password/forgot-password-form.tsx": [
+    "glass"
+  ],
+  "apps/web/app/auth/reset-password/page.tsx": [
+    "glass"
+  ],
+  "apps/web/app/auth/login/login-form.tsx": [
+    "glass"
+  ],
+  "apps/web/app/dashboard/fees/page.tsx": [
+    "native_confirm"
+  ],
+  "apps/web/app/dashboard/settings/page.tsx": [
+    "native_confirm"
+  ],
+  "apps/web/app/dashboard/admissions/page.tsx": [
+    "native_confirm"
+  ],
+  "apps/web/components/erp/v32-confirm-dialog.tsx": [
+    "native_confirm"
+  ],
+  "apps/web/components/erp/premium-primitives.tsx": [
+    "legacy_status"
+  ],
+  "apps/web/components/erp/ui.tsx": [
+    "legacy_button",
+    "legacy_status"
+  ],
+  "apps/web/components/erp/v27-workflow-ux.css": [
+    "legacy_tokens"
+  ],
+  "apps/web/components/erp/dashboard.tsx": [
+    "legacy_status"
+  ],
+  "apps/web/components/erp/confirm-action.tsx": [
+    "legacy_button"
+  ],
+  "apps/web/components/erp/v26-premium.css": [
+    "legacy_tokens",
+    "legacy_status"
+  ]
+}

@@ -1,0 +1,12 @@
+[
+  "server-side authorization",
+  "business-rule validation",
+  "idempotency or duplicate-safe handling",
+  "clear consequence",
+  "confirmation when irreversible/material",
+  "audit event where required",
+  "authoritative success state",
+  "recoverable failure state",
+  "no destructive blind retry",
+  "mobile completion"
+]

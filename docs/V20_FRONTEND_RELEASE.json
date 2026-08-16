@@ -1,0 +1,7 @@
+{
+  "version": "V20",
+  "focus": "frontend implementation primitives",
+  "responsive": true,
+  "accessibility_target": "WCAG 2.2 AA",
+  "design_direction": "clarity under institutional complexity"
+}

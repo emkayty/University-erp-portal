@@ -1,0 +1,43 @@
+version: 0.0
+os: linux
+files:
+  - source: /apps
+    destination: /opt/uniportal/current/apps
+  - source: /packages
+    destination: /opt/uniportal/current/packages
+  - source: /scripts
+    destination: /opt/uniportal/current/scripts
+  - source: /package.json
+    destination: /opt/uniportal/current
+  - source: /pnpm-lock.yaml
+    destination: /opt/uniportal/current
+  - source: /pnpm-workspace.yaml
+    destination: /opt/uniportal/current
+  - source: /ecosystem.config.js
+    destination: /opt/uniportal/current
+permissions:
+  - object: /opt/uniportal/current
+    owner: ubuntu
+    group: ubuntu
+    mode: '755'
+hooks:
+  ApplicationStop:
+    - location: scripts/deploy/hooks/application-stop.sh
+      timeout: 30
+      runas: ubuntu
+  BeforeInstall:
+    - location: scripts/deploy/hooks/fetch-secrets.sh
+      timeout: 60
+      runas: root
+  AfterInstall:
+    - location: scripts/deploy/hooks/run-migrations.sh
+      timeout: 120
+      runas: ubuntu
+  ApplicationStart:
+    - location: scripts/deploy/hooks/application-start.sh
+      timeout: 60
+      runas: ubuntu
+  ValidateService:
+    - location: scripts/deploy/hooks/validate-service.sh
+      timeout: 60
+      runas: ubuntu

@@ -1,0 +1,16 @@
+{
+  "version": 19,
+  "frontend_files": 68,
+  "responsive_required": true,
+  "critical_workflows": [
+    "admissions",
+    "student",
+    "registration",
+    "exams",
+    "grading",
+    "results",
+    "finance",
+    "approvals"
+  ],
+  "design_system": "V19_UI_UX_DESIGN_SYSTEM.md"
+}

@@ -1,0 +1,15 @@
+{
+  "version": "V34",
+  "frontend_api_references": 6,
+  "backend_routes_detected": 0,
+  "models_detected": 142,
+  "frontend_field_names_detected": 2,
+  "api_base_patterns": {
+    "http://169.254.169.254": 3,
+    "https://api.ng.termii.com": 1,
+    "https://raw.githubusercontent.com": 1,
+    "relative": 1
+  },
+  "obvious_endpoint_mismatches": [],
+  "note": "Static extraction cannot prove runtime contract compatibility; response schemas, auth, validation, transactions and integration tests still require runtime verification."
+}

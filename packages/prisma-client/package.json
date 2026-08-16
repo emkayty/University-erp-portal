@@ -1,0 +1,19 @@
+{
+  "name": "@uniportal/prisma-client",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "prisma:generate": "prisma generate --schema=../../apps/api/prisma/schema.prisma",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.0.0"
+  },
+  "devDependencies": {
+    "@uniportal/tsconfig": "workspace:*",
+    "prisma": "^6.0.0",
+    "typescript": "^5.8.0"
+  }
+}

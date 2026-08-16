@@ -1,0 +1,18 @@
+[
+  {
+    "file": "apps/web/app/dashboard/page.tsx",
+    "issue": "possible client-derived authoritative state; verify server authority"
+  },
+  {
+    "file": "apps/web/app/dashboard/results/page.tsx",
+    "issue": "possible client-only permission gating; verify backend authorization"
+  },
+  {
+    "file": "apps/web/app/dashboard/analytics/page.tsx",
+    "issue": "possible client-derived authoritative state; verify server authority"
+  },
+  {
+    "file": "apps/web/app/dashboard/research/page.tsx",
+    "issue": "possible client-only permission gating; verify backend authorization"
+  }
+]

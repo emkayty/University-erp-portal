@@ -1,0 +1,4 @@
+.u-v32-dialog-backdrop{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:20px;background:rgba(16,24,40,.45)}
+.u-v32-dialog{width:min(100%,480px);padding:22px;border:1px solid var(--u-border);border-radius:12px;background:var(--u-surface);box-shadow:0 20px 60px rgba(16,24,40,.2)}
+.u-v32-dialog h2{margin:0;font-size:1rem;color:var(--u-text)}.u-v32-dialog p{margin:9px 0 18px;color:var(--u-text-2);font-size:.82rem;line-height:1.55}
+.u-v32-dialog-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}@media(max-width:520px){.u-v32-dialog{align-self:end;margin-bottom:env(safe-area-inset-bottom);width:100%;border-radius:12px 12px 0 0}.u-v32-dialog-actions{display:grid;grid-template-columns:1fr 1fr}.u-v32-dialog-actions button{min-height:44px}}

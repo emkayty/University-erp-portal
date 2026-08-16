@@ -1,0 +1,20 @@
+### p5 static
+
+> uniportal-erp@0.0.0 p5:static-audit /home/ubuntu/uniportal_repair
+> python tests/p5/static_security_audit.py
+
+eval: apps/api/src/common/throttling/redis-throttler.storage.ts
+eval: apps/api/coverage/lcov-report/src/common/throttling/redis-throttler.storage.ts.html
+ ELIFECYCLE  Command failed with exit code 1.
+### provider
+
+> @uniportal/api@0.0.0 test:pact:verify /home/ubuntu/uniportal_repair/apps/api
+> jest --config test/pact/jest-pact.config.ts
+
+Test Suites: 1 skipped, 0 of 1 total
+Tests:       1 skipped, 1 total
+Snapshots:   0 total
+Time:        0.891 s
+Ran all test suites.
+### audit metadata
+{'vulnerabilities': {'info': 0, 'low': 0, 'moderate': 0, 'high': 0, 'critical': 0}, 'dependencies': 617, 'devDependencies': 0, 'optionalDependencies': 0, 'totalDependencies': 617}

@@ -1,0 +1,12 @@
+:root{
+  --erp-bg:var(--u-bg);
+  --erp-surface:var(--u-surface);
+  --erp-surface-2:var(--u-surface-2);
+  --erp-text:var(--u-text);
+  --erp-muted:var(--u-text-3);
+  --erp-border:var(--u-border);
+  --erp-accent:var(--u-primary);
+}
+.erp-button{font:inherit;min-height:40px;padding:0 12px;border:1px solid var(--u-border);border-radius:7px;background:var(--u-surface);color:var(--u-text);font-weight:650;cursor:pointer}
+.erp-button:hover{background:var(--u-surface-2)}
+.erp-status{display:inline-flex;align-items:center;min-height:24px;padding:0 8px;border:1px solid var(--u-border);border-radius:999px;background:var(--u-surface-2);color:var(--u-text-2);font-size:.7rem;font-weight:700}

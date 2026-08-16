@@ -1,0 +1,16 @@
+{
+  "version": "V32",
+  "objective": "UI cleanup and integration hardening",
+  "legacy_files_detected": 14,
+  "fixes": [
+    "terminology contract",
+    "unified confirmation dialog",
+    "SPA dirty-navigation contract",
+    "improved static scanner",
+    "legacy migration inventory",
+    "Nigerian data UX rules",
+    "high-risk operation checklist"
+  ],
+  "rule": "frontend visibility is not authorization",
+  "next_validation": "project typecheck/lint/build plus real browser/device workflow tests"
+}

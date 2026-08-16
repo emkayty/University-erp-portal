@@ -1,0 +1,42 @@
+{
+  "design_system": {
+    "single_authority": "v28-institutional-system.css",
+    "legacy_glass": "deprecated for ERP surfaces",
+    "duplicate_tokens": "must not be introduced"
+  },
+  "navigation": {
+    "primary_domains": "<=6",
+    "primary_task": "obvious within one viewport",
+    "secondary_functions": "progressively disclosed"
+  },
+  "forms": {
+    "structured_data": "use controlled selections when authoritative datasets exist",
+    "errors": "inline and recoverable",
+    "entered_data": "preserved after failed submission"
+  },
+  "tables": {
+    "mobile": "safe horizontal scroll or card transformation",
+    "selection": "bulk actions only when task supports them",
+    "loading": "skeleton or explicit progress",
+    "empty": "explain what to do next"
+  },
+  "security_ux": {
+    "authorization": "hide or disable unavailable actions appropriately",
+    "destructive": "confirm and explain consequence",
+    "sensitive": "minimize exposure",
+    "audit": "show meaningful actor/time/status where relevant"
+  },
+  "performance": {
+    "animation": "purposeful only",
+    "blur": "avoid on data-dense surfaces",
+    "images": "lazy load when applicable",
+    "interaction": "no unnecessary client work"
+  },
+  "accessibility": {
+    "skip_link": true,
+    "focus_visible": true,
+    "touch_target_px": 44,
+    "reduced_motion": true,
+    "status_not_color_only": true
+  }
+}

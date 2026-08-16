@@ -1,0 +1,31 @@
+=== BACKEND MANDATORY MFA SURFACE ===
+apps/api/src/modules/auth/auth.controller.ts:71:          requiresMfaSetup:    true,
+apps/api/src/modules/auth/auth.controller.ts:72:          setupToken:          result.setupToken,
+apps/api/src/modules/auth/auth.controller.ts:73:          setupTokenExpiresAt: result.setupTokenExpiresAt,
+apps/api/src/modules/auth/auth.controller.ts:198:  // ── AUDIT-C3: mandatory-MFA setup (no session yet — uses setupToken) ─────
+apps/api/src/modules/auth/auth.controller.ts:199:  @Post('mfa/setup-mandatory')
+apps/api/src/modules/auth/auth.controller.ts:205:    const userId = await this.authService.resolveMfaSetupToken(dto.setupToken);
+apps/api/src/modules/auth/auth.controller.ts:210:  @Post('mfa/confirm-setup-mandatory')
+apps/api/src/modules/auth/auth.controller.ts:220:    const userId = await this.authService.resolveMfaSetupToken(dto.setupToken);
+apps/api/src/modules/auth/auth.controller.ts:223:      dto.setupToken, { userAgent: req.headers['user-agent'], ip: req.ip },
+apps/api/src/modules/auth/auth.service.spec.ts:153:          expect(result.setupToken).toBeDefined();
+apps/api/src/modules/auth/auth.service.ts:42: * without MFA for a mandated role; the client uses `setupToken` to call
+apps/api/src/modules/auth/auth.service.ts:47:  setupToken: string;
+apps/api/src/modules/auth/auth.service.ts:48:  setupTokenExpiresAt: string;
+apps/api/src/modules/auth/auth.service.ts:110:      const setupToken = uuid();
+apps/api/src/modules/auth/auth.service.ts:112:      await this.redis.setex(MFA_SETUP_TOKEN_KEY(setupToken), MFA_TOKEN_TTL, user.id);
+apps/api/src/modules/auth/auth.service.ts:119:        setupToken, setupTokenExpiresAt: expiresAt,
+apps/api/src/modules/auth/auth.service.ts:243:   * AUDIT-C3 fix support: resolves the setupToken issued by login() when a
+apps/api/src/modules/auth/auth.service.ts:248:  async resolveMfaSetupToken(setupToken: string): Promise<string> {
+apps/api/src/modules/auth/auth.service.ts:249:    const userId = await this.redis.get(MFA_SETUP_TOKEN_KEY(setupToken));
+apps/api/src/modules/auth/auth.service.ts:259:  /** Consumes the setupToken (single-use) after MFA setup is confirmed, then issues a real session. */
+apps/api/src/modules/auth/auth.service.ts:260:  async completeLoginAfterMandatorySetup(setupToken: string, deviceInfo: { userAgent?: string; ip?: string }): Promise<LoginResult> {
+apps/api/src/modules/auth/auth.service.ts:261:    const userId = await this.resolveMfaSetupToken(setupToken);
+apps/api/src/modules/auth/auth.service.ts:262:    await this.redis.del(MFA_SETUP_TOKEN_KEY(setupToken));
+apps/api/src/modules/auth/dto/auth.dto.ts:50:// the whole point), so these endpoints take setupToken instead of relying
+apps/api/src/modules/auth/dto/auth.dto.ts:55:  setupToken: string;
+packages/types/src/auth.types.ts:63:export interface MfaSetupResponse {
+=== FRONTEND MANDATORY MFA SURFACE ===
+apps/web/node_modules/@uniportal/types/src/auth.types.ts:63:export interface MfaSetupResponse {
+apps/web/node_modules/@uniportal/types/dist/auth.types.d.ts:49:export interface MfaSetupResponse {
+packages/types/src/auth.types.ts:63:export interface MfaSetupResponse {

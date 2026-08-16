@@ -1,0 +1,20 @@
+[
+  {
+    "command": "npm run lint",
+    "returncode": 127,
+    "stdout_tail": "\n> uniportal-erp@0.0.0 lint\n> turbo run lint\n\n",
+    "stderr_tail": "sh: 1: turbo: Permission denied\n"
+  },
+  {
+    "command": "npm run build",
+    "returncode": 127,
+    "stdout_tail": "\n> uniportal-erp@0.0.0 build\n> turbo run build\n\n",
+    "stderr_tail": "sh: 1: turbo: Permission denied\n"
+  },
+  {
+    "command": "npm run test",
+    "returncode": 127,
+    "stdout_tail": "\n> uniportal-erp@0.0.0 test\n> turbo run test\n\n",
+    "stderr_tail": "sh: 1: turbo: Permission denied\n"
+  }
+]

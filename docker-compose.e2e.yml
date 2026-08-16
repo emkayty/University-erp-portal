@@ -1,0 +1,33 @@
+services:
+  postgres-e2e:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: uniportal_e2e
+      POSTGRES_PASSWORD: uniportal_e2e_only
+      POSTGRES_DB: uniportal_e2e
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U uniportal_e2e -d uniportal_e2e"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [uniportal_e2e]
+
+  redis-e2e:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [uniportal_e2e]
+
+networks:
+  uniportal_e2e:
+    driver: bridge

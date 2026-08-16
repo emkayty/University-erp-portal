@@ -1,0 +1,8 @@
+{
+  "version": "V30",
+  "focus": "screen-level migration, navigation shell and QA gates",
+  "source_snapshot": "uniportal-erp-v29-full-ui-migration.zip",
+  "unified_system": "V28/V29",
+  "backend_logic_preserved": true,
+  "real_device_validation_required": true
+}

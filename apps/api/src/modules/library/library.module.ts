@@ -1,0 +1,11 @@
+import { Module } from '@nestjs/common';
+import { AuditService } from '../../common/audit/audit.service';
+import { LibraryController } from './library.controller';
+import { LibraryService } from './library.service';
+
+@Module({
+  controllers: [LibraryController],
+  providers:   [LibraryService, AuditService],
+  exports:     [LibraryService],
+})
+export class LibraryModule {}

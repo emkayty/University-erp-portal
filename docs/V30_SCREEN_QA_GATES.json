@@ -1,0 +1,45 @@
+{
+  "all_routes": [
+    "uses_authoritative_u_tokens",
+    "has_clear_page_title",
+    "primary_action_obvious",
+    "has_loading_state_when_async",
+    "has_empty_state_when_list",
+    "has_recoverable_error_state",
+    "permission-aware_actions",
+    "mobile_task_completion",
+    "keyboard_focus_visible"
+  ],
+  "data_pages": [
+    "search_or_filter_when_scale_requires",
+    "safe_table_or_card_mobile",
+    "pagination_or_virtualization_when_scale_requires",
+    "bulk_actions_only_when_appropriate",
+    "export_only_when_permitted"
+  ],
+  "forms": [
+    "structured_options_for_authoritative_data",
+    "inline_validation",
+    "preserve_entered_values",
+    "clear_required_fields",
+    "no_sensitive_data_in_urls"
+  ],
+  "destructive": [
+    "explicit_consequence",
+    "confirmation",
+    "permission_check",
+    "audit_event_where_required"
+  ],
+  "performance": [
+    "no_unnecessary_heavy_effects",
+    "lazy_load_noncritical_content",
+    "avoid_duplicate_fetches",
+    "avoid_unbounded_lists"
+  ],
+  "security": [
+    "do_not_render_unauthorized_actions",
+    "server_authorization_remains_source_of_truth",
+    "sensitive_fields_minimized",
+    "csrf/session protections remain backend concern"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "principles": [
+    "avoid rendering massive datasets at once",
+    "paginate or virtualize large tables",
+    "debounce search inputs where network-backed",
+    "cancel or ignore stale requests",
+    "avoid duplicate data fetching",
+    "lazy-load non-critical modules",
+    "keep animation purposeful and minimal",
+    "do not use blur/glass effects on dense data surfaces"
+  ],
+  "network_resilience": [
+    "show progress for meaningful operations",
+    "preserve user input during transient failures",
+    "retry safe idempotent reads",
+    "never blindly retry irreversible mutations"
+  ]
+}

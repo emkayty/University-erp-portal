@@ -1,0 +1,16 @@
+### changed files
+### key files
+apps/api/prisma/migrations/0044_outbox_retry_dead_letter
+scripts/verify/runtime-certification-evidence.sh
+scripts/verify/external-provider-certification.sh
+scripts/verify/production-certification.sh
+scripts/verify/start-certification-stack.sh
+docs/ENGINEERING_CERTIFICATION_AUDIT_2026-08-14.json
+docs/ENGINEERING_CERTIFICATION_AUDIT_2026-08-14.md
+docs/EXTERNAL_INTEGRATION_CERTIFICATION.md
+docs/CERTIFICATION_GATES.md
+docs/P5_VALIDATION_CERTIFICATION_PLAN.md
+docs/CERTIFICATION_EVIDENCE_TEMPLATE.md
+docs/CERTIFICATION_MATRIX_V43_11.md
+docs/CERTIFICATION_RUNBOOK_CONTINUATION.md
+### diff stat

@@ -1,0 +1,55 @@
+audit_status None
+metadata {"dependencies": 654, "devDependencies": 0, "optionalDependencies": 0, "totalDependencies": 654, "vulnerabilities": {"critical": 1, "high": 27, "info": 0, "low": 1, "moderate": 21}}
+advisory_count 49
+ADVISORY 1109804 module= nodemailer severity= moderate title= Nodemailer: Email to an unintended domain can occur due to Interpretation Conflict via= None
+ADVISORY 1112659 module= tar severity= high title= node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal via= None
+ADVISORY 1112715 module= js-yaml severity= moderate title= js-yaml has prototype pollution in merge (<<) via= None
+ADVISORY 1113300 module= tar severity= high title= node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization via= None
+ADVISORY 1113375 module= tar severity= high title= Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction via= None
+ADVISORY 1114200 module= tar severity= high title= tar has Hardlink Path Traversal via Drive-Relative Linkpath via= None
+ADVISORY 1114302 module= tar severity= high title= node-tar Symlink Path Traversal via Drive-Relative Linkpath via= None
+ADVISORY 1114680 module= tar severity= high title= Race Condition in node-tar Path Reservations via Unicode Ligature Collisions on macOS APFS via= None
+ADVISORY 1115470 module= nodemailer severity= low title= Nodemailer has SMTP command injection due to unsanitized `envelope.size` parameter via= None
+ADVISORY 1115806 module= lodash severity= high title= lodash vulnerable to Code Injection via `_.template` imports key names via= None
+ADVISORY 1115810 module= lodash severity= moderate title= lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit` via= None
+ADVISORY 1116270 module= nodemailer severity= moderate title= Nodemailer Vulnerable to SMTP Command Injection via CRLF in Transport name Option (EHLO/HELO)  via= None
+ADVISORY 1117015 module= postcss severity= moderate title= PostCSS has XSS via Unescaped </style> in its CSS Stringify Output via= None
+ADVISORY 1120370 module= lodash severity= moderate title= Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions via= None
+ADVISORY 1120782 module= tar severity= moderate title= node-tar applies PAX size override to intermediary GNU long-name/long-link headers, causing tar parser interpretation differential (file smuggling) via= None
+ADVISORY 1120795 module= nodemailer severity= moderate title= Nodemailer: CRLF injection in Nodemailer List-* header comments allows arbitrary message header injection via= None
+ADVISORY 1120796 module= nodemailer severity= moderate title= Nodemailer jsonTransport bypasses disableFileAccess and disableUrlAccess during message normalization via= None
+ADVISORY 1120797 module= nodemailer severity= moderate title= Nodemailer: Improper TLS Certificate Validation in OAuth2 Token Fetch Enables Credential Interception via= None
+ADVISORY 1121089 module= multer severity= high title= Multer vulnerable to Denial of Service via deeply nested field names via= None
+ADVISORY 1121091 module= multer severity= moderate title= Multer vulnerable to Denial of Service via incomplete cleanup of aborted uploads via= None
+ADVISORY 1121191 module= nodemailer severity= high title= Nodemailer: Message-level raw option bypasses disableFileAccess/disableUrlAccess, enabling arbitrary file read and full-response SSRF in the delivered message via= None
+ADVISORY 1121860 module= js-yaml severity= moderate title= JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases via= None
+ADVISORY 1123478 module= nodemailer severity= high title= Nodemailer’s addressparser is vulnerable to DoS caused by recursive calls via= None
+ADVISORY 1123897 module= brace-expansion severity= high title= brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups via= None
+ADVISORY 1123911 module= js-yaml severity= high title= js-yaml: YAML merge-key chains can force quadratic CPU consumption via= None
+ADVISORY 1123939 module= tar severity= moderate title= node-tar: Process crash via PAX numeric path type confusion via= None
+ADVISORY 1123940 module= tar severity= critical title= node-tar: Decompression/parse DoS via unlimited input via= None
+ADVISORY 1123941 module= tar severity= high title= node-tar: Negative tar entry size causes infinite loop in archive replace via= None
+ADVISORY 1123942 module= tar severity= moderate title= node-tar: Uncaught Exception DoS via NUL byte in PAX path/linkpath records via= None
+ADVISORY 1124066 module= sharp severity= high title= sharp inherited vulnerabilities in libvips: CVE-2026-33327, CVE-2026-33328, CVE-2026-35590, CVE-2026-35591 via= None
+ADVISORY 1124172 module= next severity= high title= Next.js: Denial of Service in App Router using Server Actions via= None
+ADVISORY 1124185 module= next severity= high title= Next.js: Server-Side Request Forgery in Server Actions on custom servers via= None
+ADVISORY 1124187 module= next severity= moderate title= Next.js: Cache confusion of response bodies for requests with bodies via= None
+ADVISORY 1124189 module= next severity= moderate title= Next.js: Cache confusion of response bodies for requests with bodies containing invalid UTF-8 byte sequences via= None
+ADVISORY 1124191 module= next severity= moderate title= Next.js: Unbounded Server Action payload in Edge runtime via= None
+ADVISORY 1124193 module= next severity= high title= Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname via= None
+ADVISORY 1124195 module= next severity= moderate title= Next.js: Denial of Service in the Image Optimization API using SVGs via= None
+ADVISORY 1124197 module= next severity= moderate title= Next.js: Unauthenticated disclosure of internal Server Function endpoints via= None
+ADVISORY 1124252 module= postcss severity= high title= PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments via= None
+ADVISORY 1124287 module= tar severity= moderate title= node-tar: Uncontrolled recursion in mapHas/filesFilter allows uncatchable stack-overflow DoS via crafted long-path tar with member selection via= None
+ADVISORY 1130588 module= brace-expansion severity= high title= brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash via= None
+ADVISORY 1130591 module= brace-expansion severity= high title= brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash via= None
+ADVISORY 1130709 module= postcss severity= moderate title= PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset via= None
+ADVISORY 1130734 module= brace-expansion severity= high title= brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation via= None
+ADVISORY 1130737 module= brace-expansion severity= high title= brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation via= None
+ADVISORY 1138115 module= js-yaml severity= high title= JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported via= None
+ADVISORY 1138811 module= nanoid severity= high title= nanoid: non-secure generators can loop indefinitely with negative size via= None
+ADVISORY 1139427 module= nanoid severity= high title= nanoid: custom generators can loop indefinitely when size is zero via= None
+ADVISORY 1139510 module= postcss severity= high title= PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure via= None
+by_module {'nodemailer': 8, 'tar': 12, 'js-yaml': 4, 'lodash': 3, 'postcss': 4, 'multer': 2, 'brace-expansion': 5, 'sharp': 1, 'next': 8, 'nanoid': 2}
+by_fix {'None': 49}
+raw_keys ['actions', 'advisories', 'metadata', 'muted']

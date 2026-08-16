@@ -1,0 +1,34 @@
+UniPortal ERP Project Evaluation Evidence Manifest
+Generated: 2026-08-15T08:37:17+00:00
+Report: PROJECT_EVALUATION_REPORT.md
+Evidence directory: verification/evaluation/
+
+Repository hashes:
+677998bd69807a9103d7c497a656953f027d694f80bbe739098493159e699ce0  pnpm-lock.yaml
+55c8ce530d937c486d1dcf269ce66038593373edf9d1b4d66acad1aba13c7514  apps/api/prisma/schema.prisma
+dc741e482680aeaecf3105f77fe2fd973af2112090292c11871e04ffdbe6d825  PROJECT_EVALUATION_REPORT.md
+
+Evidence files:
+EVALUATION_MANIFEST.txt
+PROJECT_EVALUATION_REPORT.md
+erp_api_coverage.log
+erp_assurance_gap_scan.txt
+erp_coverage_by_module.txt
+erp_dependency_audit_summary.txt
+erp_env_build.log
+erp_env_lint.log
+erp_env_tests.log
+erp_env_typecheck.log
+erp_frontend_e2e_checks.txt
+erp_independent_test_layers.txt
+erp_mfa_contract_usage.txt
+erp_non_api_quality.txt
+erp_pnpm_audit.err
+erp_pnpm_audit.json
+erp_prisma_env_contract.log
+erp_prisma_env_contract_complete.log
+erp_raw_sql_usage_audit.txt
+erp_repo_cleanliness.txt
+erp_route_matrix.txt
+erp_runtime_prereq_check.txt
+erp_static_contracts_fresh.txt

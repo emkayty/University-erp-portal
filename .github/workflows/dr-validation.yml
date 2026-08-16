@@ -1,0 +1,37 @@
+name: DR Validation (scheduled)
+
+# Automates spec §21.3's runbook checklist so drift is caught continuously
+# rather than only discovered mid-incident. Read-only checks — this does
+# NOT trigger an actual failover; see docs/disaster-recovery-runbook.md for
+# the manual drill procedure (RDS Multi-AZ failover, PITR restore) that
+# genuinely can't be automated safely against a live environment.
+on:
+  schedule:
+    - cron: '0 2 * * 1' # weekly Monday 02:00 UTC (03:00 WAT)
+  workflow_dispatch: {}
+
+jobs:
+  dr-checks:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_READONLY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: RDS Multi-AZ + automated backup window
+        run: ./scripts/dr/backup-verification.sh
+
+      - name: ALB target health across both AZs
+        run: ./scripts/dr/az-failover-check.sh
+
+      - name: BullMQ queue depth + DLQ sanity
+        run: ./scripts/dr/queue-health-check.sh
+        env:
+          API_HEALTH_URL: ${{ secrets.PROD_API_URL }}/api/health/ready
+
+      - name: Post summary
+        if: always()
+        run: cat dr-check-summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

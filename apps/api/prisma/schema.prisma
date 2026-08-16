@@ -1,0 +1,4206 @@
+// ═══════════════════════════════════════════════════════════════════════════════
+// UniPortal ERP — Prisma Schema
+// Phase 0: Foundation models (User, Auth, Audit, Settings)
+// ═══════════════════════════════════════════════════════════════════════════════
+// CRITICAL: This is the single source of truth for the database schema.
+// - Run `pnpm db:migrate:dev --name <description>` to create migrations
+// - Run `pnpm db:generate` to regenerate the Prisma client
+// - NEVER modify the database directly — all changes go through migrations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Audit remediation R2: this used to be DATABASE_DIRECT_URL, which
+  // apps/api/src/database/direct-prisma.service.ts ALSO reads for its
+  // runtime advisory-lock connection. Sharing one env var meant "the
+  // non-pooled migrate connection" and "the app's non-pooled runtime
+  // connection" were forced to be the same role — fine when both were the
+  // owner/superuser, but wrong now that the runtime connection must be the
+  // restricted `uniportal_app` role (see migration
+  // 0011_p10_rls_role_separation) while `prisma migrate deploy` still
+  // needs owner privileges to run DDL. Split into its own var so each can
+  // point at the right role independently.
+  directUrl = env("MIGRATE_DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 1: Identity & Authentication
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  phone        String?   @db.VarChar(15)
+  passwordHash String    @db.VarChar(255)
+  isActive     Boolean   @default(true)
+  // MFA (TOTP) — secret is encrypted at application layer before storage
+  mfaSecret    String?   @db.VarChar(128)
+  mfaEnabled   Boolean   @default(false)
+  lastLoginAt  DateTime?
+  // Soft-delete: set by application middleware — never hard-delete
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  roles            UserRole[]
+  sessions         Session[]
+  auditLogsAsActor AuditLog[]        @relation("AuditActor")
+  notificationLogs NotificationLog[]
+  mfaBackupCodes   MfaBackupCode[] // FIX H7
+
+  // Module relations — added per phase
+  student                 Student? // CB-1 fix: Prisma 1:1 requires both sides
+  waiverRequestsInitiated FeeWaiver[]        @relation("WaiverRequestedBy")
+  waiverDecisions         FeeWaiver[]        @relation("WaiverApprovedBy")
+  staff                   Staff?
+  attendanceRecorded      AttendanceRecord[] @relation("AttendanceRecordedBy")
+  examAttendanceRecorded  ExamAttendance[]   @relation("ExamAttendanceRecordedBy")
+  gradeUploadBatches      GradeUploadBatch[]
+  lmsGradedSubmissions    LmsSubmission[] @relation("LmsSubmissionGrader")
+  lmsDiscussionPosts      LmsDiscussionPost[] @relation("LmsDiscussionAuthor")
+  libraryLoans            LibraryLoan[]
+  // staff    Staff?     (added in P6)
+  // alumni   Alumni?    (added in P8)
+
+  // P10: NDPR "right to restriction of processing" (spec §16.1) — set by
+  // PrivacyService.restrictProcessing(). Modules that run non-essential
+  // processing (marketing/analytics-style jobs, not core academic/financial
+  // operations a student/staff member is entitled to) should check this
+  // flag; core operations continue since restriction ≠ suspension of service.
+  processingRestricted Boolean @default(false)
+
+  // P10: NDPR data-subject-rights + security-incident relations
+  dsrRequestsAsSubject   DataSubjectRequest[]              @relation("DsrSubjectUser")
+  dsrRequestsFiled       DataSubjectRequest[]              @relation("DsrRequestedBy")
+  securityIncidentsFiled SecurityIncident[]                @relation("IncidentReportedBy")
+  policyAcknowledgements UniversityPolicyAcknowledgement[]
+
+  @@index([email], map: "idx_users_email_active")
+  @@index([phone], map: "idx_users_phone_active")
+  @@map("users")
+}
+
+model UserRole {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @db.Uuid
+  roleName   RoleName
+  // ABAC scope for STAFF role: { "scopes": ["lecturer"], "deptId": "uuid" }
+  staffScope Json?
+  grantedAt  DateTime @default(now())
+  grantedBy  String?  @db.Uuid // userId of admin who granted this role
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleName], name: "uq_user_role", map: "uq_user_role")
+  @@map("user_roles")
+}
+
+enum RoleName {
+  SUPER_ADMIN
+  VC
+  REGISTRAR
+  DEAN
+  HOD
+  STAFF
+  BURSAR
+  HR_MANAGER
+  SUPPORT_STAFF
+  STUDENT
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @db.Uuid
+  // Refresh token is stored as a SHA-256 hash — never the raw token
+  refreshTokenHash String    @unique @db.VarChar(255)
+  expiresAt        DateTime
+  // Device information for session management UI
+  deviceInfo       Json?
+  // Set when user logs out or admin revokes
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_sessions_user")
+  @@index([expiresAt], map: "idx_sessions_expiry")
+  @@map("sessions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 2: Audit Logging (append-only, immutable)
+// IMPORTANT: Never UPDATE or DELETE rows in this table.
+// Monthly range partitioning is applied via raw SQL migration after first deploy.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId     String?     @db.Uuid // null = system action
+  action      AuditAction
+  targetTable String      @db.VarChar(60)
+  targetId    String?     @db.Uuid
+  // PII fields in oldValues/newValues are replaced with "[ENCRYPTED]"
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?     @db.VarChar(45) // IPv4 or IPv6
+  sessionId   String?     @db.VarChar(64) // jti claim from JWT
+  // Additional context (module-specific metadata)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt(sort: Desc)], map: "idx_audit_actor_date")
+  @@index([targetTable, targetId], map: "idx_audit_target")
+  @@index([createdAt(sort: Desc)], map: "idx_audit_created")
+  @@index([action], map: "idx_audit_action")
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  SOFT_DELETE
+  LOGIN
+  LOGOUT
+  PASSWORD_CHANGE
+  MFA_ENABLED
+  MFA_DISABLED
+  ROLE_GRANTED
+  ROLE_REVOKED
+  EXPORT
+  ERASURE // NDPR erasure request
+  APPROVE
+  REJECT
+  PUBLISH
+  SUSPEND
+  RESUME
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 3: Institution Settings (singleton — max 1 row enforced in app layer)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model InstitutionSettings {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  // Institutional identity
+  institutionName String          @db.VarChar(200)
+  institutionCode String?         @unique @db.VarChar(20) // NUC institution code
+  institutionType InstitutionType @default(UNIVERSITY)
+  websiteUrl      String?         @db.VarChar(500)
+  contactEmail    String?         @db.VarChar(255)
+  contactPhone    String?         @db.VarChar(15)
+
+  // Financial config
+  tsaEnabled            Boolean @default(false)
+  defaultCurrency       String  @default("NGN") @db.VarChar(3)
+  feeWaiverCapHodPct    Decimal @default(30.00) @db.Decimal(5, 2)
+  feeWaiverCapBursarPct Decimal @default(80.00) @db.Decimal(5, 2)
+
+  // Academic config
+  deanApprovalRequired Boolean       @default(false)
+  gradingSystem        GradingSystem @default(NIGERIAN_5_POINT)
+  minCreditUnitsPerSem Int           @default(15) @db.SmallInt
+  maxCreditUnitsPerSem Int           @default(24) @db.SmallInt
+
+  // Security config
+  // JSON array of RoleName values that MUST have MFA enabled
+  mfaMandatoryRoles String[] @default(["SUPER_ADMIN", "BURSAR", "VC"])
+
+  // Branding
+  primaryColor String? @default("#0056B3") @db.VarChar(7)
+  logoUrl      String? @db.VarChar(500)
+  faviconUrl   String? @db.VarChar(500)
+
+  // Feature flags: JSON object { module_lms: true, tsa_mode: false, ... }
+  // See packages/config/src/feature-flags.ts for all keys
+  featureFlags Json @default("{}")
+
+  // CORS allowed origin for the frontend
+  corsAllowedOrigin String @default("http://localhost:3000") @db.VarChar(500)
+
+  // FIX M2 (Critical Evaluation): Course repeat/retake policy
+  // REPLACE: old F result replaced by new result (only new grade counts)
+  // INCLUDE:  both results counted in CGPA (standard punitive approach)
+  // BEST:     best result of all attempts counts
+  courseRepeatPolicy CourseRepeatPolicy @default(REPLACE)
+
+  // Notification queue config — FIX H10
+  // SES rate limit (emails/second). Default: 14 = SES sandbox tier.
+  // Raise to 200+ after SES production sandbox exit is approved.
+  sesRateLimitPerSecond                Int     @default(14) @db.SmallInt
+  // Result notifications concurrency. Set = SES limit to avoid SLA breach.
+  resultNotifConcurrency               Int     @default(14) @db.SmallInt
+  assessmentFinalExamWeight            Decimal @default(60.00) @db.Decimal(5, 2)
+  assessmentContinuousAssessmentWeight Decimal @default(40.00) @db.Decimal(5, 2)
+  gradePolicyVersion                   Int     @default(1) @db.SmallInt
+  enableLiveGradebook                  Boolean @default(true)
+  requireResultValidation              Boolean @default(true)
+  requireAdmissionClearance            Boolean            @default(true)
+  pendingAdmissionClearance            Boolean?
+  pendingAdmissionClearanceEffectiveAt DateTime?
+  pendingAdmissionClearanceApprovalRef  String?            @db.VarChar(255)
+  feeClearancePolicy                   FeeClearancePolicy @default(SEMESTER_REQUIRED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("institution_settings")
+}
+
+// FIX M2: Course repeat policy enum
+enum CourseRepeatPolicy {
+  REPLACE // New grade replaces old F (only new grade counts)
+  INCLUDE // All attempts included in CGPA denominator
+  BEST // Best result of all attempts used
+}
+
+enum FeeClearancePolicy {
+  SEMESTER_REQUIRED
+  ANNUAL_CLEARANCE
+  NO_FINANCIAL_GATE
+}
+
+enum InstitutionType {
+  UNIVERSITY
+  POLYTECHNIC
+  COLLEGE_OF_EDUCATION
+  SPECIALIST_INSTITUTION
+}
+
+enum GradingSystem {
+  NIGERIAN_5_POINT // Default: A=5, B=4, C=3, D=2, E=1, F=0
+  US_4_POINT // US scale: A=4, B=3, C=2, D=1, F=0
+}
+
+// University policy lifecycle. Each version is immutable after publication;
+// a revised policy is created as a new DRAFT with the same policy code and a
+// new version string, preserving acknowledgements to historic versions.
+enum UniversityPolicyCategory {
+  ACADEMIC
+  ADMISSIONS
+  ASSESSMENT_AND_EXAMINATIONS
+  FINANCE_AND_FEES
+  STUDENT_AFFAIRS
+  STAFF_AND_HR
+  RESEARCH_AND_ETHICS
+  ICT_AND_DATA_PROTECTION
+  HEALTH_SAFETY_AND_SECURITY
+  GOVERNANCE_AND_COMPLIANCE
+  OTHER
+}
+
+enum UniversityPolicyStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PUBLISHED
+  ARCHIVED
+}
+
+model UniversityPolicy {
+  id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policyCode              String                   @db.VarChar(40)
+  version                 String                   @default("1.0") @db.VarChar(30)
+  title                   String                   @db.VarChar(250)
+  category                UniversityPolicyCategory
+  summary                 String?                  @db.Text
+  content                 String                   @db.Text
+  status                  UniversityPolicyStatus   @default(DRAFT)
+  effectiveFrom           DateTime?
+  reviewDueAt             DateTime?
+  requiresAcknowledgement Boolean                  @default(false)
+  acknowledgementDueAt    DateTime?
+  submittedAt             DateTime?
+  approvedAt              DateTime?
+  publishedAt             DateTime?
+  archivedAt              DateTime?
+  rejectionReason         String?                  @db.Text
+  createdById             String                   @db.Uuid
+  updatedById             String?                  @db.Uuid
+  approvedById            String?                  @db.Uuid
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  acknowledgements UniversityPolicyAcknowledgement[]
+
+  @@unique([policyCode, version], name: "uq_university_policy_version")
+  @@index([status, category], map: "idx_university_policy_status_category")
+  @@index([effectiveFrom], map: "idx_university_policy_effective_from")
+  @@map("university_policies")
+}
+
+model UniversityPolicyAcknowledgement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policyId       String   @db.Uuid
+  userId         String   @db.Uuid
+  acknowledgedAt DateTime @default(now())
+  ipAddress      String?  @db.VarChar(64)
+  userAgent      String?  @db.VarChar(512)
+
+  policy UniversityPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, userId], name: "uq_university_policy_acknowledgement")
+  @@index([userId, acknowledgedAt], map: "idx_university_policy_ack_user")
+  @@map("university_policy_acknowledgements")
+}
+
+/// Machine-readable academic rules used for deterministic degree-progression
+/// decisions. This is separate from UniversityPolicy, which is the published
+/// narrative policy/acknowledgement workflow. Every production evaluation must
+/// record the selected version and an immutable rule snapshot.
+model AcademicPolicyVersion {
+  id               String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policyType       String                      @db.VarChar(40)
+  scope            AcademicPolicyScope         @default(INSTITUTION)
+  scopeId          String?                     @db.Uuid
+  priority         Int                         @default(0)
+  ruleDefinition   Json
+  approvalStatus   AcademicPolicyVersionStatus @default(DRAFT)
+  effectiveFrom    DateTime                    @default(now()) @db.Date
+  effectiveTo      DateTime?                   @db.Date
+  createdById      String?                     @db.Uuid
+  approvedById     String?                     @db.Uuid
+  approvedAt       DateTime?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  @@index([policyType, approvalStatus, effectiveFrom], map: "idx_academic_policy_active")
+  @@index([scope, scopeId, priority], map: "idx_academic_policy_scope")
+  @@map("academic_policy_versions")
+}
+
+enum AcademicPolicyScope {
+  INSTITUTION
+  FACULTY
+  DEPARTMENT
+  PROGRAMME
+}
+
+enum AcademicPolicyVersionStatus {
+  DRAFT
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 4: Notifications (cross-cutting — templates + delivery log)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model NotificationTemplate {
+  id          String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  templateKey String                  @db.VarChar(100)
+  channel     NotificationChannelType
+  subject     String                  @db.VarChar(255)
+  // Handlebars template body
+  // Variables: {{studentName}}, {{matricNo}}, etc.
+  body        String                  @db.Text
+  // Metadata: { "variables": [{ "name": "studentName", "description": "...", "example": "..." }] }
+  variables   Json?
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  logs NotificationLog[]
+
+  @@unique([templateKey, channel], name: "uq_notif_template_channel", map: "uq_notif_template_channel")
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Deep-audit fix (Aug 2026): templateId was NOT NULL with no default,
+  // yet the only code that ever wrote to this table (notifications
+  // .processor.ts's logNotification()) never populated it — nor did it
+  // populate templateKey/subject/body, which weren't columns on this model
+  // at all despite the code passing them. This table's one write path
+  // could not have executed successfully as originally written. Templates
+  // in this system are rendered from a hardcoded in-code map
+  // (NotificationsProcessor.renderTemplate()), not looked up from
+  // NotificationTemplate rows, so templateId is made optional here rather
+  // than forcing a template-table lookup/creation the architecture doesn't
+  // otherwise use; templateKey/subject/body are added as real columns so
+  // the log can stand on its own without a join. See
+  // migrations/0014_notification_log_fix and
+  // docs/CHANGELOG.md finding 1.3.
+  templateId    String?                 @db.Uuid
+  templateKey   String                  @db.VarChar(100)
+  subject       String                  @db.VarChar(255)
+  body          String                  @db.Text
+  recipientId   String                  @db.Uuid
+  channel       NotificationChannelType
+  status        NotificationLogStatus   @default(PENDING)
+  failureReason String?                 @db.Text
+  sentAt        DateTime?
+  readAt        DateTime?
+  // Provider response + BullMQ jobId
+  metadata      Json?
+  createdAt     DateTime                @default(now())
+
+  template  NotificationTemplate? @relation(fields: [templateId], references: [id])
+  recipient User                  @relation(fields: [recipientId], references: [id])
+
+  @@index([recipientId, status], map: "idx_notif_recipient")
+  @@index([status, createdAt(sort: Desc)], map: "idx_notif_status")
+  @@map("notification_logs")
+}
+
+enum NotificationChannelType {
+  EMAIL
+  SMS
+  IN_APP
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationLogStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 5: MFA Backup Codes (FIX H7 — Critical Evaluation)
+//
+// The original spec had no backup/recovery codes for TOTP MFA.
+// For mandatory-MFA roles (super_admin, bursar, vc): if the user loses their
+// authenticator device without backup codes, the account is permanently locked.
+// This model provides 10 one-time recovery codes issued at TOTP setup.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model MfaBackupCode {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @db.Uuid
+  // Code is stored as bcrypt hash (cost 10) — never plaintext
+  codeHash  String    @db.VarChar(255)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_mfa_backup_user")
+  @@map("mfa_backup_codes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 6: Degree Certificate Verification (FIX H4 — Critical Evaluation)
+//
+// The spec changelog mentioned QR token generation for degree verification but
+// no model was defined. Credential fraud is a major concern in Nigerian HE.
+// This model supports: generate QR → verify via public endpoint (no auth required).
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model DegreeVerificationToken {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // The opaque token embedded in the QR code on the degree certificate
+  token          String    @unique @default(dbgenerated("encode(gen_random_bytes(32), 'hex')")) @db.VarChar(64)
+  studentId      String    @db.Uuid
+  degreeName     String    @db.VarChar(255) // e.g. "Bachelor of Science, Computer Science"
+  classAwarded   String    @db.VarChar(50) // e.g. "First Class Honours"
+  graduationDate DateTime  @db.Date
+  issuedAt       DateTime  @default(now())
+  revokedAt      DateTime?
+  revokedReason  String?   @db.Text
+  // How many times this QR has been scanned (audit/fraud detection)
+  verifyCount    Int       @default(0)
+  lastVerifiedAt DateTime?
+
+  // Verification is public — no auth required
+  // GET /api/v1/verify/degree?token=<token>
+
+  @@index([token], map: "idx_degree_verify_token")
+  @@index([studentId], map: "idx_degree_verify_student")
+  @@map("degree_verification_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE EXPANSION NOTES — Schema additions per phase
+//
+// These models are intentionally absent from Phase 0.
+// They will be added via Prisma migrations in the phases listed below.
+//
+// Phase 2:  AcademicCalendar, CalendarEvent, Faculty, Department, Programme,
+//           Course, CoursePrerequisite, ProgrammeCourse, CourseOffering
+//
+// Phase 3:  Applicant, AdmissionCycle, Student, StudentAcademicHistory,
+//           CourseRegistration
+//           ─── FIX B1 NOTE (historical): at the time of this fix, CourseOffering
+//           ─── used `semester SemesterTerm` (enum) with no Semester model to
+//           ─── join against. The M2 fix later added a real Semester model
+//           ─── (see PHASE 5 below); the old enum was renamed SemesterTerm to
+//           ─── resolve the resulting name collision (audit remediation, R1).
+//
+// Phase 4:  FeeSchedule, StudentFee, Payment
+//
+// Phase 5:  StudentResult, SemesterGpa, ClearanceItem, StudentClearance,
+//           NyscBatch, NyscClearance, TranscriptRequest
+//           ─── FIX B2 NOTE: Student model (added P3) MUST include:
+//           ─── `semesterGpas SemesterGpa[]`
+//           ─── Both sides of every Prisma relation must be declared.
+//           ─── FIX B3 NOTE: senate-publish transaction MUST include
+//           ─── CGPA recomputation (same as amendment flow) — see ExamsService.
+//
+// Phase 6:  Staff, PayrollRun, PayrollRunStaff, Payslip, LeaveRequest
+//
+// Phase 7:  LibraryItem, LibraryLoan, TimetableEntry, Room, LmsCourse,
+//           LmsModule, LmsResource, AssignmentSubmission,
+//           Hostel, HostelRoom, RoomAllocation
+//
+// Phase 8:  Patient, Appointment, MedicalRecord, Drug, Prescription,
+//           Vehicle, Route, Trip, TripBooking,
+//           ResearchProject, Grant, ResearchOutput,
+//           Alumni, Donation, Campaign
+//
+// Phase 9:  Report, ReportJob
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 2: Institution Settings relations + Calendar + Curriculum
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Academic Calendar ─────────────────────────────────────────────────────────
+model AcademicCalendar {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academicYear    String         @unique @db.VarChar(9) // "2024/2025"
+  startDate       DateTime       @db.Date
+  endDate         DateTime       @db.Date
+  isActive        Boolean        @default(false)
+  status          CalendarStatus @default(DRAFT)
+  suspendedAt     DateTime?
+  suspendedById   String?        @db.Uuid
+  suspendedReason String?        @db.Text
+  resumedAt       DateTime?
+  resumedById     String?        @db.Uuid
+  activatedAt     DateTime?
+  activatedById   String?        @db.Uuid
+  createdById     String         @db.Uuid
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  events          CalendarEvent[]
+  courseOfferings CourseOffering[]
+  // P3+: admissionCycles AdmissionCycle[], students Student[], payrollRuns PayrollRun[]
+
+  // DB-level guard: only one active calendar at a time
+  // Raw SQL: CREATE UNIQUE INDEX uq_single_active_calendar
+  //          ON academic_calendars (is_active) WHERE is_active = TRUE
+  @@index([isActive], map: "idx_calendar_is_active")
+  @@index([status], map: "idx_calendar_status")
+  @@map("academic_calendars")
+}
+
+enum CalendarStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  COMPLETED
+}
+
+model CalendarEvent {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academicCalendarId String            @db.Uuid
+  name               String            @db.VarChar(255)
+  eventType          CalendarEventType
+  startDate          DateTime          @db.Date
+  endDate            DateTime?         @db.Date
+  isPublic           Boolean           @default(true)
+  description        String?           @db.Text
+  createdAt          DateTime          @default(now())
+
+  calendar AcademicCalendar @relation(fields: [academicCalendarId], references: [id], onDelete: Cascade)
+
+  @@index([academicCalendarId, eventType], map: "idx_calendar_event_type")
+  @@map("calendar_events")
+}
+
+enum CalendarEventType {
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSE
+  EXAM_START
+  EXAM_END
+  RESULT_RELEASE
+  GRADUATION
+  ORIENTATION
+  HOLIDAY
+  ADMINISTRATIVE
+  OTHER
+}
+
+// ── Curriculum Hierarchy ──────────────────────────────────────────────────────
+model Faculty {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique @db.VarChar(200)
+  code      String   @unique @db.VarChar(10)
+  deanId    String?  @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departments Department[]
+  dean        Staff?       @relation("FacultyDean", fields: [deanId], references: [id])
+
+  @@unique([deanId], map: "uq_faculty_dean")
+  @@map("faculties")
+}
+
+model Department {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(200)
+  code      String   @unique @db.VarChar(10)
+  facultyId String   @db.Uuid
+  hodId     String?  @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  faculty    Faculty     @relation(fields: [facultyId], references: [id])
+  programmes Programme[]
+  courses    Course[]
+  students   Student[]
+  staff      Staff[]
+  hod        Staff?      @relation("DepartmentHod", fields: [hodId], references: [id])
+
+  @@unique([hodId], map: "uq_department_hod")
+  @@unique([name, facultyId], map: "uq_dept_name_faculty")
+  @@index([facultyId], map: "idx_dept_faculty")
+  @@map("departments")
+}
+
+model Programme {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String     @db.VarChar(255)
+  code           String     @unique @db.VarChar(20)
+  departmentId   String     @db.Uuid
+  degreeType     DegreeType
+  durationYears  Int        @db.SmallInt
+  minCreditUnits Int        @default(120) @db.SmallInt
+  maxCreditUnits Int        @default(180) @db.SmallInt
+  isActive       Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  department            Department             @relation(fields: [departmentId], references: [id])
+  programmeCourses      ProgrammeCourse[]
+  curriculumVersions    CurriculumVersion[]
+  students              Student[]
+  applicantsChoice1     Applicant[]            @relation("AppChoice1")
+  applicantsChoice2     Applicant[]            @relation("AppChoice2")
+  applicantsChoice3     Applicant[]            @relation("AppChoice3")
+  admissionRequirements AdmissionRequirement[]
+  admissionScreenings   AdmissionScreening[]
+  admissionOffers       AdmissionOffer[]
+  admissionDecisions    AdmissionDecision[]
+  feeSchedules          FeeSchedule[]
+  transferRequestsFrom  ProgrammeTransferRequest[] @relation("TransferFromProgramme")
+  transferRequestsTo    ProgrammeTransferRequest[] @relation("TransferToProgramme")
+
+  @@index([departmentId], map: "idx_programme_dept")
+  @@map("programmes")
+}
+
+enum DegreeType {
+  BSC
+  BA
+  BENG
+  BTECH
+  HND
+  ND
+  MASTERS
+  PHD
+  DIPLOMA
+  PGDIP
+  OTHER
+}
+
+model Course {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code          String        @unique @db.VarChar(20)
+  title         String        @db.VarChar(255)
+  creditUnits   Int           @db.SmallInt
+  departmentId  String        @db.Uuid
+  ccmasCategory CcmasCategory @default(CORE)
+  description   String?       @db.Text
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  department       Department           @relation(fields: [departmentId], references: [id])
+  programmeCourses ProgrammeCourse[]
+  offerings        CourseOffering[]
+  prerequisites    CoursePrerequisite[] @relation("CourseHasPrereq")
+  requiredBy       CoursePrerequisite[] @relation("PrereqOf")
+  academicRequirements AcademicRequirement[]
+  equivalenciesFrom CourseEquivalency[] @relation("EquivalencyFrom")
+  equivalenciesTo   CourseEquivalency[] @relation("EquivalencyTo")
+  transferCreditsMapped AcademicTransferCredit[]
+  academicPlanItems AcademicPlanItem[]
+
+  // GIN index for full-text search (raw SQL migration)
+  @@index([departmentId, ccmasCategory], map: "idx_course_dept_ccmas")
+  @@map("courses")
+}
+
+enum CcmasCategory {
+  CORE
+  ELECTIVE
+  GENERAL_STUDIES
+}
+
+enum SemesterTerm {
+  FIRST
+  SECOND
+  SUMMER
+}
+
+model CoursePrerequisite {
+  id             String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId       String @db.Uuid // course that HAS this prerequisite
+  prerequisiteId String @db.Uuid // course that must be passed first
+  minGrade       String @default("E") @db.VarChar(2)
+
+  course       Course @relation("CourseHasPrereq", fields: [courseId], references: [id], onDelete: Cascade)
+  prerequisite Course @relation("PrereqOf", fields: [prerequisiteId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, prerequisiteId], name: "uq_course_prereq", map: "uq_course_prereq")
+  @@map("course_prerequisites")
+}
+
+enum CurriculumVersionStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+model CurriculumVersion {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programmeId   String                  @db.Uuid
+  academicYear  String                  @db.VarChar(9)
+  version       Int                     @default(1) @db.SmallInt
+  status        CurriculumVersionStatus @default(DRAFT)
+  effectiveFrom DateTime?               @db.Date
+  effectiveTo   DateTime?               @db.Date
+  approvedById  String?                 @db.Uuid
+  approvedAt    DateTime?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  programme     Programme               @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  courses       ProgrammeCourse[]
+  students      Student[]
+  requirementGroups AcademicRequirementGroup[]
+  degreeAudits DegreeAudit[]
+  academicPlans AcademicPlan[]
+  courseOfferings CourseOffering[]
+
+  @@unique([programmeId, version], map: "uq_curriculum_version")
+  @@index([programmeId, status], map: "idx_curriculum_version_status")
+  @@map("curriculum_versions")
+}
+
+model ProgrammeCourse {
+  programmeId         String            @db.Uuid
+  curriculumVersionId String            @db.Uuid
+  courseId            String            @db.Uuid
+  level               Int               @db.SmallInt
+  semester            SemesterTerm
+  isCompulsory        Boolean           @default(true)
+  ccmasCategory       CcmasCategory     @default(CORE)
+  programme           Programme         @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  curriculumVersion   CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Restrict)
+  course              Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([curriculumVersionId, courseId, level, semester], map: "uq_curriculum_course_sem")
+  @@index([programmeId, level], map: "idx_prog_course_level")
+  @@index([curriculumVersionId, level], map: "idx_curriculum_course_level")
+  @@map("programme_courses")
+}
+
+enum CourseOfferingLifecycle {
+  PLANNED
+  PUBLISHED
+  REGISTRATION_OPEN
+  REGISTRATION_CLOSED
+  TEACHING
+  ASSESSMENT
+  EXAMINATION
+  GRADING
+  RESULTS_PENDING
+  RESULTS_PUBLISHED
+  COMPLETED
+  CANCELLED
+}
+
+model CourseOffering {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseId           String        @db.Uuid
+  academicCalendarId String        @db.Uuid
+  academicYear       String        @db.VarChar(9)
+  /**
+   * @deprecated Use semesterId; compatibility snapshot only.
+   */
+  semester           SemesterTerm?
+  lecturerId         String?       @db.Uuid
+  curriculumVersionId String?      @db.Uuid
+  maxStudents        Int?
+  lifecycleStatus    CourseOfferingLifecycle @default(PLANNED)
+  sectionCode        String        @default("A") @db.VarChar(10)
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+
+  course             Course               @relation(fields: [courseId], references: [id])
+  calendar           AcademicCalendar     @relation(fields: [academicCalendarId], references: [id])
+  registrations      CourseRegistration[]
+  semesterId         String               @db.Uuid
+  semesterModel      Semester             @relation(fields: [semesterId], references: [id])
+  lecturer           Staff?               @relation(fields: [lecturerId], references: [id])
+  curriculumVersion CurriculumVersion?   @relation(fields: [curriculumVersionId], references: [id], onDelete: Restrict)
+  results            StudentResult[]
+  attendanceRecords  AttendanceRecord[]
+  examTimetables     ExamTimetable[]
+  contents           CourseContent[]
+  announcements      CourseAnnouncement[]
+  discussions        LmsDiscussionPost[]
+  assessmentSchemes  AssessmentScheme[]
+  assessmentMarks    AssessmentMark[]
+  gradeUploadBatches GradeUploadBatch[]
+
+  @@unique([courseId, semesterId, sectionCode], map: "uq_course_offering_section")
+  @@index([academicCalendarId, semesterId], map: "idx_offering_calendar")
+  @@index([curriculumVersionId, semesterId], map: "idx_offering_curriculum_semester")
+  @@map("course_offerings")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 3: Admissions + Student Records
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Admission Cycle ───────────────────────────────────────────────────────────
+model AdmissionCycle {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academicYear  String        @db.VarChar(9)
+  cycleName     String        @db.VarChar(100)
+  admissionType AdmissionType
+  openDate      DateTime
+  closeDate     DateTime
+  utmeMinScore  Int?          @db.SmallInt
+  maxApplicants Int?
+  isActive      Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+
+  applicants   Applicant[]
+  applications Application[]
+
+  @@index([admissionType, isActive], map: "idx_cycles_type_active")
+  @@map("admission_cycles")
+}
+
+enum AdmissionType {
+  UTME
+  DE
+  TRANSFER
+  POSTGRADUATE
+  SANDWICH
+  INTERNATIONAL
+  REMEDIAL
+}
+
+// ── Applicant ──────────────────────────────────────────────────────────────────
+model Applicant {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  personId              String?         @db.Uuid
+  applicationNo         String          @unique @db.VarChar(20)
+  firstName             String          @db.VarChar(100)
+  lastName              String          @db.VarChar(100)
+  middleName            String?         @db.VarChar(100)
+  dateOfBirth           DateTime        @db.Date
+  gender                String          @db.VarChar(20)
+  nationality           String          @db.VarChar(100)
+  stateOfOrigin         String?         @db.VarChar(100)
+  lga                   String?         @db.VarChar(100)
+  countryOfOriginId     String?         @db.Uuid
+  stateOfOriginId       String?         @db.Uuid
+  lgaOfOriginId         String?         @db.Uuid
+  phone                 String          @db.VarChar(15)
+  email                 String          @db.VarChar(255)
+  admissionType         AdmissionType
+  admissionCycleId      String          @db.Uuid
+  programmeChoice1Id    String          @db.Uuid
+  programmeChoice2Id    String?         @db.Uuid
+  programmeChoice3Id    String?         @db.Uuid
+  // Admission declaration / submission
+  submittedAt           DateTime?
+  declarationAccepted   Boolean         @default(false)
+  declarationAcceptedAt DateTime?
+  // JAMB
+  jambRegNo             String?         @db.VarChar(20)
+  jambScore             Int?            @db.SmallInt
+  jambVerified          Boolean         @default(false)
+  jambVerifyJobId       String?         @db.VarChar(64)
+  // O'level
+  oLevelResults         Json?
+  oLevelVerified        Boolean         @default(false)
+  oLevelVerifyJobId     String?         @db.VarChar(64)
+  // NIN — AES-256-GCM encrypted at application layer
+  nin                   String?         @db.VarChar(150)
+  ninVerified           Boolean         @default(false)
+  // Status FSM
+  status                ApplicantStatus @default(PENDING)
+  capsAdmissionStatus   CapsAdmissionStatus @default(NOT_APPLICABLE)
+  capsApplicationReference String?     @db.VarChar(100)
+  capsProgramme         String?         @db.VarChar(200)
+  capsInstitution       String?         @db.VarChar(200)
+  capsApprovedAt        DateTime?
+  candidateAcceptedOnCapsAt DateTime?
+  lastCapsSyncAt        DateTime?
+  offerDate             DateTime?
+  offerDeadline         DateTime?
+  acceptanceDate        DateTime?
+  rejectionDate         DateTime?
+  rejectionReason       String?         @db.Text
+  // Biometrics (Phase 8+)
+  biometricEnrolled     Boolean         @default(false)
+  passportPhotoUrl      String?         @db.VarChar(500)
+  deletedAt             DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  admissionCycle    AdmissionCycle          @relation(fields: [admissionCycleId], references: [id])
+  programmeChoice1  Programme               @relation("AppChoice1", fields: [programmeChoice1Id], references: [id])
+  programmeChoice2  Programme?              @relation("AppChoice2", fields: [programmeChoice2Id], references: [id])
+  programmeChoice3  Programme?              @relation("AppChoice3", fields: [programmeChoice3Id], references: [id])
+  person            Person?                 @relation(fields: [personId], references: [id])
+  countryOfOrigin   Country?                @relation("ApplicantOriginCountry", fields: [countryOfOriginId], references: [id])
+  stateOrigin       AdministrativeDivision? @relation("ApplicantOriginState", fields: [stateOfOriginId], references: [id])
+  lgaOrigin         AdministrativeDivision? @relation("ApplicantOriginLga", fields: [lgaOfOriginId], references: [id])
+  student           Student?
+  application       Application?
+  addresses         Address[]
+  guardians         GuardianContact[]
+  emergencyContacts EmergencyContact[]
+
+  @@unique([admissionCycleId, jambRegNo], map: "uq_applicant_cycle_jamb")
+  @@unique([admissionCycleId, email], map: "uq_applicant_cycle_email")
+  @@index([status, admissionType], map: "idx_applicants_status_type")
+  @@index([jambRegNo], map: "idx_applicants_jamb")
+  @@index([email], map: "idx_applicants_email")
+  @@index([personId], map: "idx_applicants_person")
+  @@map("applicants")
+}
+
+enum CapsAdmissionStatus {
+  NOT_APPLICABLE
+  OPEN
+  RECOMMENDED
+  APPROVED
+  CANDIDATE_ACCEPTED
+  REJECTED
+  WITHDRAWN
+  SYNC_ERROR
+}
+
+enum ApplicantStatus {
+  DRAFT
+  SUBMITTED
+  PENDING
+  SCREENED
+  DOCUMENT_REVIEW
+  REVIEW_REQUIRED
+  ELIGIBLE
+  INELIGIBLE
+  OFFERED
+  WAITLISTED
+  ACCEPTED
+  DECLINED
+  REJECTED
+  WITHDRAWN
+  DEFERRED
+  CLEARANCE
+  MATRICULATED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ADMISSIONS DOMAIN V5 — applicant identity, qualifications, documents,
+// screening, decisions and offers. Existing Applicant remains the operational
+// compatibility record; these relations provide normalized, auditable detail.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Person {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  firstName         String   @db.VarChar(100)
+  lastName          String   @db.VarChar(100)
+  middleName        String?  @db.VarChar(100)
+  dateOfBirth       DateTime @db.Date
+  gender            String   @db.VarChar(30)
+  nationality       String   @db.VarChar(100)
+  stateOfOrigin     String?  @db.VarChar(100)
+  lga               String?  @db.VarChar(100)
+  countryOfOriginId String?  @db.Uuid
+  stateOfOriginId   String?  @db.Uuid
+  lgaOfOriginId     String?  @db.Uuid
+  primaryEmail      String?  @db.VarChar(255)
+  primaryPhone      String?  @db.VarChar(30)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  applicants      Applicant[]
+  students        Student[]
+  countryOfOrigin Country?                @relation("PersonOriginCountry", fields: [countryOfOriginId], references: [id])
+  stateOrigin     AdministrativeDivision? @relation("PersonOriginState", fields: [stateOfOriginId], references: [id])
+  lgaOrigin       AdministrativeDivision? @relation("PersonOriginLga", fields: [lgaOfOriginId], references: [id])
+  dsrRequestsAsSubject DataSubjectRequest[] @relation("DsrSubjectPerson")
+
+  @@index([primaryEmail], map: "idx_person_email")
+  @@map("persons")
+}
+
+model Application {
+  id                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId              String                   @unique @db.Uuid
+  admissionCycleId         String                   @db.Uuid
+  status                   ApplicationStatus        @default(DRAFT)
+  completionPercent        Int                      @default(0) @db.SmallInt
+  submittedAt              DateTime?
+  lastSavedAt              DateTime                 @default(now())
+  paymentStatus            ApplicationPaymentStatus @default(NOT_REQUIRED)
+  submissionIdempotencyKey String?                  @unique @db.VarChar(100)
+  declarationAccepted      Boolean                  @default(false)
+  declarationAcceptedAt    DateTime?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  applicant      Applicant             @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  admissionCycle AdmissionCycle        @relation(fields: [admissionCycleId], references: [id])
+  documents      ApplicationDocument[]
+  oLevelSittings OLevelSitting[]
+  education      PreviousEducation[]
+  screenings     AdmissionScreening[]
+  decisions      AdmissionDecision[]
+  offers         AdmissionOffer[]
+
+  @@index([admissionCycleId, status], map: "idx_application_cycle_status")
+  @@map("applications")
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_SCREENING
+  DOCUMENT_REVIEW
+  REVIEW_REQUIRED
+  ELIGIBLE
+  INELIGIBLE
+  DECISION_PENDING
+  OFFERED
+  WAITLISTED
+  ACCEPTED
+  DECLINED
+  REJECTED
+  WITHDRAWN
+  DEFERRED
+  CLEARANCE
+  MATRICULATED
+}
+
+enum ApplicationPaymentStatus {
+  NOT_REQUIRED
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  WAIVED
+}
+
+model Address {
+  id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId  String                  @db.Uuid
+  type         AddressType
+  line1        String                  @db.VarChar(255)
+  line2        String?                 @db.VarChar(255)
+  city         String?                 @db.VarChar(100)
+  lga          String?                 @db.VarChar(100)
+  state        String?                 @db.VarChar(100)
+  country      String                  @default("Nigeria") @db.VarChar(100)
+  countryId    String?                 @db.Uuid
+  regionId     String?                 @db.Uuid
+  localAreaId  String?                 @db.Uuid
+  isPrimary    Boolean                 @default(false)
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+  applicant    Applicant               @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  countryRef   Country?                @relation("AddressCountry", fields: [countryId], references: [id])
+  regionRef    AdministrativeDivision? @relation("AddressRegion", fields: [regionId], references: [id])
+  localAreaRef AdministrativeDivision? @relation("AddressLocalArea", fields: [localAreaId], references: [id])
+
+  @@unique([applicantId, type], map: "uq_applicant_address_type")
+  @@map("applicant_addresses")
+}
+
+enum AddressType {
+  RESIDENTIAL
+  PERMANENT
+}
+
+model GuardianContact {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId  String    @db.Uuid
+  fullName     String    @db.VarChar(200)
+  relationship String    @db.VarChar(80)
+  phone        String    @db.VarChar(30)
+  email        String?   @db.VarChar(255)
+  occupation   String?   @db.VarChar(150)
+  address      String?   @db.Text
+  isPrimary    Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  applicant    Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  @@index([applicantId], map: "idx_guardian_applicant")
+  @@map("applicant_guardians")
+}
+
+model EmergencyContact {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicantId  String    @db.Uuid
+  fullName     String    @db.VarChar(200)
+  relationship String    @db.VarChar(80)
+  phone        String    @db.VarChar(30)
+  email        String?   @db.VarChar(255)
+  address      String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  applicant    Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  @@index([applicantId], map: "idx_emergency_applicant")
+  @@map("applicant_emergency_contacts")
+}
+
+model PreviousEducation {
+  id                 String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId      String             @db.Uuid
+  institution        String             @db.VarChar(255)
+  qualification      String             @db.VarChar(150)
+  programme          String?            @db.VarChar(255)
+  startYear          Int?               @db.SmallInt
+  endYear            Int?               @db.SmallInt
+  gradeOrCgpa        String?            @db.VarChar(50)
+  certificateNo      String?            @db.VarChar(100)
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedById       String?            @db.Uuid
+  remarks            String?            @db.Text
+  application        Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, verificationStatus], map: "idx_prev_education")
+  @@map("previous_education")
+}
+
+model OLevelSitting {
+  id                     String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId          String                @db.Uuid
+  examType               OLevelExamType
+  examinationAuthorityId String?               @db.Uuid
+  examinationTypeId      String?               @db.Uuid
+  candidateCategory      String?               @db.VarChar(50)
+  examYear               Int                   @db.SmallInt
+  candidateNumber        String?               @db.VarChar(50)
+  examinationNumber      String?               @db.VarChar(50)
+  centreNumber           String?               @db.VarChar(50)
+  sittingNumber          Int                   @db.SmallInt
+  verificationStatus     VerificationStatus    @default(PENDING)
+  verifiedAt             DateTime?
+  verifiedById           String?               @db.Uuid
+  verificationRef        String?               @db.VarChar(100)
+  remarks                String?               @db.Text
+  application            Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  subjects               OLevelSubject[]
+  examinationAuthority   ExaminationAuthority? @relation(fields: [examinationAuthorityId], references: [id])
+  examinationType        ExaminationType?      @relation(fields: [examinationTypeId], references: [id])
+
+  @@unique([applicationId, sittingNumber], map: "uq_olevel_app_sitting")
+  @@map("olevel_sittings")
+}
+
+model OLevelSubject {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sittingId  String           @db.Uuid
+  subjectId  String?          @db.Uuid
+  subject    String           @db.VarChar(100)
+  grade      String           @db.VarChar(5)
+  createdAt  DateTime         @default(now())
+  sitting    OLevelSitting    @relation(fields: [sittingId], references: [id], onDelete: Cascade)
+  subjectRef AcademicSubject? @relation(fields: [subjectId], references: [id])
+
+  @@unique([sittingId, subject], map: "uq_olevel_subject")
+  @@map("olevel_subjects")
+}
+
+enum OLevelExamType {
+  WAEC
+  NECO
+  NABTEB
+  NBAIS
+  GCE
+}
+
+enum VerificationStatus {
+  PENDING
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+model ApplicationDocument {
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId    String                  @db.Uuid
+  documentType     ApplicationDocumentType
+  fileUrl          String?                 @db.VarChar(1000)
+  originalFileName String?                 @db.VarChar(255)
+  mimeType         String?                 @db.VarChar(100)
+  sizeBytes        Int?
+  documentNumber   String?                 @db.VarChar(100)
+  status           VerificationStatus      @default(PENDING)
+  rejectionReason  String?                 @db.Text
+  verifiedAt       DateTime?
+  verifiedById     String?                 @db.Uuid
+  version          Int                     @default(1)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  application      Application             @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, documentType], map: "idx_app_documents")
+  @@map("application_documents")
+}
+
+enum ApplicationDocumentType {
+  PASSPORT_PHOTO
+  BIRTH_CERTIFICATE
+  AGE_DECLARATION
+  JAMB_RESULT
+  OLEVEL_RESULT
+  OLEVEL_CERTIFICATE
+  DE_CERTIFICATE
+  TRANSCRIPT
+  DEGREE_CERTIFICATE
+  NYSC_CERTIFICATE
+  REFERENCE
+  RESEARCH_PROPOSAL
+  PASSPORT
+  ID_CARD
+  OTHER
+}
+
+model AdmissionScreening {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId  String          @db.Uuid
+  programmeId    String          @db.Uuid
+  result         ScreeningResult
+  score          Decimal?        @db.Decimal(8, 2)
+  reasons        Json
+  policySnapshot Json
+  screenedAt     DateTime        @default(now())
+  screenedById   String?         @db.Uuid
+  application    Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  programme      Programme       @relation(fields: [programmeId], references: [id])
+
+  @@index([applicationId, screenedAt], map: "idx_screening_app")
+  @@map("admission_screenings")
+}
+
+enum ScreeningResult {
+  ELIGIBLE
+  INELIGIBLE
+  REVIEW_REQUIRED
+  INCOMPLETE
+}
+
+model AdmissionDecision {
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String                   @db.Uuid
+  programmeId   String?                  @db.Uuid
+  decision      AdmissionDecisionType
+  reasonCode    AdmissionDecisionReason?
+  reason        String?                  @db.Text
+  decisionDate  DateTime                 @default(now())
+  decisionById  String?                  @db.Uuid
+  approvedById  String?                  @db.Uuid
+  application   Application              @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  programme     Programme?               @relation(fields: [programmeId], references: [id])
+
+  @@index([applicationId, decisionDate], map: "idx_admission_decision")
+  @@map("admission_decisions")
+}
+
+enum AdmissionDecisionType {
+  OFFER
+  WAITLIST
+  REJECT
+  DEFER
+}
+
+enum AdmissionDecisionReason {
+  ACADEMIC_REQUIREMENT_NOT_MET
+  DOCUMENT_NOT_VERIFIED
+  UTME_REQUIREMENT_NOT_MET
+  OLEVEL_REQUIREMENT_NOT_MET
+  PROGRAMME_CAPACITY
+  INCOMPLETE_APPLICATION
+  DUPLICATE_APPLICATION
+  INELIGIBLE_ADMISSION_TYPE
+  OTHER
+}
+
+model AdmissionOffer {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String      @db.Uuid
+  offerNumber   String      @unique @db.VarChar(50)
+  programmeId   String      @db.Uuid
+  issueDate     DateTime    @default(now())
+  expiryDate    DateTime?
+  conditions    Json?
+  status        OfferStatus @default(PENDING)
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  programme     Programme   @relation(fields: [programmeId], references: [id])
+
+  @@index([applicationId, status], map: "idx_offer_app")
+  @@map("admission_offers")
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+model AdmissionRequirement {
+  id                  String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programmeId         String                        @db.Uuid
+  admissionType       AdmissionType
+  academicYear        String                        @db.VarChar(9)
+  minUtmeScore        Int?                          @db.SmallInt
+  minOLevelCredits    Int?                          @default(5) @db.SmallInt
+  maxOLevelSittings   Int?                          @default(2) @db.SmallInt
+  requireEnglish      Boolean                       @default(true)
+  requireMathematics  Boolean                       @default(true)
+  minAge              Int?                          @db.SmallInt
+  maxAge              Int?                          @db.SmallInt
+  requiredDocuments   Json?
+  isActive            Boolean                       @default(true)
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+  programme           Programme                     @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  subjectRequirements AdmissionSubjectRequirement[]
+
+  @@unique([programmeId, admissionType, academicYear], map: "uq_admission_requirement")
+  @@map("admission_requirements")
+}
+
+model AdmissionSubjectRequirement {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requirementId String               @db.Uuid
+  subject       String               @db.VarChar(100)
+  required      Boolean              @default(true)
+  alternatives  Json?
+  requirement   AdmissionRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([requirementId, subject], map: "uq_admission_subject_requirement")
+  @@map("admission_subject_requirements")
+}
+
+// ── Global reference data ────────────────────────────────────────────────────
+model Country {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  iso2            String   @unique @db.VarChar(2)
+  iso3            String?  @unique @db.VarChar(3)
+  numericCode     String?  @db.VarChar(3)
+  name            String   @db.VarChar(150)
+  officialName    String?  @db.VarChar(255)
+  nationalityName String?  @db.VarChar(150)
+  phoneCode       String?  @db.VarChar(10)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  divisions              AdministrativeDivision[]
+  applicantOrigins       Applicant[]              @relation("ApplicantOriginCountry")
+  personOrigins          Person[]                 @relation("PersonOriginCountry")
+  addresses              Address[]                @relation("AddressCountry")
+  examinationAuthorities ExaminationAuthority[]
+
+  @@index([name], map: "idx_country_name")
+  @@map("ref_countries")
+}
+
+model AdministrativeDivision {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  countryId String   @db.Uuid
+  parentId  String?  @db.Uuid
+  code      String?  @db.VarChar(20)
+  name      String   @db.VarChar(150)
+  type      String   @db.VarChar(50)
+  level     Int      @default(1) @db.SmallInt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  country               Country                  @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  parent                AdministrativeDivision?  @relation("DivisionTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children              AdministrativeDivision[] @relation("DivisionTree")
+  applicantStateOrigins Applicant[]              @relation("ApplicantOriginState")
+  applicantLgaOrigins   Applicant[]              @relation("ApplicantOriginLga")
+  personStateOrigins    Person[]                 @relation("PersonOriginState")
+  personLgaOrigins      Person[]                 @relation("PersonOriginLga")
+  addressRegions        Address[]                @relation("AddressRegion")
+  addressLocalAreas     Address[]                @relation("AddressLocalArea")
+
+  @@unique([countryId, code], map: "uq_ref_division_country_code")
+  @@unique([countryId, parentId, name], map: "uq_ref_division_parent_name")
+  @@index([countryId, level, name], map: "idx_ref_division_country_level")
+  @@index([parentId, name], map: "idx_ref_division_parent")
+  @@map("ref_administrative_divisions")
+}
+
+model ExaminationAuthority {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code           String            @unique @db.VarChar(30)
+  name           String            @unique @db.VarChar(200)
+  countryId      String?           @db.Uuid
+  description    String?           @db.Text
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  types          ExaminationType[]
+  country        Country?          @relation(fields: [countryId], references: [id])
+  olevelSittings OLevelSitting[]
+
+  @@index([countryId], map: "idx_exam_authority_country")
+  @@map("ref_examination_authorities")
+}
+
+model ExaminationType {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authorityId    String               @db.Uuid
+  code           String               @db.VarChar(50)
+  name           String               @db.VarChar(200)
+  candidateLabel String?              @db.VarChar(100)
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  authority      ExaminationAuthority @relation(fields: [authorityId], references: [id], onDelete: Cascade)
+  olevelSittings OLevelSitting[]
+
+  @@unique([authorityId, code], map: "uq_exam_type_authority_code")
+  @@index([authorityId, name], map: "idx_exam_type_authority")
+  @@map("ref_examination_types")
+}
+
+model AcademicSubject {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code           String          @unique @db.VarChar(30)
+  name           String          @unique @db.VarChar(150)
+  category       String?         @db.VarChar(80)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  olevelSubjects OLevelSubject[]
+
+  @@index([category, name], map: "idx_subject_category")
+  @@map("ref_academic_subjects")
+}
+
+// ── Student ────────────────────────────────────────────────────────────────────
+model Student {
+  id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  matricNo               String        @unique @db.VarChar(20)
+  personId               String        @unique @db.Uuid
+  applicantId            String?       @unique @db.Uuid
+  userId                 String        @unique @db.Uuid
+  firstName              String        @db.VarChar(100)
+  lastName               String        @db.VarChar(100)
+  middleName             String?       @db.VarChar(100)
+  dateOfBirth            DateTime      @db.Date
+  gender                 String        @db.VarChar(20)
+  nationality            String        @db.VarChar(100)
+  stateOfOrigin          String?       @db.VarChar(100)
+  phone                  String        @db.VarChar(15)
+  email                  String        @unique @db.VarChar(255)
+  // AES-256-GCM encrypted
+  nin                    String?       @db.VarChar(150)
+  ninVerified            Boolean       @default(false)
+  /**
+   * @deprecated Do not collect/store BVN on Student.
+   */
+  bvn                    String?       @db.VarChar(150)
+  passportPhotoUrl       String?       @db.VarChar(500)
+  programmeId            String        @db.Uuid
+  curriculumVersionId    String        @db.Uuid
+  departmentId           String        @db.Uuid
+  level                  Int           @db.SmallInt
+  modeOfStudy            ModeOfStudy   @default(FULL_TIME)
+  entryAcademicYear      String        @db.VarChar(9)
+  // CGPA — updated atomically in same tx as result changes
+  cgpa                   Decimal       @default(0.00) @db.Decimal(4, 2)
+  totalCreditUnitsEarned Int           @default(0) @db.SmallInt
+  status                 StudentStatus @default(ACTIVE)
+  feeCleared             Boolean       @default(false)
+  ferpaDirectoryOptOut   Boolean       @default(false)
+  currentAddress         String?       @db.Text
+  permanentAddress       String?       @db.Text
+  deletedAt              DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  user                 User                     @relation(fields: [userId], references: [id])
+  person               Person                   @relation(fields: [personId], references: [id])
+  applicant            Applicant?               @relation(fields: [applicantId], references: [id])
+  programme            Programme                @relation(fields: [programmeId], references: [id])
+  curriculumVersion    CurriculumVersion        @relation(fields: [curriculumVersionId], references: [id], onDelete: Restrict)
+  department           Department               @relation(fields: [departmentId], references: [id])
+  academicHistory      StudentAcademicHistory[]
+  courseRegs           CourseRegistration[]
+  studentFees          StudentFee[]
+  payments             Payment[]
+  results              StudentResult[]
+  attendanceRecords    AttendanceRecord[]
+  clearances           StudentClearance[]
+  roomAllocations      RoomAllocation[]
+  examCandidates       ExamCandidate[]
+  examAttendances      ExamAttendance[]
+  lmsSubmissions       LmsSubmission[]
+  lmsProgress          LmsProgress[]
+  lmsQuizAttempts      QuizAttempt[]
+  graduationCandidates GraduationCandidate[]
+  academicExemptions AcademicExemption[]
+  transferCredits AcademicTransferCredit[]
+  degreeAudits DegreeAudit[]
+  progressionEvaluations ProgressionEvaluation[]
+  academicStandings AcademicStanding[]
+  academicPlacements AcademicPlacement[]
+  academicPlans AcademicPlan[]
+  appeals AcademicAppeal[]
+  programmeTransferRequests ProgrammeTransferRequest[]
+  interruptions AcademicInterruption[]
+  credentials AcademicCredential[]
+
+  @@index([matricNo], map: "idx_students_matric")
+  @@index([programmeId, level, status], map: "idx_students_programme_level")
+  @@index([status], map: "idx_students_status_active")
+  @@map("students")
+}
+
+enum StudentStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+  GRADUATED
+  DEFERRED
+  REPEATING
+}
+
+enum ModeOfStudy {
+  FULL_TIME
+  PART_TIME
+  DISTANCE
+  SANDWICH
+}
+
+model StudentAcademicHistory {
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId    String        @db.Uuid
+  academicYear String        @db.VarChar(9)
+  level        Int           @db.SmallInt
+  status       StudentStatus
+  gpa          Decimal?      @db.Decimal(4, 2)
+  cgpa         Decimal?      @db.Decimal(4, 2)
+  startDate    DateTime      @db.Date
+  endDate      DateTime?     @db.Date
+  notes        String?       @db.Text
+  creditUnitsAttempted Int    @default(0) @db.SmallInt
+  creditUnitsEarned Int       @default(0) @db.SmallInt
+  failedCourseCount Int       @default(0) @db.SmallInt
+
+  student Student @relation(fields: [studentId], references: [id])
+
+  semesterId String?   @db.Uuid
+  semester   Semester? @relation(fields: [semesterId], references: [id])
+  periodKey  String    @db.VarChar(100)
+  progressionEvaluations ProgressionEvaluation[]
+  academicStandings AcademicStanding[]
+
+  @@unique([studentId, periodKey], map: "uq_student_academic_history_period")
+  @@index([studentId, semesterId], map: "idx_student_academic_history_semester")
+  @@map("student_academic_history")
+}
+
+model CourseRegistration {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String          @db.Uuid
+  courseOfferingId String          @db.Uuid
+  registeredAt     DateTime        @default(now())
+  droppedAt        DateTime?
+  status           CourseRegStatus @default(REGISTERED)
+
+  student           Student            @relation(fields: [studentId], references: [id])
+  courseOffering    CourseOffering     @relation(fields: [courseOfferingId], references: [id])
+  results           StudentResult[]    @relation("ResultRegistration")
+  attendanceRecords AttendanceRecord[] @relation("AttendanceRegistration")
+
+  // FIX B1 (Critical Evaluation): historical — CourseOffering's deprecated `semester`
+  // field is the SemesterTerm enum, distinct from the real Semester model below.
+  // Prevents duplicate registration — enforced at DB level.
+  @@unique([studentId, courseOfferingId], name: "uq_course_registration", map: "uq_course_registration")
+  @@index([studentId, status], map: "idx_creg_student_status")
+  @@map("course_registrations")
+}
+
+enum CourseRegStatus {
+  REGISTERED
+  ON_HOLD
+  DROPPED
+  COMPLETED
+}
+
+// Add back-relations to existing models (added via raw ALTER if needed)
+// Programme.applicantsChoice1 + applicantsChoice2 + students added here
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 4: Fees & Payments
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum FeeType {
+  TUITION
+  ACCEPTANCE
+  ACCOMMODATION
+  LIBRARY
+  MEDICAL
+  SPORTS
+  ICT
+  EXAM_FEE
+  LATE_REG
+  OTHER
+}
+
+enum FeeStatus {
+  PENDING
+  PARTIAL
+  PAID
+  WAIVED
+  OVERDUE
+}
+
+enum PaymentProvider {
+  REMITA
+  PAYSTACK
+  TSA_MANUAL
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  /// Durable pre-provider state. A short lease prevents concurrent callers
+  /// from opening multiple external payment instruments for one request key.
+  INITIATING
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum WaiverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODULE 15: Clearance (AUDIT-H3)
+// Did not exist before this fix, despite THREE existing places assuming it
+// did: students.service.ts's matriculate() seeds default clearance items
+// (wrapped in try/catch anticipating "P5 migration pending" — that migration
+// never actually landed), and report-generation.processor.ts's
+// ReportType.CLEARANCE_STATUS case already queries studentClearance/
+// clearanceItem directly with no defensive handling at all. Field names
+// below match both of those existing call sites exactly, verified before
+// writing this rather than guessed.
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum ClearanceStatus {
+  PENDING
+  CLEARED
+  BLOCKED
+  WAIVED
+}
+
+model ClearanceItem {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                    String   @db.VarChar(100)
+  description             String?  @db.Text
+  responsibleRole         RoleName
+  isRequiredForGraduation Boolean  @default(true)
+  isAutoCleared           Boolean  @default(false)
+  isActive                Boolean  @default(true)
+  sortOrder               Int      @default(0)
+  createdAt               DateTime @default(now())
+
+  studentClearances StudentClearance[]
+
+  @@index([isRequiredForGraduation], map: "idx_clearance_items_grad")
+  @@map("clearance_items")
+}
+
+model StudentClearance {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId       String          @db.Uuid
+  clearanceItemId String          @db.Uuid
+  status          ClearanceStatus @default(PENDING)
+  clearedById     String?         @db.Uuid
+  clearedAt       DateTime?
+  blockedById     String?         @db.Uuid
+  blockedAt       DateTime?
+  blockReason     String?         @db.Text
+  waivedById      String?         @db.Uuid
+  waivedAt        DateTime?
+  waiverReason    String?         @db.Text
+  remarks         String?         @db.Text
+  updatedAt       DateTime        @updatedAt
+
+  student       Student       @relation(fields: [studentId], references: [id])
+  clearanceItem ClearanceItem @relation(fields: [clearanceItemId], references: [id])
+
+  @@unique([studentId, clearanceItemId])
+  @@index([studentId, status], map: "idx_clearance_student")
+  @@map("student_clearances")
+}
+
+model FeeSchedule {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  programmeId  String?   @db.Uuid // null = applies to ALL programmes
+  level        Int?      @db.SmallInt // null = applies to ALL levels
+  academicYear String    @db.VarChar(9)
+  feeType      FeeType
+  amount       Decimal   @db.Decimal(12, 2)
+  description  String?   @db.Text
+  isActive     Boolean   @default(true)
+  dueDate      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  programme   Programme?   @relation(fields: [programmeId], references: [id])
+  studentFees StudentFee[]
+
+  @@unique([programmeId, level, academicYear, feeType], map: "uq_fee_schedule")
+  @@index([academicYear, isActive], map: "idx_fee_schedule_year_active")
+  @@map("fee_schedules")
+}
+
+model StudentFee {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId     String    @db.Uuid
+  feeScheduleId String    @db.Uuid
+  academicYear  String    @db.VarChar(9)
+  semesterId    String?   @db.Uuid
+  amount        Decimal   @db.Decimal(12, 2)
+  amountPaid    Decimal   @default(0.00) @db.Decimal(12, 2)
+  waiverAmount  Decimal   @default(0.00) @db.Decimal(12, 2)
+  status        FeeStatus @default(PENDING)
+  dueDate       DateTime?
+  invoiceNo     String    @unique @db.VarChar(50) // NEW-4: extended from 30 to 50 chars for sequential counter format
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  student     Student     @relation(fields: [studentId], references: [id])
+  semester    Semester?   @relation(fields: [semesterId], references: [id])
+  feeSchedule FeeSchedule @relation(fields: [feeScheduleId], references: [id])
+  payments    Payment[]
+  waivers     FeeWaiver[]
+
+  @@unique([studentId, feeScheduleId, academicYear], name: "uq_student_fee", map: "uq_student_fee")
+  @@index([studentId, status], map: "idx_student_fee_status")
+  @@index([academicYear, status], map: "idx_student_fee_year_status")
+  @@index([studentId, semesterId, status], map: "idx_student_fee_semester_status")
+  @@map("student_fees")
+}
+
+/// Payment — PARTITIONED (P10): PARTITION BY RANGE (created_at), monthly.
+/// See docs/CHANGELOG.md "Payment/Payslip partitioning deferred to P10"
+/// and prisma/migrations/0008_p10_partition_payments_payslips for the DDL.
+///
+/// P10 RESOLUTION of the "cascading FK implications" the deferral noted:
+/// Postgres requires the partition key (created_at) to be part of EVERY
+/// unique constraint on a partitioned table — including the PK. That breaks
+/// the two single-column UNIQUE constraints this model relied on for
+/// idempotency (`providerRef`, `idempotencyKey`), because a webhook retry or
+/// a client retry naturally has a DIFFERENT created_at than the original
+/// attempt, so a composite UNIQUE(x, created_at) would silently fail to
+/// catch the duplicate — the exact class of bug already fixed once as NEW-2
+/// (double-payment on retry). Nothing else in the schema holds an FK to
+/// Payment.id (verified — Payment is a leaf model), so there is no cascading
+/// FK to redesign. Instead:
+///   - `id` becomes part of a composite @@id([id, createdAt]) to satisfy
+///     Postgres's partitioning requirement.
+///   - `providerRef` / `idempotencyKey` drop @unique (no longer expressible
+///     as a true cross-partition constraint) and become plain indexes.
+///   - Idempotency is restored using the SAME advisory-lock pattern already
+///     used elsewhere in this codebase (matric no. generation, course
+///     registration): PaymentsService wraps the check-then-write in
+///     `pg_advisory_xact_lock(hashtext(key))` inside the transaction, which
+///     serializes concurrent attempts for the same key without needing a
+///     DB-level unique constraint. See payments.service.ts for the patch.
+model Payment {
+  id             String          @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentFeeId   String          @db.Uuid
+  studentId      String          @db.Uuid
+  amount         Decimal         @db.Decimal(12, 2)
+  provider       PaymentProvider
+  providerRef    String          @db.VarChar(100) // Remita RRR / Paystack reference — NOT globally unique at DB level post-partitioning; see model doc
+  status         PaymentStatus   @default(PENDING)
+  paidAt         DateTime?
+  channel        String?         @db.VarChar(50) // card, bank, ussd, transfer
+  metadata               Json?
+  initiationLeaseUntil   DateTime?
+  idempotencyKey         String?         @db.VarChar(100) // NOT globally unique at DB level post-partitioning; see model doc
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  studentFee StudentFee @relation(fields: [studentFeeId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+
+  @@id([id, createdAt])
+  @@index([studentId, status], map: "idx_payment_student_status")
+  @@index([providerRef], map: "idx_payment_provider_ref")
+  @@index([idempotencyKey], map: "idx_payment_idempotency_key")
+  @@index([createdAt], map: "idx_payment_created_at")
+  @@index([status, createdAt], map: "idx_payment_status_created") // reconciliation sweep
+  @@map("payments")
+}
+
+/// Unpartitioned ownership claim for an external/manual receipt reference.
+/// Payments themselves are partitioned, so this table supplies global receipt
+/// uniqueness without weakening the payment-table partition design.
+model PaymentReceiptClaim {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptReference String   @unique @db.VarChar(100)
+  paymentId        String   @db.Uuid
+  studentFeeId     String   @db.Uuid
+  provider         PaymentProvider
+  createdAt        DateTime @default(now())
+
+  @@index([paymentId], map: "idx_payment_receipt_claim_payment")
+  @@map("payment_receipt_claims")
+}
+
+model FeeWaiver {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentFeeId  String  @db.Uuid
+  requestedById String  @db.Uuid
+  approvedById  String? @db.Uuid
+
+  requestedBy  User         @relation("WaiverRequestedBy", fields: [requestedById], references: [id])
+  approvedBy   User?        @relation("WaiverApprovedBy", fields: [approvedById], references: [id])
+  waiverPct    Decimal      @db.Decimal(5, 2)
+  waiverAmount Decimal      @db.Decimal(12, 2)
+  reason       String       @db.Text
+  status       WaiverStatus @default(PENDING)
+  createdAt    DateTime     @default(now())
+  decidedAt    DateTime?
+
+  studentFee StudentFee @relation(fields: [studentFeeId], references: [id])
+
+  @@index([studentFeeId, status], map: "idx_waiver_fee_status")
+  @@map("fee_waivers")
+}
+
+/// DomainEvent — Transactional Outbox table (S1 / H9 fix).
+/// Written inside the SAME transaction as the business operation that
+/// produced it (e.g. payment.completed alongside the Payment+StudentFee
+/// update). OutboxProcessorService polls WHERE processedAt IS NULL every
+/// 5s and emits via EventEmitter2 for non-critical side effects
+/// (notifications, LMS sync). Guarantees at-least-once delivery — survives
+/// process crashes between commit and emit.
+model DomainEvent {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType   String    @db.VarChar(100)
+  payload     Json
+  createdAt   DateTime  @default(now())
+  processedAt   DateTime?
+  deadLetteredAt DateTime?
+  nextAttemptAt DateTime?
+  attempts      Int       @default(0) @db.SmallInt
+  lastError     String?   @db.Text
+
+  @@index([processedAt, deadLetteredAt, nextAttemptAt, createdAt], map: "idx_outbox_unprocessed")
+  @@map("domain_events")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 5: Exams & Results
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── M2 FIX: Semester model (was just a string field on CourseOffering) ───────
+model Semester {
+  id                  String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  academicYear        String         @db.VarChar(9)
+  semesterNumber      Int            @db.SmallInt
+  name                String         @db.VarChar(50)
+  enrollmentStartDate DateTime       @db.Date
+  enrollmentEndDate   DateTime       @db.Date
+  classStartDate      DateTime       @db.Date
+  classEndDate        DateTime       @db.Date
+  examStartDate       DateTime       @db.Date
+  examEndDate         DateTime       @db.Date
+  resultDeadline      DateTime       @db.Date
+  isCurrent           Boolean        @default(false)
+  status              SemesterStatus @default(PLANNING)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  courseOfferings        CourseOffering[]
+  studentFees            StudentFee[]
+  studentAcademicHistory StudentAcademicHistory[]
+  studentResults         StudentResult[]
+  examTimetables         ExamTimetable[]
+  attendanceRecords      AttendanceRecord[]
+  gradeUploadBatches     GradeUploadBatch[]
+
+  @@unique([academicYear, semesterNumber], name: "uq_semester_year_number", map: "uq_semester_year_number")
+  @@index([isCurrent, status], map: "idx_semester_current")
+  @@map("semesters")
+}
+
+enum SemesterStatus {
+  PLANNING
+  REGISTRATION
+  ACTIVE
+  EXAMS
+  RESULT_ENTRY
+  COMPLETED
+}
+
+// ── M8 FIX: AttendanceRecord (prerequisite for dropout-prediction AI) ────────
+model AttendanceRecord {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String   @db.Uuid
+  courseOfferingId String   @db.Uuid
+  semesterId       String   @db.Uuid
+  date             DateTime @db.Date
+  present          Boolean
+  remark           String?  @db.VarChar(200)
+  recordedById     String   @db.Uuid
+  createdAt        DateTime @default(now())
+
+  student        Student            @relation(fields: [studentId], references: [id])
+  courseOffering CourseOffering     @relation(fields: [courseOfferingId], references: [id])
+  semester       Semester           @relation(fields: [semesterId], references: [id])
+  recordedBy     User               @relation("AttendanceRecordedBy", fields: [recordedById], references: [id])
+  registration   CourseRegistration @relation("AttendanceRegistration", fields: [studentId, courseOfferingId], references: [studentId, courseOfferingId])
+
+  @@unique([studentId, courseOfferingId, date], name: "uq_attendance_record", map: "uq_attendance_record")
+  @@index([courseOfferingId, date], map: "idx_attendance_course_date")
+  @@index([studentId, semesterId], map: "idx_attendance_student_semester")
+  @@map("attendance_records")
+}
+
+// ── StudentResult — resolved from CB-3 forward-reference ────────────────────
+// M1 FIX: SENATE_PUBLISHED triggers recomputeStudentCgpa() in SAME $transaction
+model StudentResult {
+  id                    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId             String       @db.Uuid
+  courseOfferingId      String       @db.Uuid
+  semesterId            String       @db.Uuid
+  score                 Decimal      @db.Decimal(5, 2)
+  grade                 String       @db.VarChar(2)
+  gradePoint            Decimal      @db.Decimal(3, 1)
+  creditUnits           Int          @db.SmallInt
+  absentFromExam        Boolean      @default(false)
+  status                ResultStatus @default(DRAFT)
+  submittedById         String       @db.Uuid
+  approvedByHodId       String?      @db.Uuid
+  hodApprovedAt         DateTime?
+  // AUDIT-C3: Dean approval layer, gated by InstitutionSettings.deanApprovalRequired
+  // (the flag existed and was settable but never read anywhere — see
+  // docs/CHANGELOG.md AUDIT-C3). Nullable/unused when the flag is off.
+  approvedByDeanId      String?      @db.Uuid
+  deanApprovedAt        DateTime?
+  senatePendingAt       DateTime?
+  senatePublishedAt     DateTime?
+  // Canonical academic attempt order for repeat-course policy.
+  attemptNumber         Int          @default(1) @db.SmallInt
+  rejectionReason       String?      @db.Text
+  // AUDIT-C2: amendment tracking — previously this workflow did not exist;
+  // a SENATE_PUBLISHED result had no path to correction at all.
+  isAmended             Boolean      @default(false)
+  amendmentReason       String?      @db.Text
+  amendedById           String?      @db.Uuid
+  amendedAt             DateTime?
+  gradingSystemSnapshot String       @default("NIGERIAN_5_POINT") @db.VarChar(30)
+  gradingPolicyVersion  Int          @default(1) @db.SmallInt
+  assessmentEvidence    Json?
+  finalScore            Decimal?     @db.Decimal(5, 2)
+  resultVersion         Int          @default(1) @db.SmallInt
+  // AUDIT-C2: withhold tracking (spec §11.4 "Withhold result pending
+  // clearance or disciplinary action" — also previously unimplemented).
+  withheldReason        String?      @db.Text
+  withheldById          String?      @db.Uuid
+  withheldAt            DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  student        Student            @relation(fields: [studentId], references: [id])
+  courseOffering CourseOffering     @relation(fields: [courseOfferingId], references: [id])
+  semester       Semester           @relation(fields: [semesterId], references: [id])
+  registration   CourseRegistration @relation("ResultRegistration", fields: [studentId, courseOfferingId], references: [studentId, courseOfferingId])
+
+  @@unique([studentId, courseOfferingId, semesterId], name: "uq_student_result", map: "uq_student_result")
+  @@index([studentId, attemptNumber], map: "idx_result_student_attempt")
+  @@index([courseOfferingId, status], map: "idx_result_offering_status")
+  @@index([studentId, status], map: "idx_result_student_status")
+  @@index([semesterId, status], map: "idx_result_semester_status")
+  @@map("student_results")
+}
+
+enum ResultStatus {
+  DRAFT
+  HOD_APPROVED
+  DEAN_APPROVED
+  SENATE_PENDING
+  SENATE_PUBLISHED
+  REJECTED
+  WITHHELD
+}
+
+// ── Assessment / examination governance ─────────────────────────────────────
+// These records preserve raw academic evidence separately from derived grades.
+model AssessmentScheme {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String                @db.Uuid
+  name             String                @db.VarChar(150)
+  version          Int                   @default(1) @db.SmallInt
+  totalWeight      Decimal               @default(100) @db.Decimal(5, 2)
+  status           String                @default("DRAFT") @db.VarChar(30)
+  approvedById     String?               @db.Uuid
+  approvedAt       DateTime?
+  effectiveFrom    DateTime?
+  createdById      String                @db.Uuid
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  components       AssessmentComponent[]
+  courseOffering   CourseOffering        @relation(fields: [courseOfferingId], references: [id])
+
+  @@unique([courseOfferingId, version], map: "uq_assessment_scheme_version")
+  @@index([courseOfferingId, status], map: "idx_assessment_scheme_offering_status")
+  @@map("assessment_schemes")
+}
+
+model AssessmentComponent {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schemeId    String           @db.Uuid
+  name        String           @db.VarChar(100)
+  code        String           @db.VarChar(30)
+  category    String           @db.VarChar(30) // CA, EXAM, PRACTICAL, PROJECT, OTHER
+  maxScore    Decimal          @db.Decimal(6, 2)
+  weight      Decimal          @db.Decimal(5, 2)
+  sequence    Int              @default(1) @db.SmallInt
+  isRequired  Boolean          @default(true)
+  isPublished Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  scheme      AssessmentScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  marks       AssessmentMark[]
+  lmsContent  CourseContent?
+
+  @@unique([schemeId, code], map: "uq_assessment_component_code")
+  @@index([schemeId, sequence], map: "idx_assessment_component_order")
+  @@map("assessment_components")
+}
+
+model AssessmentMark {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String              @db.Uuid
+  courseOfferingId String              @db.Uuid
+  componentId      String              @db.Uuid
+  examTimetableId  String?             @db.Uuid
+  score            Decimal             @db.Decimal(6, 2)
+  status           String              @default("DRAFT") @db.VarChar(20)
+  enteredById      String              @db.Uuid
+  finalizedById    String?             @db.Uuid
+  finalizedAt      DateTime?
+  version          Int                 @default(1) @db.SmallInt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  component        AssessmentComponent @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  courseOffering   CourseOffering      @relation(fields: [courseOfferingId], references: [id])
+  examTimetable    ExamTimetable?      @relation(fields: [examTimetableId], references: [id])
+
+  @@unique([studentId, componentId], name: "uq_assessment_mark_student_component", map: "uq_assessment_mark_student_component")
+  @@index([courseOfferingId, status], map: "idx_assessment_mark_offering_status")
+  @@index([studentId, courseOfferingId], map: "idx_assessment_mark_student_offering")
+  @@index([examTimetableId], map: "idx_assessment_mark_exam_timetable")
+  @@map("assessment_marks")
+}
+
+model ExamCandidate {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examTimetableId String           @db.Uuid
+  studentId       String           @db.Uuid
+  eligibility     String           @default("ELIGIBLE") @db.VarChar(30)
+  reason          String?
+  seatLabel       String?          @db.VarChar(30)
+  generatedAt     DateTime         @default(now())
+  examTimetable   ExamTimetable    @relation(fields: [examTimetableId], references: [id], onDelete: Cascade)
+  student         Student          @relation(fields: [studentId], references: [id])
+  attendance      ExamAttendance[] @relation("ExamCandidateAttendance")
+
+  @@unique([examTimetableId, studentId], name: "uq_exam_candidate", map: "uq_exam_candidate")
+  @@index([studentId, eligibility], map: "idx_exam_candidate_student")
+  @@map("exam_candidates")
+}
+
+model ExamInvigilator {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examTimetableId String        @db.Uuid
+  staffId         String        @db.Uuid
+  role            String        @default("INVIGILATOR") @db.VarChar(30)
+  createdAt       DateTime      @default(now())
+  examTimetable   ExamTimetable @relation(fields: [examTimetableId], references: [id], onDelete: Cascade)
+  staff           Staff         @relation(fields: [staffId], references: [id])
+
+  @@unique([examTimetableId, staffId], map: "uq_exam_invigilator")
+  @@index([staffId], map: "idx_exam_invigilator_staff")
+  @@map("exam_invigilators")
+}
+
+model ExamAttendance {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  examTimetableId String        @db.Uuid
+  studentId       String        @db.Uuid
+  status          String        @default("PRESENT") @db.VarChar(30)
+  checkedInAt     DateTime?
+  checkedOutAt    DateTime?
+  bookletNumber   String?       @db.VarChar(50)
+  incidentNote    String?       @db.Text
+  recordedById    String        @db.Uuid
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  examTimetable   ExamTimetable @relation(fields: [examTimetableId], references: [id], onDelete: Cascade)
+  student         Student       @relation(fields: [studentId], references: [id])
+  recordedBy      User          @relation("ExamAttendanceRecordedBy", fields: [recordedById], references: [id])
+  candidate       ExamCandidate @relation("ExamCandidateAttendance", fields: [examTimetableId, studentId], references: [examTimetableId, studentId])
+
+  @@unique([examTimetableId, studentId], name: "uq_exam_attendance", map: "uq_exam_attendance")
+  @@index([examTimetableId, status], map: "idx_exam_attendance_exam_status")
+  @@map("exam_attendance")
+}
+
+model ExamVenue {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String          @unique @db.VarChar(30)
+  name       String          @db.VarChar(150)
+  campus     String?         @db.VarChar(100)
+  building   String?         @db.VarChar(100)
+  room       String?         @db.VarChar(100)
+  capacity   Int             @db.SmallInt
+  accessible Boolean         @default(false)
+  active     Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  timetables ExamTimetable[]
+
+  @@index([campus, active], map: "idx_exam_venue_campus_active")
+  @@map("exam_venues")
+}
+
+model ResultVersion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentResultId String   @db.Uuid
+  version         Int      @db.SmallInt
+  score           Decimal  @db.Decimal(5, 2)
+  grade           String   @db.VarChar(2)
+  gradePoint      Decimal  @db.Decimal(3, 1)
+  reason          String?  @db.Text
+  changedById     String   @db.Uuid
+  createdAt       DateTime @default(now())
+
+  @@unique([studentResultId, version], map: "uq_result_version")
+  @@index([studentResultId, createdAt], map: "idx_result_version_history")
+  @@map("result_versions")
+}
+
+model GradeUploadBatch {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String         @db.Uuid
+  semesterId       String         @db.Uuid
+  uploadedById     String         @db.Uuid
+  fileName         String         @db.VarChar(255)
+  templateVersion  String         @db.VarChar(30)
+  mode             String         @default("VALIDATE_ONLY") @db.VarChar(30)
+  status           String         @default("VALIDATED") @db.VarChar(30)
+  totalRows        Int            @default(0)
+  validRows        Int            @default(0)
+  warningRows      Int            @default(0)
+  errorRows        Int            @default(0)
+  checksum         String?        @db.VarChar(128)
+  errorReport      Json?
+  createdAt        DateTime       @default(now())
+  courseOffering   CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  semester         Semester       @relation(fields: [semesterId], references: [id])
+  uploadedBy       User           @relation(fields: [uploadedById], references: [id])
+
+  @@index([courseOfferingId, createdAt], map: "idx_grade_upload_offering_date")
+  @@map("grade_upload_batches")
+}
+
+// ── ExamTimetable ─────────────────────────────────────────────────────────────
+model ExamTimetable {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String   @db.Uuid
+  semesterId       String   @db.Uuid
+  venue            String   @db.VarChar(200)
+  venueId          String?  @db.Uuid
+  examDate         DateTime @db.Date
+  startTime        String   @db.VarChar(5)
+  durationMinutes  Int      @db.SmallInt
+  invigilatorNotes String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  courseOffering CourseOffering    @relation(fields: [courseOfferingId], references: [id])
+  semester       Semester          @relation(fields: [semesterId], references: [id])
+  venueRef       ExamVenue?        @relation(fields: [venueId], references: [id])
+  candidates     ExamCandidate[]
+  invigilators   ExamInvigilator[]
+  attendances    ExamAttendance[]
+  assessmentMarks AssessmentMark[]
+
+  @@unique([courseOfferingId, semesterId], map: "uq_exam_timetable")
+  @@index([semesterId, examDate], map: "idx_timetable_date")
+  @@map("exam_timetables")
+}
+
+// NOTE: an earlier, unmigrated draft of ClearanceItem/StudentClearance/
+// ClearanceStatus previously lived here (comment: "resolves CB-3
+// forward-reference"). It duplicated the real, migrated definitions above
+// (see migration 0010_p10_clearance_module) with a different, incompatible
+// field set (no `responsibleRole`/`isAutoCleared`, a plain `department`
+// string instead) and an incomplete `ClearanceStatus` enum missing WAIVED.
+// Prisma rejects duplicate model/enum names outright, so this schema could
+// never have been `prisma generate`'d as shipped. Removed 2026-07 audit
+// remediation — see docs/CHANGELOG.md, item R1.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 6: HR & Payroll
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Staff ─────────────────────────────────────────────────────────────────────
+model Staff {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String           @unique @db.Uuid
+  employeeNo       String           @unique @db.VarChar(20)
+  ippisNo          String?          @unique @db.VarChar(20) // Federal IPPIS number
+  rsaPin           String?          @db.VarChar(30) // PenCom RSA PIN (encrypted)
+  pfaCode          String?          @db.VarChar(10) // Pension Fund Administrator code
+  firstName        String           @db.VarChar(100)
+  lastName         String           @db.VarChar(100)
+  middleName       String?          @db.VarChar(100)
+  dateOfBirth      DateTime         @db.Date
+  gender           String           @db.VarChar(20)
+  phone            String           @db.VarChar(15)
+  email            String           @unique @db.VarChar(255)
+  nin              String?          @db.VarChar(150) // AES-256-GCM encrypted
+  bvn              String?          @db.VarChar(150) // AES-256-GCM encrypted
+  designation      String           @db.VarChar(150)
+  departmentId     String           @db.Uuid
+  salaryGradeId    String           @db.Uuid
+  employmentType   EmploymentType   @default(FULL_TIME)
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  appointmentDate  DateTime         @db.Date
+  confirmationDate DateTime?        @db.Date
+  retirementDate   DateTime?        @db.Date
+  bankName         String?          @db.VarChar(100)
+  accountNumber    String?          @db.VarChar(20) // encrypted at service layer
+  accountName      String?          @db.VarChar(200)
+  bankCode         String?          @db.VarChar(10) // CBN bank code
+  taxId            String?          @db.VarChar(20) // Tax Identification Number
+  nhfNo            String?          @db.VarChar(20) // National Housing Fund number
+  nhisNo           String?          @db.VarChar(20) // NHIS number
+  isHod            Boolean          @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  user                       User              @relation(fields: [userId], references: [id])
+  department                 Department        @relation(fields: [departmentId], references: [id])
+  salaryGrade                SalaryGrade       @relation(fields: [salaryGradeId], references: [id])
+  facultyDeanOf              Faculty?          @relation("FacultyDean")
+  departmentHodOf            Department?       @relation("DepartmentHod")
+  courseOfferings            CourseOffering[]
+  examInvigilatorAssignments ExamInvigilator[]
+  allowances                 StaffAllowance[]
+  payslips                   Payslip[]
+  leaveRequests              LeaveRequest[]
+
+  @@index([departmentId, employmentStatus], map: "idx_staff_dept_status")
+  @@index([employmentStatus, employmentType], map: "idx_staff_status_type")
+  @@map("staff")
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  ADJUNCT
+  VISITING
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  RETIRED
+  TERMINATED
+}
+
+// ── Salary Grade (GL01–GL17 for federal; configurable for state/private) ──────
+model SalaryGrade {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gradeLevel            String   @db.VarChar(10) // "GL-07", "CONTISS-03", "CONUASS-04"
+  // M-P6-1 fix: @@unique([gradeLevel, step]) allows GL-07 Step 3 ≠ GL-07 Step 9
+  // Required for full IPPIS compliance (different step = different basic salary)
+  step                  Int      @default(1) @db.SmallInt
+  basicSalary           Decimal  @db.Decimal(12, 2)
+  // Computed allowances as % of basic (federal rates — configurable)
+  housingAllowancePct   Decimal  @default(15.00) @db.Decimal(5, 2)
+  transportAllowancePct Decimal  @default(10.00) @db.Decimal(5, 2)
+  medicalAllowancePct   Decimal  @default(5.00) @db.Decimal(5, 2)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  staff Staff[]
+
+  @@unique([gradeLevel, step], map: "uq_salary_grade_level_step") // M-P6-1 fix
+  @@index([gradeLevel, isActive], map: "idx_salary_grade_active")
+  @@map("salary_grades")
+}
+
+// ── Per-staff additional allowances / deductions ──────────────────────────────
+model StaffAllowance {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffId       String        @db.Uuid
+  label         String        @db.VarChar(100) // "Medical Specialist Allowance", "Cooperative Loan"
+  type          AllowanceType
+  amount        Decimal       @db.Decimal(12, 2)
+  isRecurring   Boolean       @default(true)
+  effectiveFrom DateTime      @db.Date
+  effectiveTo   DateTime?     @db.Date
+  createdAt     DateTime      @default(now())
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@index([staffId, isRecurring], map: "idx_allowance_staff_recurring")
+  @@map("staff_allowances")
+}
+
+enum AllowanceType {
+  ALLOWANCE
+  DEDUCTION
+  LOAN_REPAYMENT
+  UNION_DUES
+}
+
+// ── Payroll Run ───────────────────────────────────────────────────────────────
+// FSM: DRAFT → COMPUTED → APPROVED → DISBURSED
+model PayrollRun {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  periodMonth      Int           @db.SmallInt // 1–12
+  periodYear       Int           @db.SmallInt // e.g. 2025
+  label            String        @db.VarChar(50) // "October 2025"
+  status           PayrollStatus @default(DRAFT)
+  totalGross       Decimal       @default(0) @db.Decimal(14, 2)
+  totalNet         Decimal       @default(0) @db.Decimal(14, 2)
+  totalDeductions  Decimal       @default(0) @db.Decimal(14, 2)
+  staffCount       Int           @default(0)
+  initiatedById    String        @db.Uuid
+  approvedById     String?       @db.Uuid
+  approvedAt       DateTime?
+  disbursedAt      DateTime?
+  ippisExportedAt  DateTime?
+  pencomExportedAt DateTime?
+  // Renamed from firsExportedAt (deep-audit fix, Aug 2026): FIRS was
+  // renamed the Nigeria Revenue Service (NRS) under the NRS Establishment
+  // Act 2025, effective 1 Jan 2026. See migrations/0013_nrs_rename.
+  nrsExportedAt    DateTime?
+  notes            String?       @db.Text
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  payslips Payslip[]
+
+  @@unique([periodMonth, periodYear], name: "uq_payroll_run_period", map: "uq_payroll_run_period")
+  @@index([status, periodYear], map: "idx_payroll_status_year")
+  @@map("payroll_runs")
+}
+
+enum PayrollStatus {
+  DRAFT
+  COMPUTED
+  APPROVED
+  DISBURSED
+}
+
+// ── Payslip ───────────────────────────────────────────────────────────────────
+// PARTITIONED (P10): PARTITION BY RANGE (pay_period_date), monthly.
+// See: docs/CHANGELOG.md "payments + payslips partitioning deferred to P10"
+// and prisma/migrations/0008_p10_partition_payments_payslips for the DDL.
+//
+// P10 NOTE — partition key is `payPeriodDate`, NOT `createdAt`:
+// computePayroll() upserts one Payslip per (staffId, payrollRunId) and MUST
+// stay idempotent across retries (a partially-failed run is recomputed).
+// Postgres requires the partition key inside the uq_payslip_staff_run
+// constraint once partitioned. Using createdAt there would reintroduce the
+// same retry-breaks-idempotency problem documented on the Payment model,
+// since a retry's createdAt differs from the original attempt's. payPeriodDate
+// is instead DERIVED from the immutable payrollRun.periodYear/periodMonth
+// (first-of-month), so it is identical on every retry — adding it to the
+// unique constraint is then a no-op for uniqueness (it's functionally
+// determined by payrollRunId) while satisfying the partitioning rule.
+model Payslip {
+  id                 String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffId            String   @db.Uuid
+  payrollRunId       String   @db.Uuid
+  payPeriodDate      DateTime @db.Date // first-of-month, derived from payrollRun.periodYear/periodMonth — see model doc
+  // Earnings
+  basicSalary        Decimal  @db.Decimal(12, 2)
+  housingAllowance   Decimal  @default(0) @db.Decimal(12, 2)
+  transportAllowance Decimal  @default(0) @db.Decimal(12, 2)
+  medicalAllowance   Decimal  @default(0) @db.Decimal(12, 2)
+  otherAllowances    Decimal  @default(0) @db.Decimal(12, 2)
+  grossPay           Decimal  @db.Decimal(12, 2)
+  // Statutory deductions
+  payeeTax           Decimal  @default(0) @db.Decimal(12, 2) // PAYE (NRS, formerly FIRS — renamed under the NRS Establishment Act 2025, eff. 1 Jan 2026)
+  pensionEmployee    Decimal  @default(0) @db.Decimal(12, 2) // 8% min (PenCom)
+  pensionEmployer    Decimal  @default(0) @db.Decimal(12, 2) // 10% (PenCom)
+  nhfDeduction       Decimal  @default(0) @db.Decimal(12, 2) // 2.5% NHF
+  nhisDeduction      Decimal  @default(0) @db.Decimal(12, 2)
+  // Voluntary / other deductions
+  otherDeductions    Decimal  @default(0) @db.Decimal(12, 2)
+  totalDeductions    Decimal  @db.Decimal(12, 2)
+  netPay             Decimal  @db.Decimal(12, 2)
+  // Snapshot of grade at time of payroll (audit-proof)
+  gradeLevel         String   @db.VarChar(10)
+  ippisNo            String?  @db.VarChar(20)
+  createdAt          DateTime @default(now())
+
+  staff      Staff      @relation(fields: [staffId], references: [id])
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+
+  @@id([id, payPeriodDate])
+  @@unique([staffId, payrollRunId, payPeriodDate], name: "uq_payslip_staff_run", map: "uq_payslip_staff_run")
+  @@index([staffId, createdAt], map: "idx_payslip_staff_date")
+  @@index([payrollRunId], map: "idx_payslip_run")
+  @@index([payPeriodDate], map: "idx_payslip_period")
+  @@map("payslips")
+}
+
+// ── Leave Request ─────────────────────────────────────────────────────────────
+model LeaveRequest {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  staffId       String      @db.Uuid
+  leaveType     LeaveType
+  startDate     DateTime    @db.Date
+  endDate       DateTime    @db.Date
+  daysRequested Int         @db.SmallInt
+  reason        String      @db.Text
+  status        LeaveStatus @default(PENDING)
+  approvedById  String?     @db.Uuid
+  approvedAt    DateTime?
+  rejectionNote String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  staff Staff @relation(fields: [staffId], references: [id])
+
+  @@index([staffId, status], map: "idx_leave_staff_status")
+  @@index([status, startDate], map: "idx_leave_pending_start")
+  @@map("leave_requests")
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  STUDY
+  COMPASSIONATE
+  SABBATICAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 7: Academic Services
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Library ───────────────────────────────────────────────────────────────────
+// idx_library_items_fts deferred from migration 0002 — applied in migration 0007
+model LibraryItem {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accessionNo     String          @unique @db.VarChar(20)
+  title           String          @db.VarChar(300)
+  author          String?         @db.VarChar(300)
+  isbn            String?         @db.VarChar(20)
+  publisher       String?         @db.VarChar(200)
+  publishYear     Int?            @db.SmallInt
+  edition         String?         @db.VarChar(50)
+  category        LibraryCategory
+  totalCopies     Int             @default(1) @db.SmallInt
+  availableCopies Int             @default(1) @db.SmallInt
+  shelfLocation   String?         @db.VarChar(50)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  loans LibraryLoan[]
+
+  @@index([category, isActive], map: "idx_library_category")
+  @@map("library_items")
+}
+
+enum LibraryCategory {
+  TEXTBOOK
+  REFERENCE
+  JOURNAL
+  THESIS
+  NOVEL
+  PERIODICAL
+  MULTIMEDIA
+  OTHER
+}
+
+model LibraryLoan {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  libraryItemId String     @db.Uuid
+  userId        String     @db.Uuid
+  borrowedAt    DateTime   @default(now())
+  dueDate       DateTime
+  returnedAt    DateTime?
+  renewalCount  Int        @default(0) @db.SmallInt
+  fineAmount    Decimal    @default(0) @db.Decimal(8, 2)
+  finePaid      Boolean    @default(false)
+  status        LoanStatus @default(ACTIVE)
+  deletedAt     DateTime? // soft-delete via PrismaService middleware
+
+  libraryItem LibraryItem @relation(fields: [libraryItemId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+
+  @@index([userId, status], map: "idx_loan_user_status")
+  @@index([dueDate, status], map: "idx_loan_due_overdue")
+  @@index([libraryItemId, status], map: "idx_loan_item_status")
+  @@map("library_loans")
+}
+
+enum LoanStatus {
+  ACTIVE
+  RETURNED
+  OVERDUE
+  LOST
+}
+
+// ── Hostel / Room Allocation ───────────────────────────────────────────────────
+model HostelBlock {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String   @unique @db.VarChar(100)
+  gender     String   @db.VarChar(10) // MALE | FEMALE | MIXED
+  totalRooms Int      @db.SmallInt
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  rooms Room[]
+
+  @@map("hostel_blocks")
+}
+
+model Room {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostelBlockId    String   @db.Uuid
+  roomNumber       String   @db.VarChar(10)
+  capacity         Int      @db.SmallInt
+  currentOccupancy Int      @default(0) @db.SmallInt
+  roomType         RoomType @default(STANDARD)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  hostelBlock HostelBlock      @relation(fields: [hostelBlockId], references: [id])
+  allocations RoomAllocation[]
+
+  @@unique([hostelBlockId, roomNumber], name: "uq_room_in_block", map: "uq_room_in_block")
+  @@map("rooms")
+}
+
+enum RoomType {
+  STANDARD
+  ENSUITE
+  STUDIO
+  ACCESSIBLE
+}
+
+model RoomAllocation {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roomId        String           @db.Uuid
+  studentId     String           @db.Uuid
+  academicYear  String           @db.VarChar(9)
+  startDate     DateTime         @db.Date
+  endDate       DateTime?        @db.Date
+  status        AllocationStatus @default(ACTIVE)
+  allocatedById String           @db.Uuid
+  deletedAt     DateTime? // soft-delete via PrismaService middleware
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  room    Room    @relation(fields: [roomId], references: [id])
+  student Student @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, academicYear], name: "uq_student_room_year", map: "uq_student_room_year")
+  @@index([roomId, status], map: "idx_room_allocation_status")
+  @@map("room_allocations")
+}
+
+enum AllocationStatus {
+  ACTIVE
+  VACATED
+  TRANSFERRED
+  CANCELLED
+}
+
+// ── LMS — Course Content (S6 decision: custom LMS + LTI 1.3 config) ──────────
+// S6 DECISION: Build lightweight course content management for all institutions.
+// Institutions requiring full-featured LMS integration (Moodle, Canvas) can
+// configure an LtiConfig record and redirect students there via LTI 1.3.
+// Both paths share the same CourseOffering and CourseAnnouncement infrastructure.
+model CourseContent {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String      @db.Uuid
+  title            String      @db.VarChar(200)
+  contentType      ContentType
+  url              String?     @db.VarChar(500) // S3 presigned or external URL
+  body             String?     @db.Text // inline text/HTML content
+    orderIndex        Int         @default(0) @db.SmallInt
+  isPublished       Boolean     @default(false)
+  publishedAt       DateTime?
+  availabilityStart DateTime?
+  availabilityEnd   DateTime?
+  dueDate           DateTime?
+  allowLateSubmissions Boolean  @default(false)
+  latePenaltyPct    Decimal?    @db.Decimal(5, 2)
+  maxAttempts       Int?        @db.SmallInt
+  assessmentComponentId String?  @unique @db.Uuid
+  uploadedById      String      @db.Uuid
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id])
+  assessmentComponent AssessmentComponent? @relation(fields: [assessmentComponentId], references: [id])
+  submissions   LmsSubmission[]
+  progress      LmsProgress[]
+  discussions   LmsDiscussionPost[]
+  quizQuestions QuizQuestion[]
+  quizAttempts  QuizAttempt[]
+
+  @@index([courseOfferingId, isPublished, orderIndex], map: "idx_content_offering_order")
+  @@map("course_contents")
+}
+
+enum ContentType {
+  SLIDE
+  VIDEO
+  DOCUMENT
+  LINK
+  ASSIGNMENT
+  QUIZ
+  RECORDING
+}
+
+model CourseAnnouncement {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String   @db.Uuid
+  title            String   @db.VarChar(200)
+  body             String   @db.Text
+  isPublished      Boolean  @default(false)
+  postedById       String   @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  courseOffering CourseOffering @relation(fields: [courseOfferingId], references: [id])
+
+  @@index([courseOfferingId, isPublished], map: "idx_announcement_offering")
+  @@map("course_announcements")
+}
+
+enum LmsSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  GRADED
+  RETURNED
+}
+
+model LmsSubmission {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId    String              @db.Uuid
+  studentId    String              @db.Uuid
+  responseText    String?             @db.Text
+  fileUrl         String?             @db.VarChar(1000) // legacy opaque reference; public URLs are rejected by the service
+  attachmentKey   String?             @db.VarChar(1000)
+  attachmentName  String?             @db.VarChar(255)
+  attachmentMime  String?             @db.VarChar(120)
+  attachmentSize  Int?
+  attemptNumber Int                 @default(1) @db.SmallInt
+  submittedLate Boolean             @default(false)
+  status          LmsSubmissionStatus @default(SUBMITTED)
+  score        Decimal?            @db.Decimal(8,2)
+  feedback     String?             @db.Text
+  submittedAt  DateTime            @default(now())
+  gradedAt     DateTime?
+  gradedById   String?             @db.Uuid
+  content      CourseContent       @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  student      Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  gradedBy     User?               @relation("LmsSubmissionGrader", fields: [gradedById], references: [id])
+  @@unique([contentId, studentId, attemptNumber], map: "uq_lms_submission_content_student_attempt")
+  @@index([studentId, status], map: "idx_lms_submission_student_status")
+  @@index([studentId, attachmentKey], map: "idx_lms_submission_attachment")
+  @@map("lms_submissions")
+}
+
+enum QuizQuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+enum QuizAttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+model QuizQuestion {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId    String            @db.Uuid
+  prompt       String            @db.Text
+  questionType QuizQuestionType
+  options      Json?
+  correctAnswer String?          @db.Text
+  points       Int               @default(1) @db.SmallInt
+  orderIndex   Int               @default(0) @db.SmallInt
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  content      CourseContent     @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  @@index([contentId, orderIndex], map: "idx_quiz_question_content_order")
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId     String            @db.Uuid
+  studentId     String            @db.Uuid
+  attemptNumber Int               @db.SmallInt
+  status        QuizAttemptStatus @default(IN_PROGRESS)
+  answers       Json
+  score         Decimal?          @db.Decimal(8,2)
+  maxScore      Decimal?          @db.Decimal(8,2)
+  submittedLate Boolean           @default(false)
+  feedback      String?           @db.Text
+  startedAt     DateTime          @default(now())
+  submittedAt   DateTime?
+  gradedAt      DateTime?
+  content       CourseContent     @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  student       Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([contentId, studentId, attemptNumber], map: "uq_quiz_attempt_content_student_number")
+  @@index([studentId, status], map: "idx_quiz_attempt_student_status")
+  @@map("quiz_attempts")
+}
+
+model LmsProgress {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  contentId     String        @db.Uuid
+  studentId     String        @db.Uuid
+  progressPct   Int           @default(0) @db.SmallInt
+  firstViewedAt DateTime?
+  lastViewedAt  DateTime?
+  completedAt   DateTime?
+  content       CourseContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([contentId, studentId], map: "uq_lms_progress_content_student")
+  @@index([studentId, completedAt], map: "idx_lms_progress_student_completed")
+  @@map("lms_progress")
+}
+
+model LmsDiscussionPost {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  courseOfferingId String              @db.Uuid
+  contentId        String?             @db.Uuid
+  authorId         String              @db.Uuid
+  parentId         String?             @db.Uuid
+  body             String              @db.Text
+  isDeleted        Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  courseOffering   CourseOffering      @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  content          CourseContent?      @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  author           User                @relation("LmsDiscussionAuthor", fields: [authorId], references: [id])
+  parent           LmsDiscussionPost?  @relation("LmsDiscussionThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies          LmsDiscussionPost[] @relation("LmsDiscussionThread")
+  @@index([courseOfferingId, createdAt], map: "idx_lms_discussion_offering_created")
+  @@index([contentId, createdAt], map: "idx_lms_discussion_content_created")
+  @@map("lms_discussion_posts")
+}
+
+// LTI 1.3 configuration per institution/programme (S6 evaluated path)
+model LtiConfig {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  platformName String   @db.VarChar(100) // "Moodle", "Canvas", "Blackboard"
+  issuer       String   @db.VarChar(300)
+  authLoginUrl String   @db.VarChar(500)
+  authTokenUrl String   @db.VarChar(500)
+  jwksUrl      String   @db.VarChar(500)
+  clientId     String   @db.VarChar(100)
+  deploymentId String   @db.VarChar(100)
+  isActive     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("lti_configs")
+}
+
+// ── Notification Templates (P0 forward-reference resolved) ────────────────────
+// S5 DECISION: Custom BullMQ-based notification service (not Novu).
+// Rationale documented in docs/CHANGELOG.md S5:
+//   - Novu adds a cloud dependency (data sovereignty concern under NDPR 2019)
+//   - Institution data cannot leave Nigeria in many state university policies
+//   - Custom service using BullMQ + SMTP (Postal/Mailgun NG) + Termii SMS API
+//     handles all cases and keeps PII within the institution's infrastructure
+//   - If a future institution explicitly accepts Novu's DPA, the notification
+//     worker can be swapped out — the outbox → BullMQ job interface is unchanged
+// NOTE: a `NotificationChannel` model previously lived here (per-institution
+// provider config: SMTP/Termii/Firebase credentials). It had no migration —
+// "notification_channels" was never created in Postgres — and no service
+// code referenced it (confirmed by repo-wide search); it also collided by
+// name with the NotificationChannelType enum above. Removed as dead,
+// non-functional schema rather than retrofitted, since nothing depends on
+// it. If per-institution provider config becomes a real requirement, model
+// it under a non-colliding name (e.g. `NotificationProviderConfig`) with a
+// matching migration from the start. Audit remediation — see
+// docs/CHANGELOG.md, item R1.
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 8: Clinic, Transport, Research & Grants, Alumni
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── MODULE 10: Health Clinic ──────────────────────────────────────────────────
+// SECURITY: diagnosis, treatmentNotes, prescriptionNotes and sensitive patient
+// demographic/health fields are AES-256-GCM encrypted at the application layer.
+// Ciphertext columns are sized for the versioned IV/ciphertext/tag format.
+// RLS: patient sees own records; clinic staff sees all; doctor sees assigned records.
+
+model Patient {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String   @unique @db.Uuid // links to User (student OR staff)
+  bloodGroup            String?  @db.VarChar(5) // A+, AB-, O-, ...
+  genotype              String?  @db.VarChar(512) // encrypted AA/AS/SS value
+  allergies             String?  @db.Text // encrypted health information
+  chronicConditions     String?  @db.Text // encrypted health information
+  emergencyContactName  String?  @db.VarChar(200)
+  emergencyContactPhone String?  @db.VarChar(15)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  appointments   Appointment[]
+  medicalRecords MedicalRecord[]
+  prescriptions  Prescription[]
+
+  @@index([userId], map: "idx_patient_user")
+  @@map("patients")
+}
+
+model Appointment {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  patientId       String            @db.Uuid
+  doctorUserId    String            @db.Uuid // Staff userId with health scope
+  appointmentDate DateTime
+  reason          String?           @db.Text // non-sensitive chief complaint
+  status          AppointmentStatus @default(SCHEDULED)
+  notes           String?           @db.Text // admin notes (non-medical)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  patient        Patient         @relation(fields: [patientId], references: [id])
+  medicalRecords MedicalRecord[]
+
+  @@index([patientId, status], map: "idx_appt_patient_status")
+  @@index([doctorUserId, appointmentDate], map: "idx_appt_doctor_date")
+  @@map("appointments")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model MedicalRecord {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  appointmentId     String    @db.Uuid
+  patientId         String    @db.Uuid
+  // ⚠ ENCRYPTED at service layer with AES-256-GCM (encryptPii/decryptPii)
+  // These columns store ciphertext: "v1:base64(iv):base64(ct):base64(tag)"
+  diagnosis         String?   @db.VarChar(2000) // encrypted
+  treatmentNotes    String?   @db.VarChar(2000) // encrypted
+  prescriptionNotes String?   @db.VarChar(2000) // encrypted
+  followUpDate      DateTime? @db.Date
+  createdById       String    @db.Uuid // doctorUserId
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  appointment   Appointment    @relation(fields: [appointmentId], references: [id])
+  patient       Patient        @relation(fields: [patientId], references: [id])
+  prescriptions Prescription[]
+
+  @@unique([appointmentId], name: "uq_record_per_appointment", map: "uq_record_per_appointment")
+  @@index([patientId, createdAt(sort: Desc)], map: "idx_record_patient_date")
+  @@map("medical_records")
+}
+
+model Drug {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String   @db.VarChar(200)
+  genericName   String?  @db.VarChar(200)
+  form          DrugForm @default(TABLET)
+  unit          String   @db.VarChar(20) // "mg", "ml", "unit"
+  stockQuantity Int      @default(0)
+  reorderLevel  Int      @default(10) // alert when stockQuantity <= reorderLevel
+  unitCost      Decimal  @db.Decimal(10, 2)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  prescriptions Prescription[]
+
+  @@index([isActive, stockQuantity], map: "idx_drug_active_stock")
+  @@map("drugs")
+}
+
+enum DrugForm {
+  TABLET
+  CAPSULE
+  SYRUP
+  INJECTION
+  CREAM
+  INHALER
+  DROPS
+  OTHER
+}
+
+model Prescription {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  medicalRecordId    String    @db.Uuid
+  patientId          String    @db.Uuid
+  drugId             String    @db.Uuid
+  // ⚠ dosageInstructions ENCRYPTED (contains clinical guidance)
+  dosageInstructions String    @db.VarChar(2000) // encrypted
+  quantity           Int
+  dispensedAt        DateTime?
+  dispensedById      String?   @db.Uuid
+  createdAt          DateTime  @default(now())
+
+  medicalRecord MedicalRecord @relation(fields: [medicalRecordId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  drug          Drug          @relation(fields: [drugId], references: [id])
+
+  @@index([medicalRecordId], map: "idx_prescription_record")
+  @@index([patientId, createdAt(sort: Desc)], map: "idx_prescription_patient")
+  @@map("prescriptions")
+}
+
+// ── MODULE 11: Transport & Logistics ─────────────────────────────────────────
+
+model Vehicle {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  registrationNo  String        @unique @db.VarChar(20)
+  make            String        @db.VarChar(100)
+  model           String        @db.VarChar(100)
+  year            Int           @db.SmallInt
+  capacity        Int           @db.SmallInt // passenger seats
+  vehicleType     VehicleType   @default(BUS)
+  status          VehicleStatus @default(AVAILABLE)
+  lastServiceDate DateTime?     @db.Date
+  nextServiceDate DateTime?     @db.Date
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  trips Trip[]
+
+  @@index([status, isActive], map: "idx_vehicle_status")
+  @@map("vehicles")
+}
+
+enum VehicleType {
+  BUS
+  MINIBUS
+  CAR
+  VAN
+  AMBULANCE
+  OTHER
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  DECOMMISSIONED
+}
+
+model TransportRoute {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String   @db.VarChar(200)
+  origin           String   @db.VarChar(200)
+  destination      String   @db.VarChar(200)
+  stops            Json? // ["Stop A", "Stop B", ...]
+  distanceKm       Decimal? @db.Decimal(7, 2)
+  estimatedMinutes Int?     @db.SmallInt
+  fareAmount       Decimal  @db.Decimal(10, 2)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  trips Trip[]
+
+  @@index([isActive], map: "idx_route_active")
+  @@map("transport_routes")
+}
+
+model Trip {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicleId      String     @db.Uuid
+  routeId        String     @db.Uuid
+  driverUserId   String     @db.Uuid // Staff userId with transport scope
+  departureTime  DateTime
+  arrivalTime    DateTime?
+  status         TripStatus @default(SCHEDULED)
+  availableSeats Int        @db.SmallInt
+  notes          String?    @db.Text
+  createdById    String     @db.Uuid
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  vehicle  Vehicle        @relation(fields: [vehicleId], references: [id])
+  route    TransportRoute @relation(fields: [routeId], references: [id])
+  bookings TripBooking[]
+
+  @@index([departureTime, status], map: "idx_trip_departure_status")
+  @@index([vehicleId, status], map: "idx_trip_vehicle_status")
+  @@map("trips")
+}
+
+enum TripStatus {
+  SCHEDULED
+  DEPARTED
+  ARRIVED
+  CANCELLED
+}
+
+model TripBooking {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId      String        @db.Uuid
+  userId      String        @db.Uuid // student or staff
+  seatNumber  Int?          @db.SmallInt
+  status      BookingStatus @default(CONFIRMED)
+  bookedAt    DateTime      @default(now())
+  cancelledAt DateTime?
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@unique([tripId, userId], name: "uq_trip_user_booking", map: "uq_trip_user_booking")
+  @@index([userId, status], map: "idx_booking_user_status")
+  @@map("trip_bookings")
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+  NO_SHOW
+}
+
+// ── MODULE 12: Research & Grants ──────────────────────────────────────────────
+
+model ResearchProject {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title             String         @db.VarChar(500)
+  abstract          String         @db.Text
+  leadResearcherId  String         @db.Uuid // Staff userId
+  department        String         @db.VarChar(200)
+  status            ResearchStatus @default(PENDING)
+  ethicsApprovalRef String?        @db.VarChar(100) // set when ethics is cleared
+  ethicsApprovedAt  DateTime?
+  startDate         DateTime?      @db.Date
+  endDate           DateTime?      @db.Date
+  budget            Decimal        @db.Decimal(15, 2)
+  budgetSpent       Decimal        @default(0) @db.Decimal(15, 2)
+  keywords          String[] // array of keyword strings
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  grants  Grant[]
+  outputs ResearchOutput[]
+  members ResearchMember[]
+
+  @@index([status, leadResearcherId], map: "idx_research_status")
+  @@map("research_projects")
+}
+
+enum ResearchStatus {
+  PENDING
+  ETHICS_REVIEW
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+  CANCELLED
+}
+
+model ResearchMember {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId String     @db.Uuid
+  userId    String     @db.Uuid // Staff userId
+  role      MemberRole @default(CO_RESEARCHER)
+  joinedAt  DateTime   @default(now())
+
+  project ResearchProject @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, userId], name: "uq_project_member", map: "uq_project_member")
+  @@index([userId], map: "idx_member_user")
+  @@map("research_members")
+}
+
+enum MemberRole {
+  LEAD
+  CO_RESEARCHER
+  RESEARCH_ASSISTANT
+  CONSULTANT
+}
+
+model Grant {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId    String             @db.Uuid
+  funder       String             @db.VarChar(300) // funding organisation name
+  grantRef     String?            @db.VarChar(100) // funder's reference number
+  amount       Decimal            @db.Decimal(15, 2)
+  currency     String             @default("NGN") @db.VarChar(3)
+  startDate    DateTime           @db.Date
+  endDate      DateTime           @db.Date
+  status       GrantStatus        @default(ACTIVE)
+  expenditures GrantExpenditure[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  project ResearchProject @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, status], map: "idx_grant_project_status")
+  @@map("grants")
+}
+
+enum GrantStatus {
+  ACTIVE
+  EXHAUSTED
+  CLOSED
+}
+
+model GrantExpenditure {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  grantId      String   @db.Uuid
+  description  String   @db.VarChar(500)
+  amount       Decimal  @db.Decimal(12, 2)
+  receiptRef   String?  @db.VarChar(100)
+  expendedAt   DateTime @db.Date
+  recordedById String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  grant Grant @relation(fields: [grantId], references: [id])
+
+  @@index([grantId, expendedAt], map: "idx_expenditure_grant_date")
+  @@map("grant_expenditures")
+}
+
+model ResearchOutput {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId   String     @db.Uuid
+  outputType  OutputType
+  title       String     @db.VarChar(500)
+  authors     String[]
+  publishedIn String?    @db.VarChar(300) // journal / conference / patent office
+  publishDate DateTime?  @db.Date
+  doi         String?    @db.VarChar(200)
+  url         String?    @db.VarChar(500)
+  abstract    String?    @db.Text
+  createdById String     @db.Uuid
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  project ResearchProject @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, outputType], map: "idx_output_project_type")
+  @@map("research_outputs")
+}
+
+enum OutputType {
+  JOURNAL_ARTICLE
+  CONFERENCE_PAPER
+  BOOK
+  BOOK_CHAPTER
+  PATENT
+  REPORT
+  THESIS
+  DATASET
+  OTHER
+}
+
+// ── MODULE 13: Alumni & Endowment ─────────────────────────────────────────────
+// Alumni record is auto-created by the student.graduated domain event handler.
+
+enum GraduationCandidateStatus {
+  ELIGIBILITY_CHECKED
+  DEPARTMENT_RECOMMENDED
+  FACULTY_REVIEWED
+  APPROVED
+  REJECTED
+  GRADUATED
+}
+
+model GraduationCandidate {
+  id                     String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId              String                    @db.Uuid
+  academicYear           String                    @db.VarChar(9)
+  status                 GraduationCandidateStatus @default(ELIGIBILITY_CHECKED)
+  academicEligible       Boolean                   @default(false)
+  administrativeEligible Boolean                   @default(false)
+  auditSnapshot          Json
+  recommendedById        String?                   @db.Uuid
+  recommendedAt          DateTime?
+  approvedById           String?                   @db.Uuid
+  approvedAt             DateTime?
+  rejectionReason        String?                   @db.Text
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  student                Student                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYear], name: "uq_graduation_candidate_student_year", map: "uq_graduation_candidate_student_year")
+  @@index([academicYear, status], map: "idx_graduation_candidate_year_status")
+  @@map("graduation_candidates")
+}
+
+model Alumni {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @unique @db.Uuid
+  studentId       String   @unique @db.Uuid // original Student record
+  graduationYear  Int      @db.SmallInt
+  programme       String   @db.VarChar(255) // snapshot at graduation
+  classAwarded    String   @db.VarChar(100) // "First Class", "Second Class (Upper)", etc.
+  cgpaAtGrad      Decimal  @db.Decimal(4, 2)
+  // Updatable profile fields
+  occupation      String?  @db.VarChar(200)
+  employer        String?  @db.VarChar(300)
+  industry        String?  @db.VarChar(100)
+  linkedinUrl     String?  @db.VarChar(500)
+  currentCountry  String?  @db.VarChar(100)
+  currentCity     String?  @db.VarChar(100)
+  bio             String?  @db.Text
+  isProfilePublic Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  donations Donation[]
+
+  @@index([graduationYear], map: "idx_alumni_grad_year")
+  @@map("alumni")
+}
+
+model Campaign {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title        String         @db.VarChar(300)
+  description  String         @db.Text
+  targetAmount Decimal        @db.Decimal(15, 2)
+  raisedAmount Decimal        @default(0) @db.Decimal(15, 2)
+  currency     String         @default("NGN") @db.VarChar(3)
+  startDate    DateTime       @db.Date
+  endDate      DateTime?      @db.Date
+  status       CampaignStatus @default(ACTIVE)
+  imageUrl     String?        @db.VarChar(500)
+  createdById  String         @db.Uuid
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  donations Donation[]
+
+  @@index([status, endDate], map: "idx_campaign_status")
+  @@map("campaigns")
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Donation {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaignId    String         @db.Uuid
+  alumniId      String?        @db.Uuid // null if anonymous or non-alumni donor
+  // Public donor display name — separate from alumniId for anonymity
+  donorName     String?        @db.VarChar(200) // shown publicly unless isAnonymous
+  donorEmail    String?        @db.VarChar(255) // for receipt — never shown publicly
+  amount        Decimal        @db.Decimal(12, 2)
+  currency      String         @default("NGN") @db.VarChar(3)
+  isAnonymous   Boolean        @default(false)
+  message       String?        @db.Text
+  providerRef   String?        @unique @db.VarChar(100) // Remita/Paystack reference
+  status        DonationStatus @default(PENDING)
+  receiptSentAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  campaign Campaign @relation(fields: [campaignId], references: [id])
+  alumni   Alumni?  @relation(fields: [alumniId], references: [id])
+
+  @@index([campaignId, status], map: "idx_donation_campaign")
+  @@index([alumniId, status], map: "idx_donation_alumni")
+  @@map("donations")
+}
+
+enum DonationStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PHASE 9: Reports & Analytics
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── MODULE 18: Reporting & Analytics ─────────────────────────────────────────
+// Large reports (>10,000 rows) are generated asynchronously via BullMQ
+// report-generation queue. Small/live reports are served synchronously from
+// the PostgreSQL read replica (PRISMA_REPORTING_URL).
+
+enum ReportType {
+  ENROLMENT
+  REVENUE
+  CGPA_DISTRIBUTION
+  RESULTS_STATISTICS
+  PAYROLL_SUMMARY
+  LIBRARY_USAGE
+  CLEARANCE_STATUS
+  STAFF_DIRECTORY
+  AUDIT_EXPORT
+  CUSTOM
+}
+
+enum ReportFormat {
+  PDF
+  XLSX
+  CSV
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ReportJob {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reportType   ReportType
+  reportFormat ReportFormat @default(XLSX)
+  status       ReportStatus @default(PENDING)
+  parameters   Json? // Serialised filter params (dateFrom, dateTo, deptId, etc.)
+  totalRows    Int?
+  generatedUrl String?      @db.VarChar(500) // S3 pre-signed URL (30-min TTL)
+  urlExpiresAt DateTime? // when the download URL expires
+  errorMessage String?      @db.Text
+  triggeredBy  String       @db.Uuid // userId who requested the report
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@index([triggeredBy, createdAt(sort: Desc)], map: "idx_report_job_user")
+  @@index([status, createdAt(sort: Desc)], map: "idx_report_job_status")
+  @@map("report_jobs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P10: NDPR 2019 COMPLIANCE — DATA SUBJECT RIGHTS + BREACH NOTIFICATION
+// ═══════════════════════════════════════════════════════════════════════════
+// Implements the DSR endpoints (spec §16.1) and docs/CHANGELOG.md M7
+// (NDPR audit log pseudonymisation on erasure). Both models below are
+// durable, DPO-reviewable trails in their own right — a generic AuditLog row
+// tells you WHAT field changed; these tell the DPO "how many SARs this
+// quarter, which are overdue, which incidents are past T+72h" without
+// reconstructing it from generic audit_logs.
+
+enum DsrRequestType {
+  ACCESS // SAR — GET /privacy/sar/:userId
+  RECTIFICATION // POST /privacy/rectify/:userId
+  ERASURE // DELETE /privacy/erase/:userId
+  PORTABILITY // GET /privacy/export/:userId
+  RESTRICTION // POST /privacy/restrict/:userId
+}
+
+enum DsrRequestStatus {
+  RECEIVED
+  IDENTITY_VERIFICATION_REQUIRED
+  VERIFIED
+  IN_PROGRESS
+  PARTIALLY_COMPLETED
+  LEGAL_HOLD
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+/// DataSubjectRequest — one row per NDPR Data Subject Rights action.
+model DataSubjectRequest {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type          DsrRequestType
+  status        DsrRequestStatus @default(RECEIVED)
+  subjectPersonId String?          @db.Uuid // canonical data subject identity
+  subjectUserId   String?           @db.Uuid // legacy account link; nullable after hard deletion
+  requestedById   String            @db.Uuid // self, or DPO acting on their behalf
+  reason        String?          @db.Text // required for RESTRICTION; recommended for ERASURE
+  reportJobId   String?          @db.Uuid // SAR/portability: link to the async export job (ReportJob)
+  vcApprovalId  String?          @db.Uuid // ERASURE only — VC sign-off per spec §16.1 ("super_admin (VC sign-off required)")
+  legalHoldNote String?          @db.Text // ERASURE only — records the 7-year academic-record hold exception when it applies
+  completedAt   DateTime?
+  dueBy         DateTime // SLA clock: 48h for SAR delivery, 30 days otherwise, per spec §16.1
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  subjectPerson Person? @relation("DsrSubjectPerson", fields: [subjectPersonId], references: [id], onDelete: SetNull)
+  subjectUser   User?   @relation("DsrSubjectUser", fields: [subjectUserId], references: [id], onDelete: SetNull)
+  requestedBy   User    @relation("DsrRequestedBy", fields: [requestedById], references: [id])
+
+  @@index([subjectPersonId, type], map: "idx_dsr_subject_person")
+  @@index([subjectUserId, type], map: "idx_dsr_subject")
+  @@index([status, dueBy], map: "idx_dsr_sla_tracking")
+  @@map("data_subject_requests")
+}
+
+enum SecurityIncidentType {
+  CREDENTIAL_BREACH
+  DATA_LEAK
+  UNAUTHORISED_ACCESS
+  MALWARE
+  PHYSICAL_BREACH
+  THIRD_PARTY_BREACH
+  OTHER
+}
+
+enum SecurityIncidentStatus {
+  DETECTED
+  CONTAINED
+  NITDA_NOTIFIED
+  RESOLVED
+}
+
+/// SecurityIncident — implements the §16.1 breach-notification workflow.
+/// The T+72h NITDA deadline is DERIVED (detectedAt + 72h) at the service
+/// layer rather than stored, so it can never drift out of sync with
+/// detectedAt if detectedAt is later corrected.
+model SecurityIncident {
+  id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type            SecurityIncidentType
+  status          SecurityIncidentStatus @default(DETECTED)
+  description     String                 @db.Text
+  affectedUserIds Json // string[] of User.id — Json because a bulk breach can affect thousands
+  detectedAt      DateTime               @default(now())
+  containedAt     DateTime?
+  nitdaNotifiedAt DateTime?
+  resolvedAt      DateTime?
+  reportedById    String                 @db.Uuid
+  dpoNotes        String?                @db.Text
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  reportedBy User @relation("IncidentReportedBy", fields: [reportedById], references: [id])
+
+  @@index([status, detectedAt], map: "idx_incident_status_date")
+  @@map("security_incidents")
+}
+
+// P2 ENTERPRISE INFRASTRUCTURE
+enum WorkflowInstanceStatus {
+  RUNNING
+  COMPLETED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum WorkflowTaskStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  READ
+  DISMISSED
+}
+
+enum DocumentClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum DocumentVerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum SearchDocumentType {
+  STUDENT
+  STAFF
+  COURSE
+  PROGRAMME
+  APPLICATION
+  DOCUMENT
+  OTHER
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  PAUSED
+  FAILED
+  DISABLED
+}
+
+model WorkflowDefinition {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  version     Int      @default(1)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps     WorkflowStep[]
+  instances WorkflowInstance[]
+}
+
+model WorkflowStep {
+  id         String   @id @default(uuid())
+  workflowId String
+  code       String
+  name       String
+  sequence   Int
+  roleCode   String?
+  required   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  workflow WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  tasks    WorkflowTask[]
+
+  @@unique([workflowId, code])
+  @@unique([workflowId, sequence])
+  @@index([workflowId, sequence])
+}
+
+model WorkflowInstance {
+  id          String                 @id @default(uuid())
+  workflowId  String
+  entityType  String
+  entityId    String
+  status      WorkflowInstanceStatus @default(RUNNING)
+  startedById String?
+  completedAt DateTime?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  workflow WorkflowDefinition @relation(fields: [workflowId], references: [id])
+  tasks    WorkflowTask[]
+
+  @@index([entityType, entityId])
+  @@index([workflowId, status])
+}
+
+model WorkflowTask {
+  id           String             @id @default(uuid())
+  instanceId   String
+  stepId       String
+  status       WorkflowTaskStatus @default(PENDING)
+  assignedToId String?
+  actedById    String?
+  actedAt      DateTime?
+  comment      String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  instance WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  step     WorkflowStep     @relation(fields: [stepId], references: [id])
+
+  @@unique([instanceId, stepId])
+  @@index([assignedToId, status])
+}
+
+model NotificationPreference {
+  id        String              @id @default(uuid())
+  userId    String
+  channel   NotificationChannel
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@unique([userId, channel])
+}
+
+model Notification {
+  id         String              @id @default(uuid())
+  userId     String
+  channel    NotificationChannel
+  status     NotificationStatus  @default(QUEUED)
+  subject    String?
+  body       String
+  entityType String?
+  entityId   String?
+  queuedAt   DateTime            @default(now())
+  sentAt     DateTime?
+  readAt     DateTime?
+  failedAt   DateTime?
+  error      String?
+  createdAt  DateTime            @default(now())
+
+  @@index([userId, status, createdAt])
+  @@index([entityType, entityId])
+}
+
+model EnterpriseDocument {
+  id                 String                     @id @default(uuid())
+  ownerType          String
+  ownerId            String
+  documentType       String
+  classification     DocumentClassification     @default(INTERNAL)
+  fileName           String
+  storageKey         String
+  mimeType           String
+  sizeBytes          BigInt
+  checksum           String
+  verificationStatus DocumentVerificationStatus @default(UNVERIFIED)
+  verifiedById       String?
+  verifiedAt         DateTime?
+  expiresAt          DateTime?
+  createdById        String
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  @@unique([storageKey])
+  @@index([ownerType, ownerId])
+  @@index([documentType, classification])
+}
+
+model IntegrationEndpoint {
+  id         String            @id @default(uuid())
+  code       String            @unique
+  name       String
+  baseUrl    String?
+  status     IntegrationStatus @default(ACTIVE)
+  timeoutMs  Int               @default(10000)
+  retryLimit Int               @default(3)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  deliveries IntegrationDelivery[]
+}
+
+model IntegrationDelivery {
+  id            String            @id @default(uuid())
+  endpointId    String
+  eventType     String
+  eventId       String
+  status        IntegrationStatus @default(ACTIVE)
+  attemptCount  Int               @default(0)
+  nextAttemptAt DateTime?
+  lastAttemptAt DateTime?
+  responseCode  Int?
+  lastError     String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  endpoint IntegrationEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, eventId])
+  @@index([status, nextAttemptAt])
+}
+
+model SearchIndexEntry {
+  id           String             @id @default(uuid())
+  documentType SearchDocumentType
+  documentId   String
+  title        String
+  searchable   String
+  scopeKey     String?
+  active       Boolean            @default(true)
+  updatedAt    DateTime           @updatedAt
+  createdAt    DateTime           @default(now())
+
+  @@unique([documentType, documentId])
+  @@index([scopeKey, active])
+}
+
+// P4 INTELLIGENCE & AUTOMATION
+enum RuleStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  RETIRED
+}
+
+enum RuleActionType {
+  NOTIFY
+  CREATE_TASK
+  FLAG
+  REQUEST_REVIEW
+  ESCALATE
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+}
+
+model BusinessRule {
+  id           String     @id @default(uuid())
+  code         String     @unique
+  name         String
+  description  String?
+  domain       String
+  version      Int        @default(1)
+  status       RuleStatus @default(DRAFT)
+  condition    Json
+  actions      Json
+  createdById  String?
+  approvedById String?
+  activatedAt  DateTime?
+  retiredAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  executions RuleExecution[]
+
+  @@index([domain, status])
+}
+
+model RuleExecution {
+  id           String   @id @default(uuid())
+  ruleId       String
+  entityType   String
+  entityId     String
+  result       String
+  actionResult Json?
+  executedAt   DateTime @default(now())
+
+  rule BusinessRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, executedAt])
+  @@index([entityType, entityId, executedAt])
+}
+
+model EnterpriseAlert {
+  id             String        @id @default(uuid())
+  severity       AlertSeverity
+  status         AlertStatus   @default(OPEN)
+  domain         String
+  title          String
+  message        String
+  entityType     String?
+  entityId       String?
+  assignedToId   String?
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, severity, createdAt])
+  @@index([domain, status])
+  @@index([entityType, entityId])
+}
+
+model AutomationTask {
+  id           String    @id @default(uuid())
+  code         String
+  title        String
+  description  String?
+  domain       String
+  entityType   String?
+  entityId     String?
+  assignedToId String?
+  status       String    @default("OPEN")
+  dueAt        DateTime?
+  completedAt  DateTime?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([assignedToId, status, dueAt])
+  @@index([domain, status])
+}
+
+model OLevelExamAuthority {
+  id          String                    @id
+  code        String                    @unique
+  name        String
+  shortName   String
+  countryCode String                    @default("NG")
+  active      Boolean                   @default(true)
+  sortOrder   Int                       @default(0)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  types       OLevelExamAuthorityType[]
+
+  @@index([active, sortOrder])
+}
+
+model OLevelExamAuthorityType {
+  id          String              @id
+  authorityId String
+  code        String
+  name        String
+  active      Boolean             @default(true)
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  authority   OLevelExamAuthority @relation(fields: [authorityId], references: [id], onDelete: Restrict)
+
+  @@unique([authorityId, code])
+  @@index([authorityId, active, sortOrder])
+}
+
+// ── Academic Intelligence & Progression ─────────────────────────────────────
+model AcademicRequirementGroup {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  curriculumVersionId  String   @db.Uuid
+  code                 String   @db.VarChar(50)
+  name                 String   @db.VarChar(200)
+  groupType            String   @default("CORE") @db.VarChar(40)
+  minCourses           Int?     @db.SmallInt
+  maxCourses           Int?     @db.SmallInt
+  minCreditUnits       Int?     @db.SmallInt
+  maxCreditUnits       Int?     @db.SmallInt
+  allowDoubleCounting  Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  curriculumVersion    CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Cascade)
+  requirements          AcademicRequirement[]
+  @@unique([curriculumVersionId, code], map: "uq_academic_requirement_group_code")
+  @@index([curriculumVersionId, groupType], map: "idx_academic_requirement_group_type")
+  @@map("academic_requirement_groups")
+}
+
+model AcademicRequirement {
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groupId                String  @db.Uuid
+  courseId               String? @db.Uuid
+  isCompulsoryWithinGroup Boolean @default(true)
+  createdAt              DateTime @default(now())
+  group                  AcademicRequirementGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  course                 Course? @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  @@unique([groupId, courseId], map: "uq_academic_requirement_course")
+  @@index([courseId], map: "idx_academic_requirement_course")
+  @@map("academic_requirements")
+}
+
+model CourseEquivalency {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fromCourseId   String   @db.Uuid
+  toCourseId     String   @db.Uuid
+  direction      String   @default("BIDIRECTIONAL") @db.VarChar(20)
+  effectiveFrom  DateTime @default(now())
+  effectiveTo    DateTime?
+  approvedById   String?  @db.Uuid
+  reason         String?  @db.Text
+  createdAt      DateTime @default(now())
+  fromCourse     Course @relation("EquivalencyFrom", fields: [fromCourseId], references: [id], onDelete: Restrict)
+  toCourse       Course @relation("EquivalencyTo", fields: [toCourseId], references: [id], onDelete: Restrict)
+  @@unique([fromCourseId, toCourseId], map: "uq_course_equivalency")
+  @@index([toCourseId], map: "idx_course_equivalency_to")
+  @@map("course_equivalencies")
+}
+
+model AcademicExemption {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId              String   @db.Uuid
+  curriculumRequirementId String  @db.Uuid
+  status                 String   @default("PENDING") @db.VarChar(20)
+  reason                 String   @db.Text
+  evidenceRef            String?  @db.VarChar(500)
+  approvedById           String?  @db.Uuid
+  approvedAt             DateTime?
+  createdAt              DateTime @default(now())
+  student                Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([studentId, curriculumRequirementId], map: "uq_student_academic_exemption")
+  @@index([studentId, status], map: "idx_student_academic_exemption_status")
+  @@map("academic_exemptions")
+}
+
+model AcademicSubstitution {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId                String   @db.Uuid
+  curriculumRequirementId  String   @db.Uuid
+  substituteCourseId       String   @db.Uuid
+  status                   String   @default("PENDING") @db.VarChar(20)
+  reason                   String   @db.Text
+  evidenceRef              String?  @db.VarChar(500)
+  approvedById             String?  @db.Uuid
+  approvedAt               DateTime?
+  createdAt                DateTime @default(now())
+
+  @@unique([studentId, curriculumRequirementId], map: "uq_student_academic_substitution")
+  @@index([studentId, status], map: "idx_student_academic_substitution_status")
+  @@map("academic_substitutions")
+}
+
+model AcademicTransferCredit {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId        String   @db.Uuid
+  sourceInstitution String  @db.VarChar(255)
+  sourceCourseCode String?  @db.VarChar(50)
+  sourceCourseTitle String? @db.VarChar(255)
+  mappedCourseId   String?  @db.Uuid
+  creditUnits      Int      @db.SmallInt
+  grade            String?  @db.VarChar(10)
+  status           String   @default("PENDING") @db.VarChar(20)
+  evidenceRef      String?  @db.VarChar(500)
+  approvedById     String?  @db.Uuid
+  approvedAt       DateTime?
+  createdAt        DateTime @default(now())
+  student          Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  mappedCourse     Course? @relation(fields: [mappedCourseId], references: [id], onDelete: Restrict)
+  @@index([studentId, status], map: "idx_transfer_credit_student_status")
+  @@map("academic_transfer_credits")
+}
+
+model DegreeAudit {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId           String   @db.Uuid
+  curriculumVersionId String   @db.Uuid
+  status              String   @db.VarChar(30)
+  requirementResults  Json
+  policySnapshot      Json
+  auditedById         String?  @db.Uuid
+  createdAt           DateTime @default(now())
+  student             Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  curriculumVersion   CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Restrict)
+  @@index([studentId, createdAt], map: "idx_degree_audit_student_created")
+  @@index([status], map: "idx_degree_audit_status")
+  @@map("degree_audits")
+}
+
+model ProgressionEvaluation {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId          String   @db.Uuid
+  academicHistoryId  String   @db.Uuid
+  policyVersionId    String?  @db.Uuid
+  outcome            String   @db.VarChar(30)
+  recommendedAction  String   @db.VarChar(40)
+  reasons            Json
+  policySnapshot     Json
+  evaluatedById      String?  @db.Uuid
+  createdAt          DateTime @default(now())
+  student            Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicHistory   StudentAcademicHistory @relation(fields: [academicHistoryId], references: [id], onDelete: Cascade)
+  @@unique([studentId, academicHistoryId, policyVersionId], map: "uq_progression_student_history_policy")
+  @@index([studentId, createdAt], map: "idx_progression_student_created")
+  @@map("progression_evaluations")
+}
+
+model AcademicStanding {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId          String   @db.Uuid
+  academicHistoryId  String   @db.Uuid
+  policyVersionId    String?  @db.Uuid
+  standing           String   @db.VarChar(40)
+  reasons            Json
+  policySnapshot     Json
+  determinedById     String?  @db.Uuid
+  createdAt          DateTime @default(now())
+  student            Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicHistory   StudentAcademicHistory @relation(fields: [academicHistoryId], references: [id], onDelete: Cascade)
+  @@unique([studentId, academicHistoryId, policyVersionId], map: "uq_standing_student_history_policy")
+  @@index([studentId, createdAt], map: "idx_academic_standing_student_created")
+  @@map("academic_standings")
+}
+
+model AcademicPlacement {
+  id                            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId                     String   @db.Uuid
+  sourceProgressionEvaluationId String?  @db.Uuid
+  academicYear                  String   @db.VarChar(9)
+  fromLevel                     Int?     @db.SmallInt
+  toLevel                       Int      @db.SmallInt
+  decision                      String   @db.VarChar(40)
+  status                        String   @default("RECOMMENDED") @db.VarChar(20)
+  reason                        String?  @db.Text
+  policySnapshot                Json
+  approvedById                  String?  @db.Uuid
+  appliedById                   String?  @db.Uuid
+  appliedAt                     DateTime?
+  effectiveDate                 DateTime @db.Date
+  createdAt                     DateTime @default(now())
+  student                       Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([sourceProgressionEvaluationId], map: "uq_academic_placement_source_progression")
+  @@index([studentId, status, effectiveDate], map: "idx_academic_placement_student_status_date")
+  @@map("academic_placements")
+}
+
+model AcademicPlan {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId           String   @db.Uuid
+  curriculumVersionId String   @db.Uuid
+  status              String   @default("ACTIVE") @db.VarChar(20)
+  sourceAuditId       String?  @db.Uuid
+  rationale            Json
+  createdAt            DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  student             Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  curriculumVersion   CurriculumVersion @relation(fields: [curriculumVersionId], references: [id], onDelete: Restrict)
+  items               AcademicPlanItem[]
+  @@index([studentId, status], map: "idx_academic_plan_student_status")
+  @@map("academic_plans")
+}
+
+model AcademicPlanItem {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  planId       String   @db.Uuid
+  courseId     String   @db.Uuid
+  sequence     Int      @db.SmallInt
+  targetPeriod String?  @db.VarChar(100)
+  reason       String?  @db.Text
+  status       String   @default("RECOMMENDED") @db.VarChar(20)
+  plan         AcademicPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  course       Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  @@unique([planId, courseId], map: "uq_academic_plan_course")
+  @@index([planId, sequence], map: "idx_academic_plan_item_sequence")
+  @@map("academic_plan_items")
+}
+
+model AcademicAppeal {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId      String   @db.Uuid
+  appealType     String   @db.VarChar(40)
+  subjectId      String?  @db.Uuid
+  reason         String   @db.Text
+  evidenceRef    String?  @db.VarChar(500)
+  status         String   @default("SUBMITTED") @db.VarChar(30)
+  decision       String?  @db.Text
+  decidedById    String?  @db.Uuid
+  decidedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@index([studentId, status], map: "idx_academic_appeal_student_status")
+  @@map("academic_appeals")
+}
+
+model ProgrammeTransferRequest {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId       String   @db.Uuid
+  fromProgrammeId String   @db.Uuid
+  toProgrammeId   String   @db.Uuid
+  status          String   @default("SUBMITTED") @db.VarChar(30)
+  reason          String?  @db.Text
+  mappedCredits   Int      @default(0) @db.SmallInt
+  decisionNote    String?  @db.Text
+  decidedById     String?  @db.Uuid
+  decidedAt       DateTime?
+  createdAt       DateTime @default(now())
+  student         Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromProgramme   Programme @relation("TransferFromProgramme", fields: [fromProgrammeId], references: [id], onDelete: Restrict)
+  toProgramme     Programme @relation("TransferToProgramme", fields: [toProgrammeId], references: [id], onDelete: Restrict)
+  @@index([studentId, status], map: "idx_programme_transfer_student_status")
+  @@map("programme_transfer_requests")
+}
+
+model AcademicInterruption {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId   String   @db.Uuid
+  type        String   @db.VarChar(30)
+  startDate   DateTime @db.Date
+  endDate     DateTime? @db.Date
+  status      String   @default("REQUESTED") @db.VarChar(20)
+  reason      String?  @db.Text
+  decidedById String?  @db.Uuid
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+  student     Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@index([studentId, status], map: "idx_academic_interruption_student_status")
+  @@map("academic_interruptions")
+}
+
+model AcademicCredential {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentId      String   @db.Uuid
+  credentialType String   @db.VarChar(40)
+  credentialNo   String   @unique @db.VarChar(80)
+  documentHash   String?  @db.VarChar(128)
+  status         String   @default("ISSUED") @db.VarChar(20)
+  issuedAt       DateTime @default(now())
+  revokedAt      DateTime?
+  snapshot       Json
+  student        Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@index([studentId, credentialType], map: "idx_academic_credential_student_type")
+  @@map("academic_credentials")
+}

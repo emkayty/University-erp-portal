@@ -1,0 +1,34 @@
+=== REQUIRED ENV PRESENCE (NAMES ONLY) ===
+DATABASE_URL=missing
+DATABASE_DIRECT_URL=missing
+MIGRATE_DATABASE_URL=missing
+REDIS_URL=missing
+REDIS_HOST=missing
+JWT_PRIVATE_KEY_B64=missing
+JWT_PUBLIC_KEY_B64=missing
+ENCRYPTION_KEY_HEX=missing
+S3_UPLOADS_BUCKET=missing
+FRONTEND_ORIGIN=missing
+=== LOCAL PORTS ===
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess                                    
+LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*                                              
+LISTEN 0      4096       127.0.0.1:9330       0.0.0.0:*    users:(("sandbox-runtime",pid=16097,fd=4))
+LISTEN 0      10         127.0.0.1:9222       0.0.0.0:*    users:(("chromium",pid=16145,fd=83))      
+LISTEN 0      32           0.0.0.0:5900       0.0.0.0:*                                              
+LISTEN 0      4096       127.0.0.1:8350       0.0.0.0:*    users:(("sandbox-runtime",pid=16097,fd=8))
+LISTEN 0      4096            [::]:22            [::]:*                                              
+LISTEN 0      4096               *:8330             *:*    users:(("sandbox-runtime",pid=16097,fd=9))
+LISTEN 0      4096               *:8333             *:*                                              
+LISTEN 0      4096               *:8340             *:*    users:(("runtime-upgrade",pid=16488,fd=4))
+LISTEN 0      4096               *:49983            *:*                                              
+LISTEN 0      4096               *:19780            *:*    users:(("ws-server",pid=1135,fd=4))       
+LISTEN 0      32              [::]:5900          [::]:*                                              
+LISTEN 0      4096               *:5901             *:*                                              
+=== PRODUCTION CERTIFICATION DRY RUN ===
+exit=2
+
+> uniportal-erp@0.0.0 verify:production /home/ubuntu/deep_audit
+> bash scripts/verify/production-certification.sh
+
+Certification requires DATABASE_URL to be set.
+ ELIFECYCLE  Command failed with exit code 2.

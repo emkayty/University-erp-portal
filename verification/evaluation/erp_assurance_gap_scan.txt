@@ -1,0 +1,8 @@
+=== HEALTH TESTS ===
+=== MIDDLEWARE TESTS ===
+=== STORAGE TESTS ===
+apps/api/src/common/storage/private-object-storage.service.spec.ts
+=== CONTROLLER TESTS ===
+=== WEB TESTS ===
+apps/web/test/e2e/a11y.spec.ts
+apps/web/test/pact/auth.consumer.pact.spec.ts

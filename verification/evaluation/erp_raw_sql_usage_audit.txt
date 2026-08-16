@@ -1,0 +1,176 @@
+=== RAW SQL OCCURRENCES ===
+apps/api/src/common/outbox/outbox.service.ts:101:          await tx.$executeRaw`
+apps/api/src/common/outbox/outbox.service.ts:107:          await tx.$executeRaw`
+apps/api/src/common/outbox/outbox.service.ts:76:      const events = await tx.$queryRaw<RawDomainEvent[]>`
+apps/api/src/database/direct-prisma.service.ts:109:  get $queryRaw() { return this.base.$queryRaw.bind(this.base); }
+apps/api/src/database/direct-prisma.service.ts:110:  get $queryRawUnsafe() { return this.base.$queryRawUnsafe.bind(this.base); }
+apps/api/src/database/direct-prisma.service.ts:111:  get $executeRaw() { return this.base.$executeRaw.bind(this.base); }
+apps/api/src/database/partition-manager.service.ts:107:    const rows = await this.prisma.$queryRaw<Array<{ relkind: string }>>`
+apps/api/src/database/partition-manager.service.ts:121:      await this.prisma.$executeRawUnsafe(`
+apps/api/src/database/partition-manager.service.ts:93:        await this.prisma.$executeRawUnsafe(`
+apps/api/src/database/prisma.service.ts:106:   * FIX C2: Uses Prisma $executeRaw tagged template literals.
+apps/api/src/database/prisma.service.ts:108:   * BEFORE (vulnerable): $executeRawUnsafe(`SET LOCAL app.current_user_id = '${userId}'`)
+apps/api/src/database/prisma.service.ts:109:   * AFTER  (safe):        $executeRaw`SET LOCAL app.current_user_id = ${userId}`
+apps/api/src/database/prisma.service.ts:132:      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+apps/api/src/database/prisma.service.ts:133:      await tx.$executeRaw`SELECT set_config('app.current_role', ${role}, true)`;
+apps/api/src/database/prisma.service.ts:134:      await tx.$executeRaw`SELECT set_config('app.current_dept_id', ${deptId}, true)`;
+apps/api/src/database/prisma.service.ts:197:      await this.client.$queryRaw`SELECT 1`;
+apps/api/src/database/prisma.service.ts:46: *  C2  — withRls() uses Prisma $executeRaw tagged template literals.
+apps/api/src/database/prisma.service.ts:47: *         $executeRawUnsafe with string interpolation was replaced completely.
+apps/api/src/database/prisma.service.ts:730:  get $queryRaw() {
+apps/api/src/database/prisma.service.ts:732:    return c.$queryRaw.bind(c);
+apps/api/src/database/prisma.service.ts:734:  get $queryRawUnsafe() {
+apps/api/src/database/prisma.service.ts:736:    return c.$queryRawUnsafe.bind(c);
+apps/api/src/database/prisma.service.ts:738:  get $executeRaw() {
+apps/api/src/database/prisma.service.ts:740:    return c.$executeRaw.bind(c);
+apps/api/src/database/prisma.service.ts:742:  get $executeRawUnsafe() {
+apps/api/src/database/prisma.service.ts:743:    return this.client.$executeRawUnsafe.bind(this.client);
+apps/api/src/modules/academic/academic.service.spec.ts:108:    expect(tx.$executeRaw).toHaveBeenCalled();
+apps/api/src/modules/academic/academic.service.spec.ts:43:    $executeRaw: jest.fn().mockResolvedValue(undefined),
+apps/api/src/modules/academic/academic.service.ts:196:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+apps/api/src/modules/academic/academic.service.ts:361:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-progression:${studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:577:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-placement:${placement.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:667:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`programme-transfer:${student.id}`}))`;
+apps/api/src/modules/academic/academic.service.ts:694:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`programme-transfer:${current.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:747:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${student.id}`}))`;
+apps/api/src/modules/academic/academic.service.ts:767:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${current.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:789:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${current.studentId}`}))`;
+apps/api/src/modules/admissions/admissions.service.spec.ts:117:        $executeRaw: jest.fn().mockResolvedValue(undefined),
+apps/api/src/modules/admissions/admissions.service.spec.ts:92:      $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn({ applicant, auditLog, application: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn(), create: jest.fn().mockResolvedValue({ id: 'application-1' }) }, admissionDecision: { create: jest.fn() }, admissionOffer: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(), updateMany: jest.fn() }, $executeRaw: jest.fn() })),
+apps/api/src/modules/admissions/admissions.service.ts:282:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/admissions/admissions.service.ts:710:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/clinic/clinic.service.ts:451:      await tx.$queryRaw`SELECT id FROM drugs WHERE id = ${dto.drugId} FOR UPDATE`;
+apps/api/src/modules/fees/fees.service.spec.ts:71:  let txMock: Record<string, Record<string, jest.Mock>> & { $queryRaw: jest.Mock };
+apps/api/src/modules/fees/fees.service.spec.ts:75:      $queryRaw: jest.fn().mockResolvedValue([]),
+apps/api/src/modules/fees/fees.service.ts:175:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${dto.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/fees/fees.service.ts:221:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${waiver.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/fees/fees.service.ts:245:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${waiver.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/fees/payments.service.spec.ts:59:  let txMock: Record<string, Record<string, jest.Mock>> & { $executeRaw: jest.Mock };
+apps/api/src/modules/fees/payments.service.spec.ts:64:      // DB-unique post-partitioning — see Payment model doc). $executeRaw is
+apps/api/src/modules/fees/payments.service.spec.ts:85:      $executeRaw: jest.fn().mockResolvedValue(undefined),
+apps/api/src/modules/fees/payments.service.ts:170:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:262:        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:272:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:425:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${providerRef}))`;
+apps/api/src/modules/fees/payments.service.ts:589:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsa-receipt:${receiptReference}`}))`;
+apps/api/src/modules/hostel/hostel.service.spec.ts:23:      $queryRaw: jest.fn().mockResolvedValue([{ id: 'room-1' }]),
+apps/api/src/modules/hostel/hostel.service.spec.ts:36:    expect(tx.$queryRaw).toHaveBeenCalled();
+apps/api/src/modules/hostel/hostel.service.ts:107:      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${allocation.roomId} FOR UPDATE`;
+apps/api/src/modules/hostel/hostel.service.ts:60:      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${dto.roomId} FOR UPDATE`;
+apps/api/src/modules/reports/reports.service.ts:223:      this.prisma.$queryRaw<{ month: string; total: string; count: bigint }[]>`
+apps/api/src/modules/reports/reports.service.ts:230:          ${query.dateFrom ? this.prisma.$queryRaw`AND "createdAt" >= ${new Date(query.dateFrom)}` : this.prisma.$queryRaw``}
+apps/api/src/modules/reports/reports.service.ts:231:          ${query.dateTo ? this.prisma.$queryRaw`AND "createdAt" <= ${new Date(query.dateTo)}` : this.prisma.$queryRaw``}
+apps/api/src/modules/reports/reports.service.ts:264:    const buckets = await this.prisma.$queryRaw<{
+apps/api/src/modules/reports/reports.service.ts:281:        ${query.departmentId ? this.prisma.$queryRaw`AND "departmentId" = ${query.departmentId}::UUID` : this.prisma.$queryRaw``}
+apps/api/src/modules/reports/reports.service.ts:578:    const cgpaBuckets = await this.prisma.$queryRaw<{ classification: string; count: bigint }[]>`
+apps/api/src/modules/research/research.service.spec.ts:15:    $queryRaw: jest.fn(),
+apps/api/src/modules/research/research.service.spec.ts:45:    prisma.$queryRaw.mockResolvedValue([{ id: 'grant-1', status: GrantStatus.ACTIVE, amount: '1000', projectId: 'project-1' }]);
+apps/api/src/modules/research/research.service.ts:138:      const locked = await tx.$queryRaw<Array<{ id: string; status: GrantStatus; amount: string; projectId: string }>>`
+apps/api/src/modules/results/results.service.spec.ts:102:      $executeRaw: jest.fn().mockImplementation((strings: TemplateStringsArray) => {
+apps/api/src/modules/results/results.service.spec.ts:432:      expect(txMock.$executeRaw).toHaveBeenCalled();
+apps/api/src/modules/results/results.service.spec.ts:433:      const [strings, key] = txMock.$executeRaw.mock.calls[0] as [TemplateStringsArray, string];
+apps/api/src/modules/results/results.service.spec.ts:464:      const [, key] = txMock.$executeRaw.mock.calls[0] as [TemplateStringsArray, string];
+apps/api/src/modules/results/results.service.spec.ts:90:  let txMock: Record<string, Record<string, jest.Mock>> & { $executeRaw: jest.Mock };
+apps/api/src/modules/results/results.service.ts:438:    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentId}))`;
+apps/api/src/modules/results/results.service.ts:93:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${dto.studentId} || ':' || ${dto.courseOfferingId}))`;
+apps/api/src/modules/search/search.service.ts:111:        ${opts.departmentId ? this.prisma.$queryRaw`AND s."departmentId" = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
+apps/api/src/modules/search/search.service.ts:140:    const rows = await this.prisma.$queryRaw<{
+apps/api/src/modules/search/search.service.ts:158:        ${opts.departmentId ? this.prisma.$queryRaw`AND c.department_id = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
+apps/api/src/modules/search/search.service.ts:185:    const rows = await this.prisma.$queryRaw<{
+apps/api/src/modules/search/search.service.ts:35:    const rows = await this.prisma.$queryRaw<{
+apps/api/src/modules/search/search.service.ts:60:        ${opts.status        ? this.prisma.$queryRaw`AND s.status = ${opts.status}` : this.prisma.$queryRaw``}
+apps/api/src/modules/search/search.service.ts:61:        ${opts.departmentId  ? this.prisma.$queryRaw`AND s."departmentId" = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
+apps/api/src/modules/search/search.service.ts:88:    const rows = await this.prisma.$queryRaw<{
+apps/api/src/modules/students/matric-number.service.ts:39:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/students/students.service.spec.ts:130:      $executeRaw:  jest.fn().mockResolvedValue(1),
+apps/api/src/modules/students/students.service.spec.ts:363:        prisma.$executeRaw.mockImplementation((strings: TemplateStringsArray) => {
+apps/api/src/modules/students/students.service.spec.ts:374:        expect(prisma.$executeRaw).toHaveBeenCalled();
+apps/api/src/modules/students/students.service.spec.ts:375:        const [strings, key] = prisma.$executeRaw.mock.calls[0] as [TemplateStringsArray, string];
+apps/api/src/modules/students/students.service.spec.ts:383:        const [, key] = prisma.$executeRaw.mock.calls[0] as [TemplateStringsArray, string];
+apps/api/src/modules/students/students.service.spec.ts:41:  let prisma:     Record<string, Record<string, jest.Mock>> & { forRequest: jest.Mock; runExclusive: jest.Mock; $executeRaw: jest.Mock };
+apps/api/src/modules/students/students.service.ts:500:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentId}))`;
+apps/api/src/modules/users/users.service.ts:155:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+packages/utils/src/coverage/lcov-report/date.ts.html:400: *   await tx.$executeRaw`
+packages/utils/src/date.ts:87: *   await tx.$executeRaw`
+=== SQL-LIKE STRING CONCATENATION ===
+apps/api/src/common/outbox/outbox.service.ts:50: * SELECT FOR UPDATE SKIP LOCKED (NEW-1): Multiple processes (API + worker)
+apps/api/src/common/outbox/outbox.service.ts:77:        SELECT id, "eventType" AS event_type, payload, "createdAt" AS created_at,
+apps/api/src/common/outbox/outbox.service.ts:79:        FROM domain_events
+apps/api/src/common/outbox/outbox.service.ts:84:        FOR UPDATE SKIP LOCKED
+apps/api/src/common/outbox/outbox.service.ts:102:            UPDATE domain_events SET "processedAt" = NOW() WHERE id = ${event.id}::uuid
+apps/api/src/common/outbox/outbox.service.ts:108:            UPDATE domain_events
+apps/api/src/database/partition-manager.service.ts:96:          FOR VALUES FROM ('${rangeFrom}') TO ('${rangeTo}')
+apps/api/src/database/partition-manager.service.ts:108:      SELECT c.relkind FROM pg_class c
+apps/api/src/database/prisma.service.ts:132:      await tx.$executeRaw`SELECT set_config('app.current_user_id', ${userId}, true)`;
+apps/api/src/database/prisma.service.ts:133:      await tx.$executeRaw`SELECT set_config('app.current_role', ${role}, true)`;
+apps/api/src/database/prisma.service.ts:134:      await tx.$executeRaw`SELECT set_config('app.current_dept_id', ${deptId}, true)`;
+apps/api/src/database/prisma.service.ts:197:      await this.client.$queryRaw`SELECT 1`;
+apps/api/src/modules/results/results.service.ts:93:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${dto.studentId} || ':' || ${dto.courseOfferingId}))`;
+apps/api/src/modules/results/results.service.ts:438:    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentId}))`;
+apps/api/src/modules/fees/payments.service.ts:170:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:262:        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:272:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyKey}))`;
+apps/api/src/modules/fees/payments.service.ts:425:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${providerRef}))`;
+apps/api/src/modules/fees/payments.service.ts:589:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsa-receipt:${receiptReference}`}))`;
+apps/api/src/modules/fees/fees.service.ts:175:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${dto.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/fees/fees.service.ts:221:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${waiver.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/fees/fees.service.ts:245:      await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${waiver.studentFeeId} FOR UPDATE`;
+apps/api/src/modules/reports/reports.service.ts:228:        FROM payments
+apps/api/src/modules/reports/reports.service.ts:278:      FROM students
+apps/api/src/modules/reports/reports.service.ts:589:      FROM students
+apps/api/src/modules/hostel/hostel.service.ts:60:      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${dto.roomId} FOR UPDATE`;
+apps/api/src/modules/hostel/hostel.service.ts:107:      await tx.$queryRaw`SELECT id FROM rooms WHERE id = ${allocation.roomId} FOR UPDATE`;
+apps/api/src/modules/notifications/notifications.processor.ts:65: * read from SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS/SMTP_FROM and
+apps/api/src/modules/notifications/notifications.processor.ts:85:    // SMTP_FROM falls back to the already-validated SES_FROM_ADDRESS (see
+apps/api/src/modules/notifications/notifications.processor.ts:96:    const fromAddress = process.env.SMTP_FROM ?? process.env.SES_FROM_ADDRESS;
+apps/api/src/modules/notifications/notifications.processor.ts:112:        'SMTP_HOST + (SMTP_FROM or SES_FROM_ADDRESS) not set — email delivery is disabled. ' +
+apps/api/src/modules/notifications/notifications.processor.ts:409:          failureReason: 'SMTP not configured (SMTP_HOST/SMTP_FROM unset) — no email was sent',
+apps/api/src/modules/academic/academic.service.ts:196:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+apps/api/src/modules/academic/academic.service.ts:361:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-progression:${studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:577:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-placement:${placement.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:667:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`programme-transfer:${student.id}`}))`;
+apps/api/src/modules/academic/academic.service.ts:694:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`programme-transfer:${current.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:747:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${student.id}`}))`;
+apps/api/src/modules/academic/academic.service.ts:767:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${current.studentId}`}))`;
+apps/api/src/modules/academic/academic.service.ts:789:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`academic-interruption:${current.studentId}`}))`;
+apps/api/src/modules/clinic/clinic.service.ts:451:      await tx.$queryRaw`SELECT id FROM drugs WHERE id = ${dto.drugId} FOR UPDATE`;
+apps/api/src/modules/students/students.service.ts:500:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentId}))`;
+apps/api/src/modules/students/matric-number.service.ts:39:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/research/research.service.ts:122:   * Fixed with `SELECT ... FOR UPDATE` on the Grant row itself: this locks
+apps/api/src/modules/research/research.service.ts:139:        SELECT id, status, amount, "projectId" FROM grants WHERE id = ${grantId}::uuid FOR UPDATE
+apps/api/src/modules/settings/settings.service.ts:71:  // ── UPDATE ────────────────────────────────────────────────────────────────
+apps/api/src/modules/admissions/admissions.service.ts:282:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/admissions/admissions.service.ts:692:   * either INSERT committed, generating duplicate application numbers).
+apps/api/src/modules/admissions/admissions.service.ts:710:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+apps/api/src/modules/search/search.service.ts:51:      FROM students s
+apps/api/src/modules/search/search.service.ts:102:      FROM staff s
+apps/api/src/modules/search/search.service.ts:151:      FROM courses c
+apps/api/src/modules/search/search.service.ts:197:      FROM library_items
+apps/api/src/modules/privacy/privacy.service.ts:140:   * Right to Erasure — DELETE /privacy/erase/:userId
+apps/api/src/modules/audit-viewer/audit-viewer.controller.ts:14: * Audit logs are append-only — no PATCH/DELETE endpoints exist.
+apps/api/src/modules/users/users.service.ts:155:      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+packages/config/src/env.schema.ts:74:  // provider — Postal, Mailgun, a local relay). SMTP_FROM falls back to
+packages/utils/src/date.ts:88: *     SELECT pg_advisory_xact_lock(${buildAdvisoryLockKey(deptCode, year)})
+packages/utils/src/coverage/lcov-report/date.ts.html:401: *     SELECT pg_advisory_xact_lock(${buildAdvisoryLockKey(deptCode, year)})
+=== URL/REDIRECT SINKS ===
+apps/web/middleware.ts:39:    return NextResponse.redirect(new URL('/dashboard', request.url));
+apps/web/middleware.ts:57:    return NextResponse.redirect(loginUrl);
+apps/web/app/page.tsx:6:  redirect('/dashboard');
+apps/web/app/auth/login/login-form.tsx:73:        router.replace(from);
+apps/web/app/auth/login/login-form.tsx:91:      router.replace(from);
+apps/web/app/auth/login/login-form.tsx:116:      router.replace(from);
+apps/web/app/dashboard/layout.tsx:287:      router.replace("/auth/login?reason=session_expired");
+apps/web/app/dashboard/fees/page.tsx:112:            window.location.assign(checkout.toString());
+apps/web/app/dashboard/library/page.tsx:110:                        <td className="px-3 py-2 text-muted-foreground text-xs">{item.shelfLocation ?? '—'}</td>
+apps/web/app/dashboard/alumni/page.tsx:299:                        ['Location',      [myProfile.currentCity, myProfile.currentCountry].filter(Boolean).join(', ')],
+apps/web/app/dashboard/alumni/page.tsx:376:                    {['Year', 'Programme', 'Class', 'CGPA', 'Occupation', 'Employer', 'Location'].map((h) => (
+apps/web/lib/api-client.ts:143:      window.location.href = '/auth/login?reason=session_expired';
+apps/web/lib/api-client.ts:193:        window.location.href = '/auth/login?reason=session_expired';
+apps/web/hooks/use-auth.ts:53:      router.replace('/auth/login');
+apps/web/hooks/use-auth.ts:89:      router.replace('/auth/login?reason=password_changed');
+apps/web/hooks/use-auth.ts:108:      router.replace('/auth/login');
+apps/api/src/modules/reports/reports.controller.ts:65:    if (process.env.S3_REPORTS_BUCKET && job.generatedUrl) return res.redirect(302, job.generatedUrl);
+apps/api/src/modules/library/library.service.ts:42:        shelfLocation:   dto.shelfLocation ?? null,
+apps/api/src/modules/library/dto/library.dto.ts:15:  @ApiPropertyOptional() @IsOptional() @IsString() shelfLocation?: string;
+apps/api/src/modules/admissions/admissions.service.ts:168:  private async validateOriginLocation(dto: CreateApplicantDto) {
+apps/api/src/modules/admissions/admissions.service.ts:244:    const origin = await this.validateOriginLocation(dto);

@@ -1,0 +1,143 @@
+===== integration =====
+exit=1
+
+> @uniportal/api@0.0.0 test:integration /home/ubuntu/deep_audit/apps/api
+> jest --config jest-integration.config.ts --runInBand
+
+FAIL test/integration/rls-database.integration.spec.ts
+  database/RLS production-role integration
+    ✕ connects with the restricted application role (1 ms)
+    ✕ has forced RLS on protected student and payment tables
+    ✕ does not leak student rows without an authenticated RLS identity (1 ms)
+    ✕ scopes request identity to one transaction and does not leak it
+
+  ● database/RLS production-role integration › connects with the restricted application role
+
+    DATABASE_URL is required
+
+      10 |
+      11 |   beforeAll(async () => {
+    > 12 |     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+         |                                          ^
+      13 |     db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      14 |     await db.$connect();
+      15 |   });
+
+      at Object.<anonymous> (test/integration/rls-database.integration.spec.ts:12:42)
+
+  ● database/RLS production-role integration › has forced RLS on protected student and payment tables
+
+    DATABASE_URL is required
+
+      10 |
+      11 |   beforeAll(async () => {
+    > 12 |     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+         |                                          ^
+      13 |     db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      14 |     await db.$connect();
+      15 |   });
+
+      at Object.<anonymous> (test/integration/rls-database.integration.spec.ts:12:42)
+
+  ● database/RLS production-role integration › does not leak student rows without an authenticated RLS identity
+
+    DATABASE_URL is required
+
+      10 |
+      11 |   beforeAll(async () => {
+    > 12 |     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+         |                                          ^
+      13 |     db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      14 |     await db.$connect();
+      15 |   });
+
+      at Object.<anonymous> (test/integration/rls-database.integration.spec.ts:12:42)
+
+  ● database/RLS production-role integration › scopes request identity to one transaction and does not leak it
+
+    DATABASE_URL is required
+
+      10 |
+      11 |   beforeAll(async () => {
+    > 12 |     if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
+         |                                          ^
+      13 |     db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      14 |     await db.$connect();
+      15 |   });
+
+      at Object.<anonymous> (test/integration/rls-database.integration.spec.ts:12:42)
+
+Test Suites: 1 failed, 1 total
+Tests:       4 failed, 4 total
+Snapshots:   0 total
+Time:        0.416 s
+Ran all test suites.
+/home/ubuntu/deep_audit/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/api@0.0.0 test:integration: `jest --config jest-integration.config.ts --runInBand`
+Exit status 1
+
+===== e2e =====
+exit=1
+
+> @uniportal/api@0.0.0 test:e2e /home/ubuntu/deep_audit/apps/api
+> jest --config jest-e2e.config.ts
+
+
+❌ Environment validation failed:
+  • DATABASE_URL: Required
+  • JWT_PRIVATE_KEY_B64: Required
+  • JWT_PUBLIC_KEY_B64: Required
+  ●  process.exit called with "1"
+
+      145 |       .join('\n');
+      146 |     process.stderr.write('\n❌ Environment validation failed:\n' + errors + '\n');
+    > 147 |     process.exit(1);
+          |             ^
+      148 |   }
+      149 |
+      150 |   return result.data;
+
+      at Object.validateEnv [as validate] (../../packages/config/src/env.schema.ts:147:13)
+      at Function.forRoot (../../node_modules/.pnpm/@nestjs+config@4.0.4_@nestjs+common@11.1.27_class-transformer@0.5.1_class-validator@0.14.4_re_izff74spthrjl2sfzasyo7iwam/node_modules/@nestjs/config/dist/config.module.js:88:45)
+      at Object.<anonymous> (src/app.module.ts:64:18)
+      at Object.<anonymous> (test/e2e/auth-security.e2e-spec.ts:4:1)
+/home/ubuntu/deep_audit/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/api@0.0.0 test:e2e: `jest --config jest-e2e.config.ts`
+Exit status 1
+
+===== pact =====
+exit=1
+
+> @uniportal/api@0.0.0 test:pact:verify /home/ubuntu/deep_audit/apps/api
+> jest --config test/pact/jest-pact.config.ts
+
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In /home/ubuntu/deep_audit/apps/api/test/pact
+  2 files checked.
+  testMatch: /home/ubuntu/deep_audit/apps/api/test/pact/test/pact/**/*.pact.spec.ts - 0 matches
+  testPathIgnorePatterns: /node_modules/ - 2 matches
+  testRegex:  - 0 matches
+Pattern:  - 0 matches
+/home/ubuntu/deep_audit/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/api@0.0.0 test:pact:verify: `jest --config test/pact/jest-pact.config.ts`
+Exit status 1
+
+===== coverage =====
+exit=1
+
+> @uniportal/api@0.0.0 test:cov /home/ubuntu/deep_audit/apps/api
+> jest --coverage "--" "--runInBand"
+
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In /home/ubuntu/deep_audit/apps/api/src
+  197 files checked.
+  testMatch:  - 0 matches
+  testPathIgnorePatterns: /node_modules/ - 197 matches
+  testRegex: .*\.spec\.ts$ - 28 matches
+Pattern: --runInBand - 0 matches
+/home/ubuntu/deep_audit/apps/api:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/api@0.0.0 test:cov: `jest --coverage "--" "--runInBand"`
+Exit status 1
+

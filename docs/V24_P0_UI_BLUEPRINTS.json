@@ -1,0 +1,72 @@
+{
+  "dashboard": {
+    "layout": [
+      "page header",
+      "metric summary",
+      "needs attention",
+      "quick actions",
+      "recent activity"
+    ],
+    "primary": "Resolve highest-priority attention item"
+  },
+  "admissions": {
+    "layout": [
+      "application header",
+      "workflow progress",
+      "search/filter",
+      "qualification summary",
+      "documents",
+      "review/decision panel",
+      "timeline"
+    ],
+    "primary": "Review / request correction / decide"
+  },
+  "student": {
+    "layout": [
+      "student header",
+      "status metrics",
+      "academic snapshot",
+      "registration",
+      "results",
+      "finance",
+      "support/history"
+    ],
+    "primary": "Open current academic task"
+  },
+  "course-registration": {
+    "layout": [
+      "term context",
+      "registration status",
+      "search/filter",
+      "available courses",
+      "selected courses",
+      "credit/conflict summary",
+      "submit/receipt"
+    ],
+    "primary": "Register selected courses"
+  },
+  "exams-results": {
+    "layout": [
+      "assessment context",
+      "workflow status",
+      "grading scale",
+      "entry/upload",
+      "validation preview",
+      "moderation",
+      "publication",
+      "audit"
+    ],
+    "primary": "Save draft / submit for review / publish (permission dependent)"
+  },
+  "finance": {
+    "layout": [
+      "account header",
+      "balance metrics",
+      "invoice/payment list",
+      "payment state",
+      "receipt",
+      "reconciliation/exception queue"
+    ],
+    "primary": "Resolve payment/finance task"
+  }
+}

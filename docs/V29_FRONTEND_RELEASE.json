@@ -1,0 +1,9 @@
+{
+  "version": "V29",
+  "focus": "full UI migration foundation and legacy-system audit",
+  "source_snapshot": "uniportal-erp-v28-institutional-uiux.zip",
+  "unified_primitives": "v29-unified-ui.tsx",
+  "authoritative_tokens": "v28-institutional-system.css",
+  "domain_logic_preserved": true,
+  "next_step": "migrate real routes/components against V29 workflow matrix"
+}

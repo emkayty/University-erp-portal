@@ -1,0 +1,97 @@
+{
+  "admissions_decision": {
+    "path": [
+      "application UI",
+      "admission API",
+      "authentication/authorization",
+      "application validation",
+      "decision service",
+      "application DB transaction",
+      "audit",
+      "response/UI state"
+    ],
+    "invariants": [
+      "only authorized staff can decide",
+      "decision transition validated against current state",
+      "audit records actor/time/action",
+      "duplicate submission is safe"
+    ]
+  },
+  "course_registration": {
+    "path": [
+      "registration UI",
+      "registration API",
+      "authorization",
+      "student eligibility",
+      "programme/curriculum rules",
+      "prerequisite/conflict/credit checks",
+      "transaction",
+      "registration record",
+      "response/UI"
+    ],
+    "invariants": [
+      "server is authoritative",
+      "no duplicate enrollment",
+      "capacity/eligibility enforced server-side",
+      "locked registration cannot be mutated without authorized workflow"
+    ]
+  },
+  "grade_upload": {
+    "path": [
+      "grade UI",
+      "upload API",
+      "authorization",
+      "file/schema validation",
+      "student/course/assessment matching",
+      "grade-scale validation",
+      "duplicate/version check",
+      "transaction",
+      "audit",
+      "response/UI"
+    ],
+    "invariants": [
+      "preview before commit",
+      "invalid rows do not silently commit",
+      "grading scale is institution-configured",
+      "retry cannot duplicate grades",
+      "published results require controlled correction"
+    ]
+  },
+  "result_publication": {
+    "path": [
+      "results UI",
+      "publish API",
+      "authorization",
+      "approval/state validation",
+      "publication transaction",
+      "audit",
+      "student-facing official result",
+      "response/UI"
+    ],
+    "invariants": [
+      "only approved results can publish",
+      "published state is authoritative",
+      "publication is auditable",
+      "correction is controlled"
+    ]
+  },
+  "payment": {
+    "path": [
+      "payment UI",
+      "payment API",
+      "authorization",
+      "provider/transaction validation",
+      "idempotency",
+      "transaction record",
+      "receipt",
+      "audit",
+      "response/UI"
+    ],
+    "invariants": [
+      "client cannot declare success",
+      "duplicate callback/payment is safe",
+      "receipt follows authoritative success",
+      "reversal is permission-controlled"
+    ]
+  }
+}

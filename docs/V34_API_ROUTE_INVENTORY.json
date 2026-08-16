@@ -1,0 +1,29 @@
+{
+  "frontend_calls": [
+    [
+      "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "http://169.254.169.254/latest/api/token"
+    ],
+    [
+      "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+    ],
+    [
+      "apps/api/src/modules/reports/services/report-artifact.service.ts",
+      "http://169.254.169.254/latest/meta-data/iam/security-credentials/${encodeURIComponent(role)}"
+    ],
+    [
+      "apps/api/src/modules/notifications/notifications.processor.ts",
+      "https://api.ng.termii.com/api/sms/send"
+    ],
+    [
+      "apps/api/prisma/seed.ts",
+      "https://raw.githubusercontent.com/temikeezy/nigeria-geojson-data/main/data/lgas.json"
+    ],
+    [
+      "apps/web/lib/api-client.ts",
+      "${API_BASE}/api/v1/auth/refresh"
+    ]
+  ],
+  "backend_routes": []
+}

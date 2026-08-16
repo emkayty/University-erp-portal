@@ -1,0 +1,31 @@
+===== pact =====
+exit=1
+
+> @uniportal/web@0.0.0 test:pact:consumer /home/ubuntu/deep_audit/apps/web
+> jest --config test/pact/jest-pact-consumer.config.ts
+
+No tests found, exiting with code 1
+Run with `--passWithNoTests` to exit with code 0
+In /home/ubuntu/deep_audit/apps/web/test/pact
+  2 files checked.
+  testMatch: /home/ubuntu/deep_audit/apps/web/test/pact/test/pact/**/*.pact.spec.ts - 0 matches
+  testPathIgnorePatterns: /node_modules/ - 2 matches
+  testRegex:  - 0 matches
+Pattern:  - 0 matches
+/home/ubuntu/deep_audit/apps/web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/web@0.0.0 test:pact:consumer: `jest --config test/pact/jest-pact-consumer.config.ts`
+Exit status 1
+
+===== a11y =====
+exit=1
+
+> @uniportal/web@0.0.0 test:a11y /home/ubuntu/deep_audit/apps/web
+> playwright test --grep @a11y
+
+[WebServer] Invalid project directory provided, no such directory: /home/ubuntu/deep_audit/apps/web/-p
+Error: Process from config.webServer was not able to start. Exit code: 1
+
+/home/ubuntu/deep_audit/apps/web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @uniportal/web@0.0.0 test:a11y: `playwright test --grep @a11y`
+Exit status 1
+

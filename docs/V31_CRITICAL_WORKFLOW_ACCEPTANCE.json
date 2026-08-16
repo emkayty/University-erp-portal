@@ -1,0 +1,54 @@
+{
+  "admissions": {
+    "critical": true,
+    "must_pass": [
+      "permission",
+      "validation",
+      "duplicate-safe-submit",
+      "audit",
+      "mobile"
+    ]
+  },
+  "course_registration": {
+    "critical": true,
+    "must_pass": [
+      "eligibility",
+      "prerequisite",
+      "credit-limit",
+      "conflict",
+      "lock",
+      "mobile"
+    ]
+  },
+  "exams_results": {
+    "critical": true,
+    "must_pass": [
+      "grade-validation",
+      "bulk-preview",
+      "approval",
+      "publication-state",
+      "correction",
+      "audit",
+      "mobile"
+    ]
+  },
+  "finance": {
+    "critical": true,
+    "must_pass": [
+      "authoritative-payment-state",
+      "receipt",
+      "reversal-permission",
+      "audit",
+      "mobile"
+    ]
+  },
+  "student": {
+    "critical": false,
+    "must_pass": [
+      "privacy",
+      "record-context",
+      "mobile",
+      "error-recovery"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "glassmorphism": [
+    "--glass-bg",
+    "--glass-border",
+    "--glass-shadow",
+    "--glass-blur",
+    ".glass-card"
+  ],
+  "legacy_erp_tokens": [
+    "--erp-bg",
+    "--erp-surface",
+    "--erp-accent",
+    "--erp-success",
+    "--erp-warning",
+    "--erp-danger"
+  ],
+  "replacement": "Use --u-* tokens and v28-institutional-components.tsx for new ERP UI."
+}

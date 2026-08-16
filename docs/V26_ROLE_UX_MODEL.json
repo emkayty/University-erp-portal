@@ -1,0 +1,50 @@
+{
+  "student": [
+    "current semester",
+    "registration",
+    "fees",
+    "results",
+    "exams",
+    "messages"
+  ],
+  "lecturer": [
+    "my courses",
+    "class lists",
+    "attendance",
+    "assessment",
+    "grade entry",
+    "submissions"
+  ],
+  "hod": [
+    "department overview",
+    "course delivery",
+    "staff",
+    "results exceptions",
+    "workload",
+    "approvals"
+  ],
+  "registry": [
+    "applications",
+    "students",
+    "registration",
+    "results",
+    "transcripts",
+    "exceptions"
+  ],
+  "finance": [
+    "billing",
+    "payments",
+    "receipts",
+    "reconciliation",
+    "exceptions",
+    "reports"
+  ],
+  "administrator": [
+    "institution setup",
+    "users/roles",
+    "academic configuration",
+    "integrations",
+    "audit",
+    "security"
+  ]
+}

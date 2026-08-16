@@ -1,0 +1,42 @@
+[
+  {
+    "id": "API-001",
+    "name": "unauthorized request rejected",
+    "expect": "401/403; no business mutation"
+  },
+  {
+    "id": "API-002",
+    "name": "invalid payload rejected",
+    "expect": "4xx with structured field errors"
+  },
+  {
+    "id": "API-003",
+    "name": "duplicate mutation safe",
+    "expect": "one authoritative mutation despite retry"
+  },
+  {
+    "id": "API-004",
+    "name": "stale client state rejected",
+    "expect": "server validates current state/version"
+  },
+  {
+    "id": "API-005",
+    "name": "published result protected",
+    "expect": "only authorized correction workflow can change it"
+  },
+  {
+    "id": "API-006",
+    "name": "payment state authoritative",
+    "expect": "client cannot mark payment successful"
+  },
+  {
+    "id": "API-007",
+    "name": "grading scale server controlled",
+    "expect": "5.0/4.0 mapping comes from institution configuration"
+  },
+  {
+    "id": "API-008",
+    "name": "audit integrity",
+    "expect": "consequential action records actor/time/action/context"
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "version": "V22",
+  "focus": "high-priority university workflows",
+  "priority": [
+    "dashboard",
+    "admissions",
+    "student",
+    "course-registration",
+    "exams-results",
+    "finance"
+  ],
+  "principle": "clarity under institutional complexity"
+}

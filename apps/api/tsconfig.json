@@ -1,0 +1,18 @@
+{
+  "extends": "@uniportal/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "isolatedModules": true,
+    "strictPropertyInitialization": false,
+    "paths": {
+      "@uniportal/types":         ["../../packages/types/src"],
+      "@uniportal/config":        ["../../packages/config/src"],
+      "@uniportal/utils":         ["../../packages/utils/src"],
+      "@uniportal/prisma-client": ["../../packages/prisma-client/src"]
+    }
+  },
+  "include": ["src/**/*", "prisma/seed.ts"],
+  "exclude": ["node_modules", "dist", "test", "**/*spec.ts"]
+}

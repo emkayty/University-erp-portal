@@ -1,0 +1,84 @@
+{
+  "student": {
+    "landing": "Overview",
+    "priority": [
+      "current semester",
+      "registration",
+      "fees",
+      "results",
+      "exams",
+      "messages"
+    ],
+    "tone": "reassuring and task-oriented"
+  },
+  "lecturer": {
+    "landing": "My Tasks",
+    "priority": [
+      "courses",
+      "class lists",
+      "attendance",
+      "assessment",
+      "grade entry",
+      "submissions"
+    ],
+    "tone": "fast and work-focused"
+  },
+  "hod": {
+    "landing": "Department Overview",
+    "priority": [
+      "results exceptions",
+      "course delivery",
+      "staff",
+      "workload",
+      "approvals"
+    ],
+    "tone": "exception-focused"
+  },
+  "registry": {
+    "landing": "Registry Workspace",
+    "priority": [
+      "applications",
+      "student records",
+      "registration",
+      "results",
+      "transcripts",
+      "exceptions"
+    ],
+    "tone": "accuracy and throughput"
+  },
+  "finance": {
+    "landing": "Finance Workspace",
+    "priority": [
+      "billing",
+      "payments",
+      "reconciliation",
+      "exceptions",
+      "reports"
+    ],
+    "tone": "control and traceability"
+  },
+  "administrator": {
+    "landing": "Institution Overview",
+    "priority": [
+      "configuration",
+      "users & roles",
+      "academic setup",
+      "integrations",
+      "audit",
+      "security"
+    ],
+    "tone": "controlled and system-oriented"
+  },
+  "executive": {
+    "landing": "Executive Overview",
+    "priority": [
+      "enrolment",
+      "academic performance",
+      "finance",
+      "operations",
+      "risk",
+      "institutional reports"
+    ],
+    "tone": "decision-oriented"
+  }
+}

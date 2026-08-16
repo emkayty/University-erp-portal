@@ -1,0 +1,7 @@
+{
+  "version": "V31",
+  "focus": "reliability, safety and interaction hardening",
+  "source_snapshot": "uniportal-erp-v30-screen-ux-qa.zip",
+  "backend_logic_preserved": true,
+  "critical_workflows": "admissions, registration, exams/results, finance"
+}

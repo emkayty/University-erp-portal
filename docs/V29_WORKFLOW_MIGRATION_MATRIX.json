@@ -1,0 +1,58 @@
+{
+  "dashboard": [
+    "role landing",
+    "priority tasks",
+    "notifications",
+    "quick actions",
+    "loading",
+    "empty",
+    "error"
+  ],
+  "admissions": [
+    "application list",
+    "application detail",
+    "requirements",
+    "review",
+    "decision",
+    "correction request",
+    "audit trail"
+  ],
+  "student": [
+    "student search",
+    "student profile",
+    "academic status",
+    "programme context",
+    "documents",
+    "activity"
+  ],
+  "course-registration": [
+    "course discovery",
+    "eligibility",
+    "prerequisite conflicts",
+    "credit limit",
+    "draft",
+    "submit",
+    "lock"
+  ],
+  "exams-results": [
+    "assessment setup",
+    "live grade entry",
+    "bulk upload",
+    "validation preview",
+    "moderation",
+    "approval",
+    "publication",
+    "grade history",
+    "download/report"
+  ],
+  "finance": [
+    "invoice",
+    "balance",
+    "payment",
+    "receipt",
+    "reversal",
+    "waiver",
+    "reconciliation",
+    "exceptions"
+  ]
+}

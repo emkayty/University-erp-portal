@@ -1,0 +1,17 @@
+{
+  "hardcoded_password_field": [
+    "apps/web/app/auth/reset-password/page.tsx",
+    "apps/web/app/auth/login/login-form.tsx",
+    "apps/web/app/dashboard/students/page.tsx"
+  ],
+  "client_only_permission_hint": [
+    "apps/web/app/dashboard/results/page.tsx",
+    "apps/web/app/dashboard/research/page.tsx",
+    "apps/web/app/dashboard/settings/page.tsx"
+  ],
+  "window_confirm": [
+    "apps/web/app/dashboard/fees/page.tsx",
+    "apps/web/app/dashboard/settings/page.tsx",
+    "apps/web/app/dashboard/admissions/page.tsx"
+  ]
+}

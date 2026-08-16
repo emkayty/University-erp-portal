@@ -1,0 +1,349 @@
+# UniPortal ERP — CI/CD Pipeline
+# H-P6-5 FIX: Switched from AllAtOnce to RollingUpdate deployment strategy.
+# AllAtOnce takes the service down for the duration of the deploy — unacceptable
+# for 20,000 concurrent users. RollingUpdate replaces instances one-at-a-time,
+# preserving capacity throughout. Zero-downtime requires at minimum 2 instances.
+#
+# Deploy lifecycle:
+#   1. Build  — typecheck + lint + unit tests
+#   2. Test   — integration tests against PostgreSQL/Redis service containers
+#   3. Deploy — pm2 reload (zero-downtime rolling restart via ecosystem.config.js)
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '22' # audit remediation R4: must match package.json engines.node (>=22) and deploy-aws-codedeploy.yml
+  PNPM_VERSION: '9'
+
+jobs:
+  # ── Build + Unit Tests ─────────────────────────────────────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript typecheck (API)
+        run: pnpm --filter @uniportal/api exec tsc --noEmit
+
+      - name: TypeScript typecheck (Web)
+        run: pnpm --filter @uniportal/web exec tsc --noEmit
+
+      - name: Lint
+        run: pnpm --filter @uniportal/api exec eslint src --ext .ts --max-warnings 0
+
+      - name: Unit tests (API)
+        run: pnpm --filter @uniportal/api exec jest --passWithNoTests --forceExit
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test:test@localhost:5432/uniportal_test
+          REDIS_HOST: localhost
+
+  # ── Integration Tests ──────────────────────────────────────────────────────
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: uniportal_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports: ['5432:5432']
+      redis:
+        image: redis:7-alpine
+        options: --health-cmd "redis-cli ping" --health-interval 5s
+        ports: ['6379:6379']
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy database schema + RLS baseline
+        # Use the same non-destructive schema deployment path as controlled
+        # production certification. The historical Prisma migration chain is
+        # not a fresh-database baseline, so `prisma migrate deploy` is not the
+        # authoritative clean-environment path for this repository.
+        run: bash scripts/db/deploy-schema.sh
+        env:
+          DATABASE_URL: postgresql://uniportal_app:test_app_pass@localhost:5432/uniportal_test
+          MIGRATE_DATABASE_URL: postgresql://test:test@localhost:5432/uniportal_test
+          DATABASE_AUTO_BOOTSTRAP_ROLES: 'true'
+          POSTGRES_ADMIN_URL: postgresql://test:test@localhost:5432/uniportal_test
+          POSTGRES_DB_NAME: uniportal_test
+          UNIPORTAL_APP_PASSWORD: test_app_pass
+          UNIPORTAL_SYSTEM_PASSWORD: test_system_pass
+
+      - name: Set uniportal_app role password
+        # Migration 0011 deliberately does not set a password (no
+        # credentials committed to a migration file). CI sets one here,
+        # scoped to this ephemeral container only.
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d uniportal_test \
+            -c "ALTER ROLE uniportal_app WITH PASSWORD 'test_app_pass'; GRANT CONNECT ON DATABASE uniportal_test TO uniportal_app;"
+
+      - name: Integration test presence gate
+        # Never let an empty test selector masquerade as a passing integration
+        # gate. The production certification contract requires executable
+        # database-backed integration evidence.
+        run: |
+          test -d apps/api/test/integration
+          test -n "$(find apps/api/test/integration -type f \\( -name '*.spec.ts' -o -name '*.test.ts' \\) -print -quit)"
+
+      - name: Integration tests
+        # Runs as uniportal_app (the restricted, RLS-subject role), not the
+        # migration owner — the integration suite must exercise the same role
+        # split production will actually run under.
+        run: pnpm --filter @uniportal/api run test:integration
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://uniportal_app:test_app_pass@localhost:5432/uniportal_test
+          DATABASE_DIRECT_URL: postgresql://uniportal_app:test_app_pass@localhost:5432/uniportal_test
+          REDIS_HOST: localhost
+          JWT_PRIVATE_KEY_B64: ${{ secrets.JWT_PRIVATE_KEY_B64 }}
+          JWT_PUBLIC_KEY_B64: ${{ secrets.JWT_PUBLIC_KEY_B64 }}
+
+
+  # ── Deploy (Rolling — H-P6-5 fix) ─────────────────────────────────────────
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [integration-test, sast-scan, contract-tests, accessibility, lighthouse]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uniportal/api run build
+
+      - name: Deploy API (Rolling — zero-downtime)
+        # H-P6-5 FIX: `pm2 reload` (not `pm2 restart`) uses rolling restart:
+        # PM2 starts new instance → waits for listen_timeout → kills old instance.
+        # Never takes all workers offline simultaneously.
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.STAGING_HOST }} \
+            "cd /srv/uniportal && git pull && pnpm install --frozen-lockfile && \
+             pnpm --filter @uniportal/api run build && \
+             pm2 reload ecosystem.config.js --env staging --update-env"
+
+      - name: Deploy Worker (Rolling)
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.STAGING_HOST }} \
+            "pm2 reload ecosystem.config.js --only uniportal-worker --env staging"
+
+      - name: Health check post-deploy
+        run: |
+          sleep 10
+          curl --fail --retry 5 --retry-delay 5 \
+            "https://staging-api.university.edu.ng/api/health/ready"
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [integration-test, sast-scan, contract-tests, accessibility, lighthouse]
+    if: github.ref == 'refs/heads/main'
+    environment: production   # requires manual approval in GitHub Environments
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uniportal/api run build
+
+      - name: Deploy API production (Rolling)
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.PROD_HOST }} \
+            "cd /srv/uniportal && git pull && pnpm install --frozen-lockfile && \
+             pnpm --filter @uniportal/api run build && \
+             pm2 reload ecosystem.config.js --env production --update-env"
+
+      - name: Deploy Worker production
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.PROD_HOST }} \
+            "pm2 reload ecosystem.config.js --only uniportal-worker --env production"
+
+      - name: Production health check
+        run: |
+          sleep 15
+          curl --fail --retry 5 --retry-delay 10 \
+            "https://api.university.edu.ng/api/health/ready"
+
+  # ── P10: SAST (spec §3.4, §19.3) ──────────────────────────────────────────
+  sast-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/nodejs
+            p/typescript
+        env:
+          SEMGREP_RULES: p/owasp-top-ten p/nodejs p/typescript
+      # fail-on-finding is semgrep-action's default for HIGH/CRITICAL — no
+      # extra step needed; the action exits non-zero and fails this job.
+
+  # ── P10 (register M4): Pact consumer-driven contract tests ────────────────
+  # M4 was "OpenAPI contract generation pipeline missing" — openapi:export
+  # (turbo.json) generates apps/api's swagger.json without booting a full
+  # HTTP listener; openapi:types feeds that into packages/types/src/generated
+  # so the frontend never hand-writes API shapes. Pact then verifies the
+  # *behavioural* contract (which this repo's small number of hand-written
+  # consumer tests under apps/web/test/pact/ currently cover as a worked
+  # pattern — see docs/CHANGELOG.md for what's covered vs. still a TODO
+  # per-endpoint) on top of the *structural* one OpenAPI already guarantees.
+  contract-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Export OpenAPI spec (M4)
+        run: pnpm --filter @uniportal/api run openapi:export
+
+      - name: Generate types from OpenAPI (M4)
+        run: pnpm --filter @uniportal/types run openapi:types
+
+      - name: Fail on uncommitted type drift
+        run: |
+          git diff --exit-code packages/types/src/generated/ || \
+          (echo "::error::packages/types/src/generated is out of date — run 'pnpm --filter @uniportal/types run openapi:types' and commit the result" && exit 1)
+
+      - name: Consumer tests (apps/web → pacts/)
+        run: pnpm --filter @uniportal/web run test:pact:consumer
+
+      - name: Provider verification (apps/api ⊨ pacts/)
+        run: pnpm --filter @uniportal/api run test:pact:verify
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/uniportal_test
+
+      - uses: actions/upload-artifact@v4
+        with: { name: pact-contracts, path: pacts/ }
+
+  # ── P10: Accessibility — WCAG 2.1 AA, zero violations (spec §3.5, §20.1) ──
+  accessibility:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uniportal/web run build
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: axe-core scan across all routes
+        run: pnpm --filter @uniportal/web run test:a11y
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: a11y-results, path: apps/web/test-results/, if-no-files-found: ignore }
+
+  # ── P10: Lighthouse CI — Core Web Vitals budget (spec §3.2) ───────────────
+  lighthouse:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @uniportal/web run build
+      - name: Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          configPath: ./apps/web/lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+      # Budgets enforced via lighthouserc.json assertions: LCP<2.5s,
+      # FID/TBT proxy<100ms, CLS<0.1, TTI<3.5s, initial bundle<200KB gzipped.
+
+  # ── P10: Terraform validate/fmt/plan on any PR touching infra/ ────────────
+  terraform-validate:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.changed_files, 'infra/') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: '1.7.5' }
+      - run: terraform -chdir=infra fmt -check -recursive
+      - run: terraform -chdir=infra init -backend=false
+      - run: terraform -chdir=infra validate
+
+  # ── P10 (register M10): k6 performance scenarios J1–J3 (spec §1.3, §3.1) ──
+  # Not on the default PR path (needs a real staging target + can run
+  # 10–20 min) — runs nightly against staging and on-demand before a
+  # production go-live, per spec §20.1 "Pre-launch + monthly".
+  k6-performance:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install k6
+        run: |
+          curl https://github.com/grafana/k6/releases/download/v0.52.0/k6-v0.52.0-linux-amd64.tar.gz -L | tar xz --strip-components 1
+          sudo mv k6 /usr/local/bin
+      - name: Install Node + pnpm
+        uses: pnpm/action-setup@v3
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: pnpm
+      - name: Install application dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Seed isolated k6 staging fixtures
+        run: pnpm --filter @uniportal/api run seed:k6-test-students -- --count 5000 --env staging
+        env:
+          K6_DATABASE_URL: ${{ secrets.STAGING_K6_DATABASE_URL }}
+          JWT_PRIVATE_KEY_B64: ${{ secrets.JWT_PRIVATE_KEY_B64 }}
+          JWT_PUBLIC_KEY_B64: ${{ secrets.JWT_PUBLIC_KEY_B64 }}
+          K6_TEST_PASSWORD: ${{ secrets.K6_TEST_PASSWORD }}
+      - name: Run J1–J3 + general read/write scenarios
+        run: ./tests/k6/run-all.sh
+        env:
+          K6_TARGET_URL: ${{ secrets.STAGING_API_URL }}
+      - uses: actions/upload-artifact@v4
+        with: { name: k6-results, path: tests/k6/results/ }

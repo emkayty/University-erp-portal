@@ -1,0 +1,175 @@
+# UniPortal ERP — Comprehensive Architecture and Engineering Audit
+
+**Audit date:** 15 August 2026  
+**Audited source:** repaired UniPortal ERP archive restored under `/home/ubuntu/deep_audit`  
+**Scope:** architecture, runtime topology, backend modules, database/RLS boundaries, frontend routes and state, inter-module interactions, business rules, security, privacy, payments, queues, deployment, tests, and operational readiness.  
+**Method:** direct source tracing, cross-layer route analysis, static scans, Prisma validation/generation, type-checking, production builds, lint, unit/contract gates, and an attempted hermetic E2E run. No production systems or real user data were accessed.
+
+## Executive verdict
+
+> **The repaired codebase is internally buildable and contains substantial engineering controls, but it is not yet safe to certify as fully connected, business-consistent, or production-ready.**
+
+The most serious defect is a **widespread HTTP response-contract inconsistency**. The frontend’s shared client requires `{ success, data }` JSON envelopes, but at least twelve backend controller namespaces return raw service values. This affects real user-facing areas such as transport, research, clinic, academic, reports, alumni, search, and security, so route-path matching and TypeScript success overstate actual runtime connectivity.[1][2][3]
+
+The repaired project passes its available source-level gates: Prisma generation and validation, type-check, production build, lint, 348 API tests, 36 utility tests, academic/payment integrity checks, operational-contract checks, and route-contract tests. However, the web test task has **no executable UI tests**, and hermetic E2E certification could not run because Docker is unavailable. Consequently, the evidence supports a **controlled staging candidate with material remediation required**, not a production certification.
+
+| Dimension | Verdict | Interpretation |
+|---|---|---|
+| Compilation and packaging | **Pass** | Backend and frontend compile and production artifacts build. |
+| Backend unit and contract behavior | **Pass at source level** | API: 348 tests; route contract: 13 tests; focused integrity gates pass. |
+| Frontend/backend route paths | **Mostly aligned** | Literal calls generally map to versioned controllers after parameter normalization. |
+| Frontend/backend response contracts | **Fail** | Many controllers return raw values while the shared client requires envelopes. |
+| Authorization and business scope | **Material gaps remain** | Report generation, waiver scope, privacy provenance, and RLS conventions need stronger enforcement. |
+| Payments and financial integrity | **Mixed** | Paystack path is comparatively disciplined; Remita is configuration-dependent and waiver/invoice races remain. |
+| Queue and inter-module reliability | **Mixed** | Payment completion uses an outbox, but several other state-changing flows enqueue directly after persistence. |
+| Production deployment | **At risk** | Compose Redis healthcheck appears unable to authenticate; provider and web-origin variables are incomplete or fail late. |
+| Live E2E, RLS, load, restore, provider sandbox | **Unverified** | The hermetic gate requires Docker and exited before executing. |
+
+## 1. Reconstructed architecture
+
+The system is a pnpm/Turbo monorepo with a NestJS API, a Next.js web application, shared configuration/types/utilities, Prisma/PostgreSQL persistence, Redis for cache and BullMQ, and separate API/worker process roles. The API registers authentication, users, settings, calendar, curriculum, admissions, students, fees, examinations, results, academic lifecycle, HR, payroll, notifications, library, hostel, LMS, clinic, transport, research, alumni, reports, search, audit viewer, privacy, security, clearance, and policy modules.[4]
+
+The main request path is JWT authentication → throttling → feature-flag guard → controller-level RBAC/ABAC → request-wide RLS interceptor → service/database operations. The RLS interceptor opens a transaction for the lifetime of authenticated requests, including external I/O and queue calls, while protected Prisma delegates route through the ambient transaction or a privileged system connection outside request context.[5][6]
+
+The asynchronous path is mixed. Payment completion writes an outbox event, which is later dispatched to BullMQ and notifications. Other workflows create database state and then call `queue.add()` directly. Reports and privacy exports generate artifacts through a read-replica abstraction that falls back to the primary database if no reporting URL is configured.[7][8]
+
+## 2. Severity-ranked findings
+
+### P0 — release-blocking runtime and deployment defects
+
+| ID | Finding | Evidence | Consequence |
+|---|---|---|---|
+| **P0-01** | **Shared response envelope is violated across many backend controllers.** | The frontend client parses every JSON response as `ApiResponse<T>` and requires `data.success`; it throws when the response is raw.[1] The controller scan found raw direct returns in `academic`, `alumni`, `assessment`, `audit-viewer`, `clinic`, `fees/payments`, `privacy`, `reports`, `research`, `search`, `security`, and `transport` namespaces. Transport is representative: `getRoutes`, `getTrips`, booking, cancellation, and user-booking endpoints return services directly.[2] | Multiple real dashboard workflows can fail at runtime even though route paths, types, build, and tests pass. A raw array/object reaches the client, `data.success` is false/undefined, and `data.error.code` may itself be undefined. |
+| **P0-02** | **Production Compose Redis healthcheck likely never becomes healthy.** | Redis is started with `--requirepass ${REDIS_PASSWORD}`, but the Redis service does not declare `REDIS_PASSWORD` in its container environment. Its healthcheck invokes `redis-cli -a "$REDIS_PASSWORD"` inside the container.[9] API and worker depend on `redis: service_healthy`. | API and worker may remain blocked behind an unhealthy Redis dependency in the declared production topology. This must be reproduced with `docker compose config` and a real startup test, but the configuration is internally inconsistent. |
+
+### P1 — high-risk authorization, business, privacy, and financial defects
+
+| ID | Finding | Evidence | Consequence |
+|---|---|---|---|
+| **P1-01** | **Report generation authorization is broader than report execution policy.** | `POST /reports/generate` allows HOD, but `GenerateReportDto` accepts every `ReportType` and arbitrary filters.[10][11] The worker reads revenue, payroll, student, results, and staff datasets without receiving or enforcing the requester’s role/department scope.[12] | An HOD may be able to enqueue institution-wide financial/payroll or unrelated reports even though HOD is excluded from the corresponding live report endpoints. Controller role checks are not sufficient; policy must be enforced in the service/worker boundary. |
+| **P1-02** | **Fee-waiver approval/rejection is race-prone and can corrupt fee totals.** | Approval reads a PENDING waiver outside the transaction, locks only the fee, and updates the waiver without a conditional status transition. Rejection likewise reads outside a transaction and updates independently.[13] | Two approvals can apply the same waiver amount twice. Approval and rejection can race so the waiver row ends REJECTED while the fee’s aggregate waiver amount has already been increased. |
+| **P1-03** | **Invoice generation’s claimed idempotency is not deterministic across skipped rows.** | The worker assigns invoice numbers from `sequenceOffset + idx + 1` but advances the offset by `createMany().count()`.[14] `StudentFee.invoiceNo` is globally unique.[15] | If existing rows are skipped on retry, later students can receive different sequence values, collide with prior invoice numbers, or make a retry fail. The stable identity should be derived from student/schedule identity or allocated under a durable sequence/transaction. |
+| **P1-04** | **A student can be denied their own invoice because User.id and Student.id are mixed.** | Most student endpoints use `resolveSelfOrTargetStudentId`, but `FeesController.getFeeById()` compares `fee.studentId` directly to `u.sub`.[16][17] The frontend supplies the authenticated user ID to the self-scoped fees hooks.[18] | The own-invoice path can return access denied when the User and Student UUIDs differ. This is a confirmed cross-layer identity inconsistency. |
+| **P1-05** | **NDPR/NDPA portability and SAR exports are knowingly incomplete and can fail silently.** | The custom report export includes identity, student/staff profile, payments, published results, and actor audit logs, while explicitly omitting medical, library, hostel, and other PII-bearing modules.[19] The payment query catches all errors and substitutes `[]`, allowing a completed export with missing data.[19] | A data-subject export can be presented as complete while materially omitting personal data or hiding a query failure. This is a privacy-completeness defect, not merely a roadmap item. |
+| **P1-06** | **Privacy erasure is not atomic and VC approval is only an attestation string.** | Erasure pseudonymises/deletes the user, updates related records, loops over historical audit rows, then creates the DSR record and audit event outside one encompassing transaction.[20][21] The DTO explicitly states that `vcApprovalReference` is not a verified multi-party approval workflow.[22] | A mid-operation failure can leave partial erasure with incomplete compliance evidence. A privileged requester can supply an arbitrary reference instead of the system proving independent VC approval. |
+| **P1-07** | **Admissions verification workers are scaffolds, not functioning integrations.** | JAMB and WAEC workers log that provider integration is pending and require manual verification; they do not update applicant verification state from a provider result.[23] | The architecture presents asynchronous verification capability, but the business workflow still depends on manual review and cannot be certified as automated admissions verification. |
+| **P1-08** | **Security-incident compliance state can be marked resolved without proven regulatory notification.** | The service documents NITDA filing as out-of-band, logs an error when no VC/DPO recipient exists but still succeeds, and permits a separate RESOLVED state from NITDA_NOTIFIED.[24] | An incident can appear operationally resolved without in-system delivery or evidence that the regulatory filing occurred. Notification delivery and regulatory completion need distinct, enforced states and evidence. |
+
+### P2 — material security, reliability, and operational gaps
+
+| ID | Finding | Evidence | Consequence |
+|---|---|---|---|
+| **P2-01** | **RLS safety depends on conventions and warnings instead of hard enforcement.** | For forced-RLS models, a plain-client call inside an ambient request only logs a warning.[25] Protected getters may fall back to the system/BYPASSRLS client when no ambient transaction exists, and batch `$transaction([...])` remains on the plain client.[6] | A missed `forRequest()`/`runExclusive()` call can become an authorization/data-isolation defect. The current scan proves architectural exposure, not a demonstrated exploit; live identity-isolation tests are required. |
+| **P2-02** | **Refresh-token rotation is not atomic.** | Rotation performs Redis GET, DEL, and successor issuance as separate operations.[26] | Concurrent refresh requests can potentially read the same token before deletion and each obtain a successor. A Lua/transactional single-use consume primitive should close the replay race. |
+| **P2-03** | **Several state changes enqueue directly after database writes.** | Direct `queue.add()` calls occur in reports, invoices, admissions verification, privacy exports, security reminders, payment reconciliation, and related processors, while only some domain events use the outbox.[27] | Queue outage can leave persistent jobs or incidents stuck in PENDING or under-notified states. Each critical state transition needs an outbox or durable enqueue ledger with retry/reconciliation. |
+| **P2-04** | **CSV report output is vulnerable to spreadsheet formula injection.** | CSV escaping quotes commas and line breaks but does not neutralize values beginning with `=`, `+`, `-`, or `@`.[28] | User-controlled names/descriptions exported to CSV may be interpreted as formulas when opened in spreadsheet software. Prefix dangerous values or provide XLSX-only safe exports. |
+| **P2-05** | **Remita verification is operationally disabled unless deployment supplies omitted variables.** | Remita reconciliation returns `REMITA_STATUS_VERIFICATION_DISABLED` when the feature is not enabled or endpoint absent.[29] Production Compose passes neither `REMITA_STATUS_ENDPOINT` nor `REMITA_STATUS_VERIFICATION_ENABLED` in its API environment.[9] | Remita payments may remain pending indefinitely in the declared deployment even though the webhook is accepted as a ping and reconciliation is scheduled. Paystack uses a binding HMAC path; Remita still requires institution-specific provider verification. |
+| **P2-06** | **Queue/cache/rate-limit behavior is not proven for horizontal scale.** | Throttling is configured in `ThrottlerModule` without an explicit shared storage adapter, while Redis is used separately for cache and BullMQ.[30] | Per-process rate limits can be bypassed across multiple API replicas unless framework defaults are replaced with shared storage. This requires deployment-level confirmation. |
+| **P2-07** | **Reporting workload isolation is optional and fails late.** | `readReplica` falls back to `DATABASE_URL` when reporting URLs are absent.[31] Report storage is also allowed by configuration validation but fails at report-generation time in production if S3 is missing.[32] | Institution-wide analytics can compete with transactional traffic, and report requests can fail after users have already created jobs rather than failing fast at startup. |
+| **P2-08** | **Frontend has effectively no automated UI test coverage.** | The web test task runs Jest with `--passWithNoTests`; the verification log reports “No tests found,” and only pact/E2E files are excluded from that task.[33] | A green workspace test gate does not validate React rendering, hook wiring, navigation, error states, browser downloads, or role-based UI behavior. |
+| **P2-09** | **Post-login redirect accepts an arbitrary `from` query value.** | Login reads `params.get('from')` and passes it directly to `router.replace(from)`.[34] | A crafted login URL may create an external post-login redirect depending on Next.js navigation handling. Restrict redirects to same-origin absolute paths and reject protocol-relative/external URLs. |
+
+### P3 — maintainability and semantic inconsistencies
+
+| ID | Finding | Evidence | Consequence |
+|---|---|---|---|
+| **P3-01** | `graduationEligible` in the student dashboard is an administrative-clearance alias, not a complete academic graduation determination. | The report service documents this semantic distinction in the student-dashboard response path.[35] | UI or downstream consumers can misread a clearance status as an authoritative academic graduation decision. Rename the field or expose both dimensions explicitly. |
+| **P3-02** | The request-wide RLS transaction holds a pool connection during non-database work. | The interceptor documents the full-handler transaction lifetime, including provider I/O and queue calls.[5] | Under slow providers or high concurrency, pool pressure and long transactions can degrade the whole API. Payment initiation has an explicit skip contract, but every slow route needs the same review. |
+| **P3-03** | Auth middleware uses a client-controlled `session_active` indicator and does not redirect authenticated users away from auth pages as intended. | The middleware returns early for public paths before checking `AUTH_REDIRECT_PATHS`.[36] | This is not an API authorization bypass because the backend still validates the session, but it creates inconsistent routing and makes the client-side indicator easy to spoof. |
+| **P3-04** | Production web API origin has a localhost default. | Compose builds the web image with `NEXT_PUBLIC_API_URL` defaulting to `http://localhost:3001`.[9] | If the deployment omits the build argument, browsers on other machines call their own localhost rather than the deployed API. This should fail validation for non-development environments. |
+
+## 3. Frontend–backend interaction assessment
+
+The route-path layer is substantially better than the response layer. A source-level checker found the frontend’s literal API calls generally correspond to versioned backend controller paths after normalising interpolated parameters. Query-string calls were reported as unmatched by the simple checker because query parameters are not controller path segments; they require semantic rather than literal matching. The only confirmed identity mismatch found in this pass was the student invoice check described in **P1-04**.
+
+The response layer is not consistent. The shared client constructs `/api/v1`, sends credentials and in-memory access tokens, handles refresh, unwraps `data`, and supports 204 responses.[1] There is no global success-response interceptor in the API; the logging interceptor only logs requests.[37] Consequently, the raw controller returns are genuine runtime incompatibilities rather than a formatting preference.
+
+Frontend caching and mutation invalidation are present in the audited hooks, particularly for fees, students, research, and reports. Nevertheless, the absence of UI tests means there is no executable proof that loading, error, pagination, role visibility, browser navigation, and mutation invalidation behave correctly in the browser. The transport page is a representative real consumer of affected raw-return endpoints.[3]
+
+## 4. Security and trust-boundary assessment
+
+The security posture contains meaningful controls. JWTs use RS256 with issuer and audience validation; refresh cookies are HTTP-only, Secure in production, SameSite Strict, and path-scoped; Paystack verifies the raw request body with HMAC-SHA512; payment confirmation locks by provider reference and checks amount; the API uses helmet, CORS, validation with whitelist/forbid-non-whitelisted settings, and rate-limit decorators.[1][5][26][38]
+
+The principal weakness is **inconsistent enforcement depth**. RBAC is controller-level, staff scopes are decorator-driven, and RLS is implemented through a combination of ambient transactions, forwarding getters, system fallbacks, and warning diagnostics. That design can be safe only if every call site follows the convention. Sensitive business rules should be enforced in service methods and transactions, not assumed from route roles alone. The report generator, fee waivers, privacy erasure, and report exports demonstrate this distinction.
+
+## 5. Verification performed
+
+| Gate | Result | Notes |
+|---|---|---|
+| Locked dependency installation | **Pass** | `pnpm install --frozen-lockfile`. |
+| Prisma generation | **Pass** | Generated client from the supplied schema. |
+| Prisma validation | **Pass** | Valid with `DATABASE_URL`, `DATABASE_DIRECT_URL`, and `MIGRATE_DATABASE_URL` supplied. |
+| Monorepo type-check | **Pass** | 9 Turbo tasks successful. |
+| Production build | **Pass** | 5 Turbo tasks successful. |
+| Serial lint | **Pass** | 5 Turbo tasks successful, zero blocking diagnostics. |
+| API and utility tests | **Pass** | API: 348 tests; utilities: 36 tests. |
+| Academic integrity gate | **Pass** | 11 invariants. |
+| Operational-contract gate | **Pass** | 9 invariants. |
+| Dynamic-code tripwire | **Pass** | No forbidden `eval()`/`new Function()` matches in the checked intelligence source. |
+| P5 security-pattern audit | **Pass** | Static gate passed. |
+| P5 integration contract | **Pass** | Seven integration checks passed. |
+| Route-contract suite | **Pass** | 13 tests passed. |
+| Web tests | **Green but insufficient** | No tests found; task is allowed to pass with `--passWithNoTests`. |
+| Hermetic E2E | **Not executed** | Exited because Docker is required and unavailable in this environment. |
+| Live DB/RLS matrix | **Unverified** | No real PostgreSQL identity-isolation test was executed. |
+| Provider sandbox tests | **Unverified** | Paystack/Remita external callbacks were not exercised. |
+| Load/pool/restore rehearsal | **Unverified** | Requires Docker or managed staging infrastructure. |
+
+## 6. Ordered remediation plan
+
+**First, standardise the HTTP response contract.** Either add a global response-envelope interceptor that preserves streaming/download responses, or wrap every raw controller return consistently. Add consumer-contract tests that execute representative endpoints for every module consumed by the web application. This is the highest-impact fix because it affects basic runtime connectivity.
+
+**Second, repair the production topology.** Add `REDIS_PASSWORD` to the Redis container environment or change the healthcheck to use a safely injected secret; run a real Compose startup test. Require explicit non-localhost `NEXT_PUBLIC_API_URL`, include all Remita verification variables, and fail startup or deployment validation when required production report storage/configuration is absent.
+
+**Third, enforce business policies at the service and transaction boundary.** Create a report-policy resolver that maps role, department/faculty scope, report type, and filters before a job is created. Make fee-waiver state transitions conditional and transactional. Replace invoice sequence generation with stable identity-based numbers or a durable allocator. Normalize User.id/Student.id through one helper everywhere.
+
+**Fourth, harden privacy and compliance workflows.** Expand SAR/portability exports from a maintained PII inventory, never convert query failure into an empty successful section, make erasure and DSR evidence atomic, and replace free-form VC approval references with a verifiable approval record or an explicitly documented external-control integration.
+
+**Fifth, make asynchronous interactions durable.** Route report, invoice, privacy, admissions, security-reminder, and similar jobs through a transactional outbox or a durable enqueue ledger. Add reconciliation for state rows that remain pending without a queue job.
+
+**Sixth, close security and quality gaps.** Make refresh-token consumption atomic, neutralize CSV formulas, constrain login redirects, configure shared throttling storage, and add browser-level tests for every role’s primary workflow. Then run the hermetic E2E stack with PostgreSQL, Redis, RLS identity matrices, concurrent financial operations, provider failure ordering, and backup/restore rehearsal.
+
+## Release decision
+
+**Do not treat the current green build/test result as full architectural certification.** The project is suitable for a controlled staging cycle after the response-envelope and deployment-topology blockers are addressed. Production approval should remain conditional on the P1 fixes, real database/RLS tests, provider sandbox verification, browser workflow coverage, load/pool measurements, and a restore rehearsal.
+
+## References
+
+[1]: apps/web/lib/api-client.ts "Shared frontend API client"
+[2]: apps/api/src/modules/transport/transport.controller.ts "Transport controller"
+[3]: apps/web/app/dashboard/transport/page.tsx "Transport dashboard"
+[4]: apps/api/src/app.module.ts "API root module and global providers"
+[5]: apps/api/src/common/rls/rls.interceptor.ts "Request-wide RLS interceptor"
+[6]: apps/api/src/database/prisma.service.ts "Prisma routing, RLS, and system-client boundaries"
+[7]: apps/api/src/common/outbox/outbox.service.ts "Transactional outbox dispatcher"
+[8]: apps/api/src/modules/reports/jobs/report-generation.processor.ts "Report-generation worker and custom exports"
+[9]: docker-compose.prod.yml "Production Compose topology"
+[10]: apps/api/src/modules/reports/reports.controller.ts "Report route authorization"
+[11]: apps/api/src/modules/reports/dto/reports.dto.ts "Report DTO validation"
+[12]: apps/api/src/modules/reports/reports.service.ts "Report data queries and analytics scope"
+[13]: apps/api/src/modules/fees/fees.service.ts "Fee schedules and waiver transactions"
+[14]: apps/api/src/modules/fees/jobs/invoice-generation.processor.ts "Invoice-generation worker"
+[15]: apps/api/prisma/schema.prisma "StudentFee uniqueness constraints"
+[16]: apps/api/src/modules/fees/fees.controller.ts "Fee controller identity checks"
+[17]: apps/api/src/common/resolve-self-or-target.ts "User-to-student self-scope helper"
+[18]: apps/web/hooks/use-fees.ts "Frontend fees and payment hooks"
+[19]: apps/api/src/modules/reports/jobs/report-generation.processor.ts "SAR/portability export contents"
+[20]: apps/api/src/modules/privacy/privacy.service.ts "Privacy DSR and erasure workflow"
+[21]: apps/api/src/modules/privacy/privacy.controller.ts "Privacy route authorization"
+[22]: apps/api/src/modules/privacy/dto/privacy.dto.ts "VC approval attestation DTO"
+[23]: apps/api/src/modules/admissions/jobs/admissions-ops.processor.ts "Admissions verification worker"
+[24]: apps/api/src/modules/security/security-incidents.service.ts "Security incident and NITDA reminder workflow"
+[25]: apps/api/src/database/prisma.service.ts "RLS warning and protected delegate behavior"
+[26]: apps/api/src/modules/auth/services/token.service.ts "Refresh-token rotation and cookie options"
+[27]: apps/api/src/modules/fees/fees.service.ts "Direct invoice queue enqueue; related queue call sites in reports, admissions, privacy, security, and reconciliation"
+[28]: apps/api/src/modules/reports/services/report-artifact.service.ts "CSV/XLSX/PDF artifact generation"
+[29]: apps/api/src/modules/fees/payments.service.ts "Remita reconciliation"
+[30]: apps/api/src/app.module.ts "Throttler and cache configuration"
+[31]: apps/api/src/database/prisma.service.ts "Reporting read-replica fallback"
+[32]: apps/api/src/modules/reports/services/report-artifact.service.ts "Production report-storage requirement"
+[33]: verification/tests_serial.log "Final workspace test log"
+[34]: apps/web/app/auth/login/login-form.tsx "Post-login redirect handling"
+[35]: apps/api/src/modules/reports/reports.service.ts "Student dashboard graduation semantics"
+[36]: apps/web/middleware.ts "Next.js route middleware"
+[37]: apps/api/src/common/interceptors/logging.interceptor.ts "Logging-only response interceptor"
+[38]: apps/api/src/main.ts "API security middleware and validation configuration"
