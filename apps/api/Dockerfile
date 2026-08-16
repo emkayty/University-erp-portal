@@ -43,10 +43,10 @@ COPY --from=build /app/packages/utils/package.json ./packages/utils/package.json
 COPY --from=build /app/packages/utils/dist ./packages/utils/dist
 COPY --from=build /app/scripts ./scripts
 
-RUN chmod +x /app/scripts/start-api.sh /app/scripts/start-worker.sh /app/scripts/db/deploy-schema.sh \
- /app/scripts/db/apply-post-schema-hardening.sh /app/scripts/db/bootstrap-production-roles.sh \
- /app/scripts/db/resolve-runtime-database-urls.sh /app/scripts/db/derive-runtime-database-urls.cjs \
+RUN chmod +x /app/scripts/start-api.sh /app/scripts/start-worker.sh \
+ /app/scripts/start-api-worker.sh /app/scripts/db/deploy-schema.sh \
+ /app/scripts/db/apply-post-schema-hardening.sh \
+ /app/scripts/db/bootstrap-production-roles.sh \
+ /app/scripts/db/resolve-runtime-database-urls.sh \
+ /app/scripts/db/derive-runtime-database-urls.cjs \
  && chown -R uniportal:uniportal /app
-USER uniportal
-EXPOSE 3001
-CMD ["/app/scripts/start-api.sh"]
