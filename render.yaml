@@ -7,6 +7,7 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
     dockerCommand: /app/scripts/start-api-worker.sh
+    preDeployCommand: pnpm db:seed
     healthCheckPath: /api/health/live
     maxShutdownDelaySeconds: 120
     envVars:
