@@ -24,9 +24,11 @@ fi
 
 case "${SCHEMA_DEPLOYMENT_MODE:-push}" in
   push)
-    if [[ "${DATABASE_AUTO_BOOTSTRAP_ROLES:-false}" == "true" ]]; then
+    if [[ "${DATABASE_AUTO_BOOTSTRAP_ROLES:-false}" == "true" && "${RENDER_MANAGED_DB:-false}" != "true" ]]; then
       echo "Bootstrapping restricted runtime database roles..."
       bash "${ROLE_BOOTSTRAP_SCRIPT}"
+    elif [[ "${DATABASE_AUTO_BOOTSTRAP_ROLES:-false}" == "true" && "${RENDER_MANAGED_DB:-false}" == "true" ]]; then
+      echo "Render managed database detected; skipping unsupported restricted-role bootstrap for test mode."
     fi
     echo "Preparing PostgreSQL extensions required by the Prisma schema..."
     bash "${HARDENING_SCRIPT}" prepare

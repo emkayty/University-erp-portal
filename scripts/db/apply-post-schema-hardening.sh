@@ -34,17 +34,20 @@ if [[ "${1:-prepare}" != "harden" ]]; then
   exit 2
 fi
 
-for role in uniportal_app uniportal_system; do
-  if ! psql "$MIGRATE_DATABASE_URL" --tuples-only --no-align --quiet \
-    --command "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}');" | grep -qx 't'; then
-    echo "Required database role '${role}' is missing. Run scripts/db/bootstrap-production-roles.sh first." >&2
-    exit 2
-  fi
-done
+if [[ "${RENDER_MANAGED_DB:-false}" == "true" ]]; then
+  echo "Render managed database detected; skipping restricted-role checks and grants for test mode."
+else
+  for role in uniportal_app uniportal_system; do
+    if ! psql "$MIGRATE_DATABASE_URL" --tuples-only --no-align --quiet \
+      --command "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}');" | grep -qx 't'; then
+      echo "Required database role '${role}' is missing. Run scripts/db/bootstrap-production-roles.sh first." >&2
+      exit 2
+    fi
+  done
 
-# The role grants must be applied after db push, because that command creates
-# the tables as the owner/admin account.
-psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+  # The role grants must be applied after db push, because that command creates
+  # the tables as the owner/admin account.
+  psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
 GRANT USAGE ON SCHEMA public TO uniportal_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO uniportal_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO uniportal_app;
@@ -52,7 +55,12 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO uniportal_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO uniportal_app;
+SQL
+fi
 
+# Keep table-level RLS enabled in both production and Render test mode. The
+# production role grants above are deliberately the only part skipped in test.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
 ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE student_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
@@ -69,9 +77,13 @@ has_rls_baseline="$(psql "$MIGRATE_DATABASE_URL" --tuples-only --no-align --quie
   --command "SELECT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'students' AND policyname = 'student_read');")"
 
 if [[ "$has_rls_baseline" != "t" ]]; then
-  echo "Applying RLS role and policy baseline..."
-  psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 --file \
-    "${API_DIR}/prisma/migrations/0011_p10_rls_role_separation/migration.sql"
+  echo "Applying RLS policy baseline..."
+  if [[ "${RENDER_MANAGED_DB:-false}" != "true" ]]; then
+    psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 --file \
+      "${API_DIR}/prisma/migrations/0011_p10_rls_role_separation/migration.sql"
+  else
+    echo "Render managed database detected; skipping historical role-creation migration."
+  fi
   psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 --file \
     "${API_DIR}/prisma/migrations/0016_integrity_rls_academic_hardening/migration.sql"
 
