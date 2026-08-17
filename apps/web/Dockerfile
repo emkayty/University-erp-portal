@@ -9,6 +9,9 @@ FROM base AS build
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY . .
+# The repository currently has no apps/web/public directory; create an empty one
+# so the standalone runtime copy remains deterministic on Docker/Render.
+RUN mkdir -p apps/web/public
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @uniportal/config run build \
  && pnpm --filter @uniportal/types run build \
