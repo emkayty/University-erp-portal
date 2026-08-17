@@ -50,3 +50,7 @@ RUN chmod +x /app/scripts/start-api.sh /app/scripts/start-worker.sh \
  /app/scripts/db/resolve-runtime-database-urls.sh \
  /app/scripts/db/derive-runtime-database-urls.cjs \
  && chown -R uniportal:uniportal /app
+
+USER uniportal
+EXPOSE 3001
+CMD ["bash", "/app/scripts/start-api-worker.sh"]
