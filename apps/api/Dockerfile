@@ -36,10 +36,13 @@ COPY --from=build /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/prisma ./apps/api/prisma
 COPY --from=build /app/packages/config/package.json ./packages/config/package.json
+COPY --from=build /app/packages/config/node_modules ./packages/config/node_modules
 COPY --from=build /app/packages/config/dist ./packages/config/dist
 COPY --from=build /app/packages/types/package.json ./packages/types/package.json
+COPY --from=build /app/packages/types/node_modules ./packages/types/node_modules
 COPY --from=build /app/packages/types/dist ./packages/types/dist
 COPY --from=build /app/packages/utils/package.json ./packages/utils/package.json
+COPY --from=build /app/packages/utils/node_modules ./packages/utils/node_modules
 COPY --from=build /app/packages/utils/dist ./packages/utils/dist
 COPY --from=build /app/scripts ./scripts
 
