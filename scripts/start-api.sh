@@ -20,6 +20,7 @@ if [[ "${RUN_DB_SEED:-false}" == "true" ]]; then
     exit 1
   fi
   echo "Running temporary UniPortal test seed for administrator ${SEED_ADMIN_EMAIL}"
+  export PATH="/app/apps/api/node_modules/.bin:/app/node_modules/.bin:${PATH}"
   (cd /app/apps/api && /app/apps/api/node_modules/.bin/prisma db seed)
 fi
 
