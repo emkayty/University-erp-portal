@@ -1,48 +1,30 @@
-# Render Blueprint for UniPortal's persistent API and background worker.
-# Deploy the Next.js frontend separately to Vercel (apps/web) or another web
-# host; set FRONTEND_ORIGIN here to the resulting exact HTTPS origin.
 services:
-  - type: keyvalue
-    name: uniportal-redis
-    region: frankfurt
-    plan: starter
-    maxmemoryPolicy: noeviction
-    persistenceMode: journal-snapshot
-    ipAllowList: []
-
   - type: web
-    name: uniportal-api
+    name: uniportal-api-worker-test
     runtime: docker
     region: frankfurt
-    plan: standard
+    plan: free
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
+    dockerCommand: /app/scripts/start-api-worker.sh
     healthCheckPath: /api/health/live
     maxShutdownDelaySeconds: 120
-    # This command is serialized by Render before each API release. It uses
-    # Prisma db push because the committed migration chain is not a usable
-    # fresh-database baseline; see scripts/db/deploy-schema.sh.
-    preDeployCommand: /app/scripts/db/deploy-schema.sh
     envVars:
       - key: NODE_ENV
-        value: production
-      - key: PROCESS_ROLE
-        value: api
-      - key: API_PORT
-        value: "3001"
+        value: staging
       - key: RUN_DB_SCHEMA
         value: "false"
       - key: DATABASE_ADMIN_URL
         fromDatabase:
-          name: uniportal-db
+          name: uniportal-db-test
           property: connectionString
       - key: MIGRATE_DATABASE_URL
         fromDatabase:
-          name: uniportal-db
+          name: uniportal-db-test
           property: connectionString
       - key: DATABASE_NAME
         fromDatabase:
-          name: uniportal-db
+          name: uniportal-db-test
           property: database
       - key: DATABASE_AUTO_BOOTSTRAP_ROLES
         value: "true"
@@ -53,7 +35,7 @@ services:
       - key: REDIS_URL
         fromService:
           type: keyvalue
-          name: uniportal-redis
+          name: uniportal-redis-test
           property: connectionString
       - key: FRONTEND_ORIGIN
         sync: false
@@ -63,107 +45,21 @@ services:
         sync: false
       - key: ENCRYPTION_KEY_HEX
         sync: false
-      - key: SMTP_FROM
-        sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASS
-        sync: false
+      - key: LOG_LEVEL
+        value: info
       - key: TRUST_PROXY
         value: "true"
       - key: TRUST_PROXY_HOPS
         value: "1"
-      - key: LOG_LEVEL
-        value: info
 
-  - type: worker
-    name: uniportal-worker
-    runtime: docker
+  - type: keyvalue
+    name: uniportal-redis-test
     region: frankfurt
-    plan: standard
-    dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: .
-    dockerCommand: /app/scripts/start-worker.sh
-    maxShutdownDelaySeconds: 120
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PROCESS_ROLE
-        value: worker
-      - key: DATABASE_ADMIN_URL
-        fromDatabase:
-          name: uniportal-db
-          property: connectionString
-      - key: DATABASE_NAME
-        fromDatabase:
-          name: uniportal-db
-          property: database
-      - key: DATABASE_APP_PASSWORD
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: DATABASE_APP_PASSWORD
-      - key: DATABASE_SYSTEM_PASSWORD
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: DATABASE_SYSTEM_PASSWORD
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: uniportal-redis
-          property: connectionString
-      - key: JWT_PRIVATE_KEY_B64
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: JWT_PRIVATE_KEY_B64
-      - key: JWT_PUBLIC_KEY_B64
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: JWT_PUBLIC_KEY_B64
-      - key: ENCRYPTION_KEY_HEX
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: ENCRYPTION_KEY_HEX
-      - key: SMTP_FROM
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: SMTP_FROM
-      - key: SMTP_HOST
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: SMTP_HOST
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_SECURE
-        value: "false"
-      - key: SMTP_USER
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: SMTP_USER
-      - key: SMTP_PASS
-        fromService:
-          type: web
-          name: uniportal-api
-          envVarKey: SMTP_PASS
-      - key: LOG_LEVEL
-        value: info
+    plan: free
+    maxmemoryPolicy: noeviction
 
 databases:
-  - name: uniportal-db
+  - name: uniportal-db-test
     region: frankfurt
-    plan: basic-1gb
+    plan: free
     databaseName: uniportal
-    ipAllowList: []
