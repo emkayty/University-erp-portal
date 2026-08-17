@@ -30,6 +30,9 @@ RUN groupadd --system --gid 1001 nextjs \
 COPY --from=build --chown=nextjs:nextjs /app/apps/web/public ./apps/web/public
 COPY --from=build --chown=nextjs:nextjs /app/apps/web/.next/standalone ./
 COPY --from=build --chown=nextjs:nextjs /app/apps/web/.next/static ./apps/web/.next/static
+# Next.js standalone retains pnpm's symlink to this runtime helper package.
+# Copy the target package so the symlink resolves inside the slim runtime image.
+COPY --from=build --chown=nextjs:nextjs /app/node_modules/.pnpm/@swc+helpers@0.5.23 /app/node_modules/.pnpm/@swc+helpers@0.5.23
 
 USER nextjs
 EXPOSE 3000
