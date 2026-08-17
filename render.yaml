@@ -16,7 +16,7 @@ services:
       - key: RENDER_MANAGED_DB
         value: "true"
       - key: RUN_DB_SCHEMA
-        value: "false"
+        value: "true"
       - key: DATABASE_ADMIN_URL
         fromDatabase:
           name: uniportal-db-test
