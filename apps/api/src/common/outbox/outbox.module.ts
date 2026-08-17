@@ -21,6 +21,7 @@ import { OutboxService } from './outbox.service';
     { name: QUEUE_NAMES.PAYMENT_RECONCILIATION },
     { name: QUEUE_NAMES.REPORT_GENERATION },
     { name: QUEUE_NAMES.BREACH_NOTIFICATION },
+    { name: QUEUE_NAMES.ACADEMIC_PROGRESSION },
   )],
   providers: [
     OutboxService,
