@@ -43,10 +43,43 @@ shutdown() {
 
 trap shutdown SIGTERM SIGINT
 
-# Start the HTTP API. The API launcher sets PROCESS_ROLE=api and binds to
-# Render's PORT through API_PORT.
+wait_for_api_port() {
+  local attempts=0
+  local max_attempts=120
+
+  echo "Waiting for API startup and any guarded database initialization to finish..."
+  while (( attempts < max_attempts )); do
+    if (echo >"/dev/tcp/127.0.0.1/${PORT}") >/dev/null 2>&1; then
+      echo "API is listening on port ${PORT}; starting the BullMQ worker"
+      return 0
+    fi
+
+    if [[ -n "${api_pid}" ]] && ! kill -0 "${api_pid}" 2>/dev/null; then
+      echo "API exited before opening port ${PORT}" >&2
+      return 1
+    fi
+
+    attempts=$((attempts + 1))
+    sleep 1
+  done
+
+  echo "API did not open port ${PORT} within ${max_attempts} seconds" >&2
+  return 1
+}
+
+# Start the HTTP API first. The API launcher performs schema initialization and
+# the guarded test seed before it execs the Nest process. Starting the worker
+# only after the port opens prevents both Node processes from competing for the
+# Render Free memory limit while the seed is running.
 PROCESS_ROLE=api /app/scripts/start-api.sh &
 api_pid=$!
+
+if ! wait_for_api_port; then
+  echo "API startup failed; stopping the combined process" >&2
+  shutdown
+  wait "${api_pid}" 2>/dev/null || true
+  exit 1
+fi
 
 # Start BullMQ processors and schedules as a separate Node process. This is
 # essential: the worker must retain PROCESS_ROLE=worker.
