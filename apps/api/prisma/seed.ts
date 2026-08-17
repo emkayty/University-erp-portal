@@ -18,8 +18,64 @@ import { DEFAULT_FEATURE_FLAGS } from '../../../packages/config/src/feature-flag
 
 const prisma = new PrismaClient();
 
+/**
+ * Render Free test helper: create or refresh only the synthetic administrator.
+ * This is deliberately opt-in and never used by the normal full seed.
+ */
+async function seedAdminOnly(): Promise<void> {
+  const adminEmailEnv = process.env['SEED_ADMIN_EMAIL'];
+  const adminPasswordEnv = process.env['SEED_ADMIN_PASSWORD'];
+  const isProduction = process.env['NODE_ENV'] === 'production';
+
+  if (isProduction && (!adminEmailEnv || !adminPasswordEnv || adminPasswordEnv === 'Admin@123456!')) {
+    throw new Error('REFUSE_PRODUCTION_SEED_WITH_DEFAULT_ADMIN_CREDENTIALS: set non-default SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD');
+  }
+
+  const adminEmail = adminEmailEnv ?? 'admin@uniportal.dev';
+  const adminPassword = adminPasswordEnv ?? 'Admin@123456!';
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
+  const existingUser = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+
+  const adminUser = existingUser
+    ? await prisma.user.update({
+        where: { email: adminEmail },
+        data: { passwordHash, isActive: true },
+      })
+    : await prisma.user.create({
+        data: {
+          email: adminEmail,
+          phone: null,
+          passwordHash,
+          isActive: true,
+          mfaEnabled: false,
+          roles: {
+            create: {
+              roleName: RoleName.SUPER_ADMIN,
+              staffScope: Prisma.JsonNull,
+              grantedBy: null,
+            },
+          },
+        },
+      });
+
+  console.log(`  ✓ Super admin user: ${adminUser.email}`);
+  console.log('  ✓ Test-only administrator password refreshed');
+  console.log('\n✅ Test-only administrator seed complete!\n');
+}
+
 async function main(): Promise<void> {
   console.log('🌱 Seeding UniPortal ERP database...');
+
+  // Render Free cannot run the full reference-data seed within its memory
+  // limit during API+worker deployment. The explicit test-only mode refreshes
+  // only the synthetic administrator, leaving the normal full seed unchanged.
+  if (process.env['SEED_ADMIN_ONLY'] === 'true') {
+    await seedAdminOnly();
+    return;
+  }
 
   // ── 1. Institution Settings ─────────────────────────────────────────────────
   const settings = await prisma.institutionSettings.upsert({
