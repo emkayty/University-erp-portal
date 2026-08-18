@@ -15,6 +15,15 @@ fi
 # schema is ready and before the API accepts traffic. Keep this disabled after
 # the first successful test seed. Do not log the password.
 if [[ "${RUN_DB_SEED:-false}" == "true" ]]; then
+  # Render Free cannot complete the full reference-data seed within its
+  # memory limit. In the managed staging test environment, default to the
+  # explicit lightweight administrator refresh unless a future deployment
+  # deliberately overrides it with SEED_ADMIN_ONLY=false.
+  if [[ "${RENDER_MANAGED_DB:-false}" == "true" && "${NODE_ENV:-}" == "staging" ]]; then
+    : "${SEED_ADMIN_ONLY:=true}"
+    export SEED_ADMIN_ONLY
+  fi
+
   if [[ -z "${SEED_ADMIN_EMAIL:-}" || -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
     echo "RUN_DB_SEED=true requires SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD" >&2
     exit 1
