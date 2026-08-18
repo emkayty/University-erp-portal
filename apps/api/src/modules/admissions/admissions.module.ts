@@ -8,6 +8,7 @@ import { AdmissionsController } from './admissions.controller';
 import { AdmissionsService } from './admissions.service';
 import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { AdmissionsOpsProcessor } from './jobs/admissions-ops.processor';
+import { ApplicationDraftCleanupScheduler } from './application-draft-cleanup.scheduler';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { AdmissionsOpsProcessor } from './jobs/admissions-ops.processor';
     AdmissionsService,
     PrivateObjectStorageService,
     AuditService,
-    ...(isWorkerProcess() ? [AdmissionsOpsProcessor] : []),
+    ...(isWorkerProcess() ? [AdmissionsOpsProcessor, ApplicationDraftCleanupScheduler] : []),
   ],
   exports:     [AdmissionsService],
 })

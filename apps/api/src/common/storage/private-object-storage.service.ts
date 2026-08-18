@@ -144,6 +144,24 @@ export class PrivateObjectStorageService {
   }
 
   /** Verify the object that was uploaded before accepting its metadata in a submission. */
+  async verifyImageObject(key: string, expectedSizeBytes: number, expectedContentType: 'image/jpeg' | 'image/png'): Promise<VerifiedObject> {
+    const verified = await this.verifyObject(key, expectedSizeBytes, expectedContentType);
+    const bucket = this.requireBucket();
+    const url = await this.sign(bucket, key, 'GET', 60);
+    let response: Response;
+    try {
+      response = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-15' }, signal: AbortSignal.timeout(this.metadataTimeoutMs) });
+    } catch {
+      throw new ServiceUnavailableException('Image storage could not be reached for signature verification.');
+    }
+    if (!response.ok && response.status !== 206) throw new BadRequestException('Image content could not be verified.');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const jpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    const png = bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47 && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+    if ((expectedContentType === 'image/jpeg' && !jpeg) || (expectedContentType === 'image/png' && !png)) throw new BadRequestException('The uploaded file is not a valid JPEG or PNG image.');
+    return verified;
+  }
+
   async verifyObject(key: string, expectedSizeBytes: number, expectedContentType: string): Promise<VerifiedObject> {
     this.validateObjectKey(key);
     if (!Number.isInteger(expectedSizeBytes) || expectedSizeBytes < 1 || expectedSizeBytes > 10 * 1024 * 1024) {

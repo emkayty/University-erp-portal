@@ -394,6 +394,18 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get application() {
     return this.client.application;
   }
+  get applicationAccessibilityRequest() {
+    return this.client.applicationAccessibilityRequest;
+  }
+  get applicationDraft() {
+    return this.client.applicationDraft;
+  }
+  get applicationConsent() {
+    return this.client.applicationConsent;
+  }
+  get applicationChangeRequest() {
+    return this.client.applicationChangeRequest;
+  }
   get applicationDocument() {
     return this.client.applicationDocument;
   }

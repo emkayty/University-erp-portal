@@ -7,13 +7,13 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler';
 import { ApplicantStatus, AdmissionType, VerificationStatus } from '@prisma/client';
 import type { JwtPayload } from '@uniportal/types';
-import { CurrentUser, Public, Roles, IdempotencyKey } from '../../common/decorators';
+import { CurrentUser, Public, Roles, StaffScopes, IdempotencyKey } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AdmissionsService } from './admissions.service';
 import {
   CreateAdmissionCycleDto, CreateApplicantDto,
   MatriculateApplicantDto, RecordOLevelResultsDto, VerifyOLevelResultsDto, VerifyJambDto,
-  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, VerifyApplicationDocumentDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto,
+  ScreenApplicantsDto, UpdateApplicantStatusDto, UpdateAccessibilitySupportDto, TrackApplicationDto, ApplicationChangeRequestDto, UpdateApplicationChangeRequestDto, SaveApplicationDraftDto, LoadApplicationDraftDto, CreateAdmissionRequirementDto, VerifyApplicationDocumentDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto, ApplicantPhotoPreSubmitPresignDto, ApplicantPhotoPreSubmitCompleteDto,
 } from './dto/admissions.dto';
 
 @ApiTags('Admissions')
@@ -80,6 +80,15 @@ export class AdmissionsController {
   @ApiOperation({ summary: 'Public list of active programmes for application' })
   async publicProgrammes() { return { success: true, data: await this.svc.findPublicProgrammes() }; }
 
+  @Get('public/requirements')
+  @Public()
+  @ApiQuery({ name: 'programmeId', required: true })
+  @ApiQuery({ name: 'admissionType', required: false, enum: AdmissionType })
+  @ApiQuery({ name: 'academicYear', required: false })
+  async publicRequirement(@Query('programmeId', ParseUUIDPipe) programmeId: string, @Query('admissionType') admissionType?: AdmissionType, @Query('academicYear') academicYear?: string) {
+    return { success: true, data: await this.svc.findPublicRequirement(programmeId, admissionType, academicYear) };
+  }
+
   @Post('requirements')
   @Roles('REGISTRAR','SUPER_ADMIN')
   @ApiOperation({ summary: '[REGISTRAR] Configure programme-specific admission requirements' })
@@ -92,6 +101,33 @@ export class AdmissionsController {
   async listRequirements(@Query('programmeId') programmeId?: string, @Query('academicYear') academicYear?: string) { return { success: true, data: await this.svc.listAdmissionRequirements(programmeId, academicYear) }; }
 
   // ── Applications ───────────────────────────────────────────────────────────
+  @Post('public/change-request')
+  @Public()
+  @Throttle({ api: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Submit a tracking-authenticated correction or withdrawal request' })
+  async createChangeRequest(@Body() dto: ApplicationChangeRequestDto) {
+    return { success: true, data: await this.svc.createApplicationChangeRequest(dto) };
+  }
+
+  @Post('public/draft/save')
+  @Public()
+  @Throttle({ api: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Save an encrypted, expiring admissions draft' })
+  async saveDraft(@Body() dto: SaveApplicationDraftDto) {
+    return { success: true, data: await this.svc.saveApplicationDraft(dto) };
+  }
+
+  @Post('public/draft/load')
+  @Public()
+  @Throttle({ api: { limit: 10, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resume an admissions draft using its private credential' })
+  async loadDraft(@Body() dto: LoadApplicationDraftDto) {
+    return { success: true, data: await this.svc.loadApplicationDraft(dto) };
+  }
+
   @Post('public/track')
   @Public()
   @Throttle({ api: { limit: 5, ttl: 60_000 } })
@@ -106,6 +142,24 @@ export class AdmissionsController {
   @ApiOperation({ summary: 'Submit new application (public endpoint)' })
   async apply(@Body() dto: CreateApplicantDto, @IdempotencyKey() idempotencyKey?: string) {
     return { success: true, data: await this.svc.apply(dto, idempotencyKey) };
+  }
+
+  @Post('public/photo/pre-submit/presign')
+  @Public()
+  @Throttle({ api: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pre-submit passport-photo upload presign' })
+  async presignApplicantPhotoPreSubmit(@Body() dto: ApplicantPhotoPreSubmitPresignDto) {
+    return { success: true, data: await this.svc.presignApplicantPhotoPreSubmit(dto) };
+  }
+
+  @Post('public/photo/pre-submit/complete')
+  @Public()
+  @Throttle({ api: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete and verify pre-submit passport-photo upload' })
+  async completeApplicantPhotoPreSubmit(@Body() dto: ApplicantPhotoPreSubmitCompleteDto) {
+    return { success: true, data: await this.svc.completeApplicantPhotoPreSubmit(dto) };
   }
 
   @Post('public/photo/presign')
@@ -153,6 +207,34 @@ export class AdmissionsController {
   @Roles('SUPER_ADMIN','REGISTRAR','STAFF')
   async getApplication(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.svc.findById(id) };
+  }
+
+  @Get('applications/:id/accessibility-support')
+  @Roles('SUPER_ADMIN','REGISTRAR','STAFF')
+  @StaffScopes('accessibility_support')
+  async getAccessibilitySupport(@Param('id', ParseUUIDPipe) id: string) {
+    return { success: true, data: await this.svc.getAccessibilitySupport(id) };
+  }
+
+  @Patch('applications/:id/accessibility-support')
+  @Roles('SUPER_ADMIN','REGISTRAR','STAFF')
+  @StaffScopes('accessibility_support')
+  async updateAccessibilitySupport(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateAccessibilitySupportDto, @CurrentUser() u: JwtPayload) {
+    return { success: true, data: await this.svc.updateAccessibilitySupport(id, dto, u.sub) };
+  }
+
+  @Get('applications/:id/change-requests')
+  @Roles('SUPER_ADMIN','REGISTRAR','STAFF')
+  @StaffScopes('admissions_corrections')
+  async listChangeRequests(@Param('id', ParseUUIDPipe) id: string) {
+    return { success: true, data: await this.svc.listApplicationChangeRequests(id) };
+  }
+
+  @Patch('applications/:id/change-requests/:requestId')
+  @Roles('SUPER_ADMIN','REGISTRAR','STAFF')
+  @StaffScopes('admissions_corrections')
+  async updateChangeRequest(@Param('id', ParseUUIDPipe) id: string, @Param('requestId', ParseUUIDPipe) requestId: string, @Body() dto: UpdateApplicationChangeRequestDto, @CurrentUser() u: JwtPayload) {
+    return { success: true, data: await this.svc.updateApplicationChangeRequest(id, requestId, dto, u.sub) };
   }
 
   /**

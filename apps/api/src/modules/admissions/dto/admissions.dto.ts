@@ -1,6 +1,6 @@
 import {
   IsArray, IsDateString, IsEmail, IsEnum, IsInt, IsOptional,
-  IsString, IsUUID, Length, Matches, Max, Min, ValidateNested, IsBoolean,
+  IsString, IsUUID, Length, Matches, Max, Min, ValidateNested, IsBoolean, ArrayMaxSize, IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -88,6 +88,9 @@ export class CreateAdmissionCycleDto {
   @ApiProperty() @IsDateString() openDate: string;
   @ApiProperty() @IsDateString() closeDate: string;
   @ApiPropertyOptional({ minimum: 0, maximum: 400 }) @IsOptional() @IsInt() @Min(0) @Max(400) utmeMinScore?: number;
+  @ApiPropertyOptional({ description: 'Whether an application fee is required; payment remains separate from academic eligibility.' }) @IsOptional() @IsBoolean() applicationFeeRequired?: boolean;
+  @ApiPropertyOptional({ description: 'Application fee amount in the configured currency, with up to two decimal places.' }) @IsOptional() @Matches(/^\d{1,10}(?:\.\d{1,2})?$/) applicationFeeAmount?: string;
+  @ApiPropertyOptional({ default: 'NGN' }) @IsOptional() @Matches(/^[A-Z]{3}$/) applicationFeeCurrency?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) maxApplicants?: number;
 }
 
@@ -122,6 +125,19 @@ export class PreviousEducationDto {
   @ApiPropertyOptional() @IsOptional() @IsString() certificateNo?: string;
 }
 
+export class AdmissionSpecificDetailsDto {
+  @ApiPropertyOptional({ description: 'Direct Entry or postgraduate qualification.' }) @IsOptional() @IsString() @Length(2,200) highestQualification?: string;
+  @ApiPropertyOptional({ description: 'Institution awarding the entry qualification.' }) @IsOptional() @IsString() @Length(2,255) awardingInstitution?: string;
+  @ApiPropertyOptional({ minimum: 1950, maximum: 2100 }) @IsOptional() @IsInt() @Min(1950) @Max(2100) graduationYear?: number;
+  @ApiPropertyOptional({ description: 'Previous institution for a transfer application.' }) @IsOptional() @IsString() @Length(2,255) previousInstitution?: string;
+  @ApiPropertyOptional({ description: 'Previous programme for a transfer application.' }) @IsOptional() @IsString() @Length(2,200) previousProgramme?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(10,1000) transferReason?: string;
+  @ApiPropertyOptional({ description: 'International applicant passport/nationality document status; do not enter passport numbers here.' }) @IsOptional() @IsString() @Length(2,100) travelDocumentStatus?: string;
+  @ApiPropertyOptional({ description: 'International English-language proficiency evidence status.' }) @IsOptional() @IsString() @Length(2,100) englishProficiencyStatus?: string;
+  @ApiPropertyOptional({ description: 'Postgraduate research interest or proposed area, not a full research proposal.' }) @IsOptional() @IsString() @Length(2,500) researchInterest?: string;
+  @ApiPropertyOptional({ description: 'Remedial or sandwich study preference.' }) @IsOptional() @IsString() @Length(2,100) studyPreference?: string;
+}
+
 export class CreateApplicantDto {
   @ApiProperty() @IsString() @Length(1,100) firstName: string;
   @ApiProperty() @IsString() @Length(1,100) lastName: string;
@@ -138,6 +154,7 @@ export class CreateApplicantDto {
   @ApiProperty() @IsEmail() email: string;
   /** Derived from the selected admission cycle. Optional only for backwards-compatible clients; conflicts are rejected server-side. */
   @ApiPropertyOptional({ enum: AdmissionTypeEnum, description: 'Derived from admissionCycleId; do not override the cycle value.' }) @IsOptional() @IsEnum(AdmissionTypeEnum) admissionType?: AdmissionTypeEnum;
+  @ApiPropertyOptional({ type: AdmissionSpecificDetailsDto }) @IsOptional() @ValidateNested() @Type(() => AdmissionSpecificDetailsDto) admissionDetails?: AdmissionSpecificDetailsDto;
   @ApiProperty() @IsUUID('4') admissionCycleId: string;
   @ApiProperty() @IsUUID('4') programmeChoice1Id: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID('4') programmeChoice2Id?: string;
@@ -147,12 +164,29 @@ export class CreateApplicantDto {
   @ApiPropertyOptional({ type: GuardianDto }) @IsOptional() @ValidateNested() @Type(() => GuardianDto) guardian?: GuardianDto;
   @ApiPropertyOptional({ type: GuardianDto }) @IsOptional() @ValidateNested() @Type(() => GuardianDto) emergencyContact?: GuardianDto;
   @ApiPropertyOptional({ type: [PreviousEducationDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PreviousEducationDto) previousEducation?: PreviousEducationDto[];
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() declarationAccepted?: boolean;
+  @ApiPropertyOptional({ description: 'Candidate accepted the current application declaration and terms.' }) @IsOptional() @IsBoolean() declarationAccepted?: boolean;
+  @ApiPropertyOptional({ description: 'Candidate acknowledged the current institutional privacy notice.' }) @IsOptional() @IsBoolean() privacyNoticeAccepted?: boolean;
+  @ApiPropertyOptional({ description: 'Opaque pre-submission passport-photo proof issued by the API after upload verification.' }) @IsOptional() @IsString() @Length(32,512) passportPhotoProof?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(10,11) jambRegNo?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(400) jambScore?: number;
   @ApiPropertyOptional({ description: 'Applicant NIN; stored encrypted and never returned in public responses.' }) @IsOptional() @Matches(/^\d{11}$/, { message: 'NIN must contain exactly 11 digits.' }) nin?: string;
   @ApiPropertyOptional({ description: 'Explicit acknowledgment for processing NIN for admission identity verification.' }) @IsOptional() @IsBoolean() ninConsentAccepted?: boolean;
   @ApiPropertyOptional({ type: [OLevelSubjectResultDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => OLevelSubjectResultDto) oLevelResults?: OLevelSubjectResultDto[];
+  @ApiPropertyOptional({ description: 'Whether the applicant wants the University to contact them about accessibility or reasonable accommodation.' }) @IsOptional() @IsBoolean() supportRequested?: boolean;
+  @ApiPropertyOptional({ type: [String], description: 'Non-diagnostic support areas such as entrance examination, interview, communication, or campus visit.' }) @IsOptional() @IsArray() @ArrayMaxSize(8) @IsString({ each: true }) supportAreas?: string[];
+  @ApiPropertyOptional({ type: [String], description: 'Requested operational accommodations such as step-free access, extra time, reader/scribe, captions, large print, or assistive technology.' }) @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) requestedAdjustments?: string[];
+  @ApiPropertyOptional({ description: 'Optional short description of the support needed; do not provide a diagnosis.' }) @IsOptional() @IsString() @Length(1,500) supportDescription?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(2,30) preferredContactMethod?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(2,40) preferredFormat?: string;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() supportConsentAccepted?: boolean;
+}
+
+export class UpdateAccessibilitySupportDto {
+  @ApiProperty({ enum: ['REQUESTED','CONTACTED','ARRANGED','DECLINED','CLOSED'] })
+  @IsEnum({ REQUESTED: 'REQUESTED', CONTACTED: 'CONTACTED', ARRANGED: 'ARRANGED', DECLINED: 'DECLINED', CLOSED: 'CLOSED' })
+  status: string;
+  @ApiPropertyOptional({ description: 'Optional support officer user ID.' })
+  @IsOptional() @IsUUID('4') assignedSupportOfficerId?: string;
 }
 
 export class UpdateApplicantStatusDto {
@@ -183,7 +217,40 @@ export class TrackApplicationDto {
   @ApiProperty({ description: '64-character tracking credential returned once after submission' }) @IsString() @Length(64,64) trackingToken: string;
 }
 
+export class ApplicationChangeRequestDto extends TrackApplicationDto {
+  @ApiProperty({ enum: ['CORRECTION', 'WITHDRAWAL'] }) @IsEnum({ CORRECTION: 'CORRECTION', WITHDRAWAL: 'WITHDRAWAL' }) requestType: string;
+  @ApiProperty({ description: 'Reason for the correction or withdrawal request.' }) @IsString() @Length(5,500) reason: string;
+  @ApiPropertyOptional({ description: 'Fields the applicant wants corrected. Do not include NIN, passwords, or payment-card data.' }) @IsOptional() @IsObject() requestedChanges?: Record<string, unknown>;
+}
+
+export class UpdateApplicationChangeRequestDto {
+  @ApiProperty({ enum: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'COMPLETED'] }) @IsEnum({ UNDER_REVIEW: 'UNDER_REVIEW', APPROVED: 'APPROVED', REJECTED: 'REJECTED', COMPLETED: 'COMPLETED' }) status: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(3,500) note?: string;
+}
+
+export class SaveApplicationDraftDto {
+  @ApiPropertyOptional({ description: 'Draft credential previously returned by the server. Omit to start a new draft.' }) @IsOptional() @IsString() @Length(40,80) draftToken?: string;
+  @ApiProperty({ description: 'Form snapshot. Sensitive NIN, photograph proofs, diagnoses, and consent evidence are rejected/omitted by the service.' }) @IsObject() payload: Record<string, unknown>;
+}
+
+export class LoadApplicationDraftDto {
+  @ApiProperty({ description: 'Draft credential returned by the server.' }) @IsString() @Length(40,80) draftToken: string;
+}
+
 export class ApplicantPhotoPresignDto extends TrackApplicationDto {
+  @ApiProperty({ enum: ['image/jpeg', 'image/png'] }) @IsString() @IsEnum({ JPEG: 'image/jpeg', PNG: 'image/png' }) contentType: string;
+  @ApiProperty({ minimum: 1, maximum: 2097152 }) @IsInt() @Min(1) @Max(2 * 1024 * 1024) sizeBytes: number;
+}
+
+export class ApplicantPhotoPreSubmitPresignDto {
+  @ApiProperty({ description: 'Client-generated UUID used to make the pre-submit upload retry-safe.' }) @IsUUID('4') idempotencyKey: string;
+  @ApiProperty({ enum: ['image/jpeg', 'image/png'] }) @IsString() @IsEnum({ JPEG: 'image/jpeg', PNG: 'image/png' }) contentType: string;
+  @ApiProperty({ minimum: 1, maximum: 2097152 }) @IsInt() @Min(1) @Max(2 * 1024 * 1024) sizeBytes: number;
+}
+
+export class ApplicantPhotoPreSubmitCompleteDto {
+  @ApiProperty({ description: 'Client-generated UUID used for the pre-submit upload.' }) @IsUUID('4') idempotencyKey: string;
+  @ApiProperty() @IsString() @Length(1, 1000) key: string;
   @ApiProperty({ enum: ['image/jpeg', 'image/png'] }) @IsString() @IsEnum({ JPEG: 'image/jpeg', PNG: 'image/png' }) contentType: string;
   @ApiProperty({ minimum: 1, maximum: 2097152 }) @IsInt() @Min(1) @Max(2 * 1024 * 1024) sizeBytes: number;
 }

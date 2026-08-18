@@ -3,10 +3,10 @@ import {
   Injectable, Logger, NotFoundException, ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { AuditAction, ApplicantStatus, AdmissionType, ApplicationStatus, ApplicationPaymentStatus, VerificationStatus, AdmissionDecisionType, AdmissionDecisionReason, ScreeningResult, ApplicationDocumentType, Prisma } from '@prisma/client';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { AuditAction, ApplicantStatus, AdmissionType, ApplicationStatus, ApplicationPaymentStatus, VerificationStatus, AdmissionDecisionType, AdmissionDecisionReason, ScreeningResult, ApplicationDocumentType, ApplicationConsentType, AccessibilitySupportStatus, Prisma } from '@prisma/client';
 
-import { buildAdvisoryLockKey, encryptPii } from '@uniportal/utils';
+import { buildAdvisoryLockKey, decryptPii, encryptPii } from '@uniportal/utils';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
@@ -17,8 +17,22 @@ import { OLevelExamTypeEnum } from './dto/admissions.dto';
 import type {
   CreateAdmissionCycleDto, CreateApplicantDto,
   MatriculateApplicantDto, OLevelSubjectResultDto, RecordOLevelResultsDto,
-  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto, OLevelGradeEnum,
+  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, SaveApplicationDraftDto, LoadApplicationDraftDto, CreateAdmissionRequirementDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto, ApplicantPhotoPreSubmitPresignDto, ApplicantPhotoPreSubmitCompleteDto, OLevelGradeEnum,
 } from './dto/admissions.dto';
+
+const TERMS_VERSION = '2026-08-18';
+const PRIVACY_NOTICE_VERSION = '2026-08-18';
+const NIN_CONSENT_VERSION = '2026-08-18';
+const SUPPORT_CONSENT_VERSION = '2026-08-18';
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+
+type PreSubmitPhotoProof = {
+  idempotencyKey: string;
+  key: string;
+  contentType: 'image/jpeg' | 'image/png';
+  sizeBytes: number;
+  issuedAt: number;
+};
 
 type EligibilityEvaluationOptions = {
   /** Dry-run callers must not create screening rows or change state. */
@@ -78,8 +92,11 @@ export class AdmissionsService {
         admissionType: dto.admissionType as AdmissionType,
         openDate:      open,
         closeDate:     close,
-        utmeMinScore:  dto.utmeMinScore ?? null,
-        maxApplicants: dto.maxApplicants ?? null,
+                utmeMinScore:  dto.utmeMinScore ?? null,
+        applicationFeeRequired: dto.applicationFeeRequired ?? false,
+        applicationFeeAmount: dto.applicationFeeAmount ? new Prisma.Decimal(dto.applicationFeeAmount) : null,
+        applicationFeeCurrency: dto.applicationFeeCurrency ?? 'NGN',
+        maxApplicants:  dto.maxApplicants ?? null,
         isActive:      false,
       },
     });
@@ -131,11 +148,19 @@ export class AdmissionsService {
     return this.prisma.admissionRequirement.findMany({ where: { ...(programmeId ? { programmeId } : {}), ...(academicYear ? { academicYear } : {}) }, include: { subjectRequirements: true, programme: { select: { id: true, name: true, code: true } } }, orderBy: [{ academicYear: 'desc' }, { createdAt: 'desc' }] });
   }
 
+  async findPublicRequirement(programmeId: string, admissionType?: AdmissionType, academicYear?: string) {
+    if (admissionType && !Object.values(AdmissionType).includes(admissionType)) throw new BadRequestException('Admission type is invalid.');
+    return this.prisma.admissionRequirement.findFirst({
+      where: { programmeId, ...(admissionType ? { admissionType } : {}), ...(academicYear ? { academicYear } : {}), isActive: true },
+      select: { id: true, programmeId: true, admissionType: true, academicYear: true, minUtmeScore: true, minOLevelCredits: true, maxOLevelSittings: true, requireEnglish: true, requireMathematics: true, minAge: true, maxAge: true, requiredDocuments: true, subjectRequirements: { select: { subject: true, required: true, alternatives: true } } },
+    });
+  }
+
   async findPublicCycles() {
     const now = new Date();
     return this.prisma.admissionCycle.findMany({
       where: { isActive: true, openDate: { lte: now }, closeDate: { gte: now } },
-      select: { id: true, academicYear: true, cycleName: true, admissionType: true, openDate: true, closeDate: true, utmeMinScore: true },
+      select: { id: true, academicYear: true, cycleName: true, admissionType: true, openDate: true, closeDate: true, utmeMinScore: true, applicationFeeRequired: true, applicationFeeAmount: true, applicationFeeCurrency: true },
       orderBy: { openDate: 'desc' },
     });
   }
@@ -150,11 +175,11 @@ export class AdmissionsService {
   async trackPublicApplication(dto: TrackApplicationDto) {
     const applicant = await this.prisma.applicant.findFirst({
       where: { applicationNo: dto.applicationNo.trim(), deletedAt: null },
-      select: { applicationNo: true, email: true, status: true, offerDate: true, offerDeadline: true, acceptanceDate: true, rejectionDate: true, rejectionReason: true, createdAt: true, application: { select: { status: true, completionPercent: true, submittedAt: true } } },
+      select: { applicationNo: true, email: true, status: true, offerDate: true, offerDeadline: true, acceptanceDate: true, rejectionDate: true, rejectionReason: true, createdAt: true, application: { select: { status: true, completionPercent: true, submittedAt: true, paymentStatus: true, admissionCycle: { select: { applicationFeeRequired: true, applicationFeeAmount: true, applicationFeeCurrency: true } } } } },
     });
     const valid = applicant ? this.isTrackingTokenValid(applicant.applicationNo, applicant.email, dto.trackingToken.trim()) : false;
     if (!applicant || !valid) throw new NotFoundException('Application not found or tracking credential is invalid.');
-    return { applicationNo: applicant.applicationNo, status: applicant.status, applicationStatus: applicant.application?.status ?? null, completionPercent: applicant.application?.completionPercent ?? 0, submittedAt: applicant.application?.submittedAt ?? applicant.createdAt, offerDate: applicant.offerDate, offerDeadline: applicant.offerDeadline, acceptanceDate: applicant.acceptanceDate, rejectionDate: applicant.status === ApplicantStatus.REJECTED ? applicant.rejectionDate : null, rejectionReason: applicant.status === ApplicantStatus.REJECTED ? applicant.rejectionReason : null };
+    return { applicationNo: applicant.applicationNo, status: applicant.status, applicationStatus: applicant.application?.status ?? null, completionPercent: applicant.application?.completionPercent ?? 0, submittedAt: applicant.application?.submittedAt ?? applicant.createdAt, paymentStatus: applicant.application?.paymentStatus ?? null, applicationFee: applicant.application?.admissionCycle?.applicationFeeRequired ? { required: true, amount: applicant.application.admissionCycle.applicationFeeAmount, currency: applicant.application.admissionCycle.applicationFeeCurrency } : { required: false }, offerDate: applicant.offerDate, offerDeadline: applicant.offerDeadline, acceptanceDate: applicant.acceptanceDate, rejectionDate: applicant.status === ApplicantStatus.REJECTED ? applicant.rejectionDate : null, rejectionReason: applicant.status === ApplicantStatus.REJECTED ? applicant.rejectionReason : null };
   }
 
   // ── Reference data (public, read-only) ─────────────────────────────────────
@@ -265,7 +290,7 @@ export class AdmissionsService {
     for (let attempt = 0; attempt < attempts; attempt++) {
       const previous = await this.prisma.application.findUnique({
         where: { submissionIdempotencyKey: idempotencyKey },
-        select: { applicant: { select: { id: true, applicationNo: true, email: true } }, completionPercent: true },
+        select: { applicant: { select: { id: true, applicationNo: true, email: true } }, completionPercent: true, paymentStatus: true, admissionCycle: { select: { applicationFeeRequired: true, applicationFeeAmount: true, applicationFeeCurrency: true } } },
       });
       if (previous) {
         return {
@@ -273,6 +298,8 @@ export class AdmissionsService {
           applicationNo: previous.applicant.applicationNo,
           completionPercent: previous.completionPercent,
           trackingToken: this.createTrackingToken(previous.applicant.applicationNo, previous.applicant.email),
+          paymentStatus: previous.paymentStatus,
+          applicationFee: { required: previous.admissionCycle.applicationFeeRequired, amount: previous.admissionCycle.applicationFeeAmount, currency: previous.admissionCycle.applicationFeeCurrency },
         };
       }
       if (attempt < attempts - 1) await new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)));
@@ -280,8 +307,66 @@ export class AdmissionsService {
     return null;
   }
 
-  async apply(dto: CreateApplicantDto, idempotencyKey?: string): Promise<{ id: string; applicationNo: string; completionPercent: number; trackingToken: string }> {
+  async saveApplicationDraft(dto: SaveApplicationDraftDto) {
+    const safeKeys = new Set(['firstName','lastName','middleName','dateOfBirth','gender','nationality','countryOfOriginId','stateOfOriginId','lgaOfOriginId','stateOfOrigin','lga','phone','email','admissionCycleId','programmeChoice1Id','programmeChoice2Id','programmeChoice3Id','admissionDetails','jambRegNo','jambScore','address','guardian','emergencyContact','previousEducation','olevel','secondSitting']);
+    const safePayload = Object.fromEntries(Object.entries(dto.payload).filter(([key, value]) => safeKeys.has(key) && value !== undefined));
+    const payloadEncrypted = encryptPii(JSON.stringify(safePayload));
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const token = dto.draftToken?.trim() || randomBytes(32).toString('hex');
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    const existing = await this.prisma.applicationDraft.findUnique({ where: { tokenHash } });
+    if (existing) {
+      await this.prisma.applicationDraft.update({ where: { id: existing.id }, data: { payloadEncrypted, expiresAt } });
+    } else {
+      await this.prisma.applicationDraft.create({ data: { tokenHash, payloadEncrypted, expiresAt } });
+    }
+    return { draftToken: token, expiresAt };
+  }
+
+  async loadApplicationDraft(dto: LoadApplicationDraftDto) {
+    const tokenHash = createHash('sha256').update(dto.draftToken.trim()).digest('hex');
+    const draft = await this.prisma.applicationDraft.findUnique({ where: { tokenHash } });
+    if (!draft || draft.expiresAt <= new Date()) throw new NotFoundException('Draft not found or expired.');
+    const payload = JSON.parse(decryptPii(draft.payloadEncrypted)) as Record<string, unknown>;
+    await this.prisma.applicationDraft.update({ where: { id: draft.id }, data: { lastLoadedAt: new Date() } });
+    return { draftToken: dto.draftToken.trim(), payload, expiresAt: draft.expiresAt };
+  }
+
+  async createApplicationChangeRequest(dto: import('./dto/admissions.dto').ApplicationChangeRequestDto) {
+    const applicant = await this.findTrackedApplicant(dto.applicationNo, dto.trackingToken);
+    const application = await this.prisma.application.findUnique({ where: { applicantId: applicant.id }, select: { id: true, status: true } });
+    if (!application) throw new NotFoundException('Application record not found.');
+    const allowedFields = new Set(['firstName','lastName','middleName','dateOfBirth','gender','phone','email','address','programmeChoice1Id','programmeChoice2Id','programmeChoice3Id','admissionDetails','previousEducation','oLevelResults']);
+    const requestedChanges = dto.requestedChanges ? Object.fromEntries(Object.entries(dto.requestedChanges).filter(([key]) => allowedFields.has(key))) : null;
+    const changeRequest = await this.prisma.applicationChangeRequest.create({ data: { applicationId: application.id, requestType: dto.requestType as any, reasonEncrypted: encryptPii(dto.reason.trim()), requestedChangesEncrypted: requestedChanges ? encryptPii(JSON.stringify(requestedChanges)) : null } });
+    await this.audit.log({ action: AuditAction.CREATE, targetTable: 'application_change_requests', targetId: changeRequest.id, newValues: { applicationId: application.id, requestType: changeRequest.requestType } });
+    return { id: changeRequest.id, status: changeRequest.status, message: 'Your request has been received for Admissions review.' };
+  }
+
+  async listApplicationChangeRequests(applicantId: string) {
+    const rows = await this.prisma.applicationChangeRequest.findMany({ where: { application: { applicantId } }, orderBy: { createdAt: 'desc' }, select: { id: true, requestType: true, status: true, reasonEncrypted: true, requestedChangesEncrypted: true, reviewNoteEncrypted: true, reviewedAt: true, completedAt: true, createdAt: true, updatedAt: true, reviewedById: true } });
+    return rows.map(row => {
+      let reason: string | null = null; let requestedChanges: Record<string, unknown> | null = null; let reviewNote: string | null = null;
+      try { reason = decryptPii(row.reasonEncrypted); } catch { reason = '[UNAVAILABLE]'; }
+      if (row.requestedChangesEncrypted) { try { requestedChanges = JSON.parse(decryptPii(row.requestedChangesEncrypted)) as Record<string, unknown>; } catch { requestedChanges = null; } }
+      if (row.reviewNoteEncrypted) { try { reviewNote = decryptPii(row.reviewNoteEncrypted); } catch { reviewNote = '[UNAVAILABLE]'; } }
+      const { reasonEncrypted: _reason, requestedChangesEncrypted: _changes, reviewNoteEncrypted: _note, ...safe } = row;
+      return { ...safe, reason, requestedChanges, reviewNote };
+    });
+  }
+
+  async updateApplicationChangeRequest(applicantId: string, requestId: string, dto: import('./dto/admissions.dto').UpdateApplicationChangeRequestDto, actorId: string) {
+    const row = await this.prisma.applicationChangeRequest.findFirst({ where: { id: requestId, application: { applicantId } } });
+    if (!row) throw new NotFoundException('Change request not found for this application.');
+    const updated = await this.prisma.applicationChangeRequest.update({ where: { id: row.id }, data: { status: dto.status as any, reviewedById: actorId, reviewedAt: new Date(), completedAt: dto.status === 'COMPLETED' ? new Date() : null, reviewNoteEncrypted: dto.note ? encryptPii(dto.note.trim()) : null } });
+    await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'application_change_requests', targetId: row.id, newValues: { status: updated.status, reviewedById: actorId } }, actorId);
+    return { id: updated.id, status: updated.status, reviewedAt: updated.reviewedAt, completedAt: updated.completedAt };
+  }
+
+  async apply(dto: CreateApplicantDto, idempotencyKey?: string): Promise<{ id: string; applicationNo: string; completionPercent: number; trackingToken: string; paymentStatus: ApplicationPaymentStatus; applicationFee: { required: boolean; amount: Prisma.Decimal | null; currency: string } }> {
     this.requireTrackingSecret();
+    if (!idempotencyKey) throw new BadRequestException('A submission idempotency key is required. Please retry from the application form.');
+    if (idempotencyKey && !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new BadRequestException('The submission idempotency key is invalid.');
     if (idempotencyKey) {
       const previous = await this.findIdempotentReplay(idempotencyKey);
       if (previous) return previous;
@@ -295,11 +380,22 @@ export class AdmissionsService {
     if (dto.admissionType && dto.admissionType !== cycle.admissionType) {
       throw new BadRequestException('Admission type must match the selected admission cycle.');
     }
+    this.validateAdmissionSpecificDetails(admissionType, dto);
     if (!dto.declarationAccepted) {
       throw new BadRequestException('You must accept the application declaration before submitting.');
     }
+    if (!dto.privacyNoticeAccepted) {
+      throw new BadRequestException('Please acknowledge the institutional privacy notice before submitting.');
+    }
+    if (!dto.passportPhotoProof) {
+      throw new BadRequestException('A verified passport photograph is required before submitting.');
+    }
+    const verifiedPhoto = await this.verifyPreSubmitPhotoProof(dto.passportPhotoProof, idempotencyKey);
     if (dto.nin && !dto.ninConsentAccepted) {
       throw new BadRequestException('Please acknowledge the NIN identity-verification privacy notice before submitting a NIN.');
+    }
+    if (dto.supportRequested && !dto.supportConsentAccepted) {
+      throw new BadRequestException('Please consent to the Accessibility/Student Support Office contacting you about the requested support.');
     }
     const origin = await this.validateOriginLocation(dto);
     await this.validateAddressReference(dto.residentialAddress);
@@ -324,10 +420,10 @@ export class AdmissionsService {
 
     const email = dto.email.trim().toLowerCase();
     const duplicate = await this.prisma.applicant.findFirst({ where: { admissionCycleId: cycle.id, email, deletedAt: null } });
-    if (duplicate) throw new ConflictException({ code: 'DUPLICATE_APPLICATION', message: 'An application already exists for this email in the selected admission cycle.', applicationNo: duplicate.applicationNo });
+    if (duplicate) throw new ConflictException({ code: 'DUPLICATE_APPLICATION', message: 'An application already exists for this email in the selected admission cycle. Use the verified application-recovery option instead.' });
     if (dto.jambRegNo) {
       const jambDuplicate = await this.prisma.applicant.findFirst({ where: { admissionCycleId: cycle.id, jambRegNo: dto.jambRegNo } });
-      if (jambDuplicate) throw new ConflictException({ code: 'DUPLICATE_JAMB_APPLICATION', message: 'This JAMB registration number has already been used for this admission cycle.', applicationNo: jambDuplicate.applicationNo });
+      if (jambDuplicate) throw new ConflictException({ code: 'DUPLICATE_JAMB_APPLICATION', message: 'This JAMB registration number has already been used for this admission cycle.' });
     }
 
     const oLevelEligibility = dto.oLevelResults?.length
@@ -359,18 +455,37 @@ export class AdmissionsService {
         nationality: dto.nationality, stateOfOrigin: origin?.state?.name ?? dto.stateOfOrigin ?? null, lga: origin?.lga?.name ?? dto.lga ?? null,
         countryOfOriginId: origin?.country.id ?? null, stateOfOriginId: origin?.state?.id ?? null, lgaOfOriginId: origin?.lga?.id ?? null,
         phone: dto.phone, email, admissionType,
-        admissionCycleId: dto.admissionCycleId, programmeChoice1Id: dto.programmeChoice1Id,
+        admissionCycleId: dto.admissionCycleId, admissionDetails: dto.admissionDetails ? (dto.admissionDetails as Prisma.InputJsonValue) : Prisma.JsonNull, programmeChoice1Id: dto.programmeChoice1Id,
         programmeChoice2Id: dto.programmeChoice2Id ?? null, programmeChoice3Id: dto.programmeChoice3Id ?? null,
         jambRegNo: dto.jambRegNo ?? null, jambScore: dto.jambScore ?? null,
         nin: dto.nin ? encryptPii(dto.nin.trim()) : null,
+        passportPhotoUrl: verifiedPhoto.key,
         declarationAccepted: true, declarationAcceptedAt: now, submittedAt: now,
         status: ApplicantStatus.SUBMITTED,
       }});
       const application = await tx.application.create({ data: {
         applicantId: applicant.id, admissionCycleId: cycle.id, status: ApplicationStatus.SUBMITTED,
-        completionPercent, submittedAt: now, lastSavedAt: now, submissionIdempotencyKey: idempotencyKey ?? null, declarationAccepted: true,
-        declarationAcceptedAt: now, paymentStatus: ApplicationPaymentStatus.NOT_REQUIRED,
+        completionPercent, submittedAt: now, lastSavedAt: now, submissionIdempotencyKey: idempotencyKey, declarationAccepted: true,
+        declarationAcceptedAt: now, paymentStatus: cycle.applicationFeeRequired ? ApplicationPaymentStatus.PENDING : ApplicationPaymentStatus.NOT_REQUIRED,
+        consents: { create: [
+          { consentType: ApplicationConsentType.TERMS, version: TERMS_VERSION, evidence: { channel: 'public-web' } },
+          { consentType: ApplicationConsentType.PRIVACY_NOTICE, version: PRIVACY_NOTICE_VERSION, evidence: { channel: 'public-web' } },
+          ...(dto.nin ? [{ consentType: ApplicationConsentType.NIN_PROCESSING, version: NIN_CONSENT_VERSION, evidence: { channel: 'public-web' } }] : []),
+          ...(dto.supportRequested ? [{ consentType: ApplicationConsentType.SUPPORT_CONTACT, version: SUPPORT_CONSENT_VERSION, evidence: { channel: 'public-web' } }] : []),
+        ] },
+        accessibilitySupport: dto.supportRequested ? { create: {
+          requested: true,
+          supportAreas: dto.supportAreas ?? undefined,
+          requestedAdjustments: dto.requestedAdjustments ?? undefined,
+          supportDescriptionEncrypted: dto.supportDescription ? encryptPii(dto.supportDescription.trim()) : null,
+          preferredContactMethod: dto.preferredContactMethod ?? null,
+          preferredFormat: dto.preferredFormat ?? null,
+          consentAccepted: true,
+          consentVersion: SUPPORT_CONSENT_VERSION,
+          consentAt: now,
+        } } : undefined,
       }});
+      await tx.applicationDocument.create({ data: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO, fileUrl: verifiedPhoto.key, mimeType: verifiedPhoto.contentType, sizeBytes: verifiedPhoto.sizeBytes, status: VerificationStatus.PENDING } });
       if (dto.residentialAddress) await tx.address.create({ data: { applicantId: applicant.id, type: 'RESIDENTIAL', ...dto.residentialAddress, country: dto.residentialAddress.country ?? 'Nigeria', countryId: dto.residentialAddress.countryId ?? null, regionId: dto.residentialAddress.regionId ?? null, localAreaId: dto.residentialAddress.localAreaId ?? null } });
       if (dto.permanentAddress) await tx.address.create({ data: { applicantId: applicant.id, type: 'PERMANENT', ...dto.permanentAddress, country: dto.permanentAddress.country ?? 'Nigeria', countryId: dto.permanentAddress.countryId ?? null, regionId: dto.permanentAddress.regionId ?? null, localAreaId: dto.permanentAddress.localAreaId ?? null } });
       if (dto.guardian) await tx.guardianContact.create({ data: { applicantId: applicant.id, ...dto.guardian } });
@@ -406,6 +521,7 @@ export class AdmissionsService {
           jambRegNo: dto.jambRegNo,
         });
       }
+      await this.outbox.write(tx, 'admissions.application_submitted', { email, firstName: dto.firstName, applicationNo, paymentStatus: application.paymentStatus });
       return { applicant, application, applicationNo, oLevelEligibility };
     });
 
@@ -420,8 +536,32 @@ export class AdmissionsService {
       throw error;
     }
 
-    await this.audit.log({ action: AuditAction.CREATE, targetTable: 'applications', targetId: created.application.id, newValues: { applicationNo: created.applicationNo, admissionCycleId: cycle.id, programmeChoice1Id: dto.programmeChoice1Id, completionPercent } });
-    return { id: created.applicant.id, applicationNo: created.applicationNo, completionPercent, trackingToken: this.createTrackingToken(created.applicationNo, email) };
+    await this.audit.log({ action: AuditAction.CREATE, targetTable: 'applications', targetId: created.application.id, newValues: { applicationNo: created.applicationNo, admissionCycleId: cycle.id, programmeChoice1Id: dto.programmeChoice1Id, completionPercent, supportRequested: Boolean(dto.supportRequested) } });
+    return { id: created.applicant.id, applicationNo: created.applicationNo, completionPercent, trackingToken: this.createTrackingToken(created.applicationNo, email), paymentStatus: cycle.applicationFeeRequired ? ApplicationPaymentStatus.PENDING : ApplicationPaymentStatus.NOT_REQUIRED, applicationFee: { required: cycle.applicationFeeRequired, amount: cycle.applicationFeeAmount, currency: cycle.applicationFeeCurrency } };
+  }
+
+  async presignApplicantPhotoPreSubmit(dto: ApplicantPhotoPreSubmitPresignDto) {
+    this.requireTrackingSecret();
+    const extension = dto.contentType === 'image/png' ? 'png' : 'jpg';
+    const key = `admissions/pre-submit/${dto.idempotencyKey}/passport-photo/${randomUUID()}.${extension}`;
+    return this.storage.presignPost(key, dto.contentType, dto.sizeBytes);
+  }
+
+  async completeApplicantPhotoPreSubmit(dto: ApplicantPhotoPreSubmitCompleteDto) {
+    this.requireTrackingSecret();
+    const prefix = `admissions/pre-submit/${dto.idempotencyKey}/passport-photo/`;
+    if (!dto.key.startsWith(prefix)) throw new BadRequestException('Photograph key is not scoped to this submission.');
+    const verified = await this.storage.verifyImageObject(dto.key, dto.sizeBytes, dto.contentType as 'image/jpeg' | 'image/png');
+    return {
+      proof: this.createPreSubmitPhotoProof({
+        idempotencyKey: dto.idempotencyKey,
+        key: verified.key,
+        contentType: verified.contentType as 'image/jpeg' | 'image/png',
+        sizeBytes: verified.sizeBytes,
+        issuedAt: Date.now(),
+      }),
+      status: 'VERIFIED',
+    };
   }
 
   async presignApplicantPhoto(dto: ApplicantPhotoPresignDto) {
@@ -435,7 +575,7 @@ export class AdmissionsService {
     const applicant = await this.findTrackedApplicant(dto.applicationNo, dto.trackingToken);
     const prefix = `admissions/${applicant.applicationNo}/passport-photo/`;
     if (!dto.key.startsWith(prefix)) throw new BadRequestException('Photograph key is not scoped to this application.');
-    const verified = await this.storage.verifyObject(dto.key, dto.sizeBytes, dto.contentType);
+    const verified = await this.storage.verifyImageObject(dto.key, dto.sizeBytes, dto.contentType as 'image/jpeg' | 'image/png');
     const application = await this.prisma.application.findUnique({ where: { applicantId: applicant.id }, select: { id: true } });
     if (!application) throw new NotFoundException('Application record not found.');
     const existing = await this.prisma.applicationDocument.findFirst({ where: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO }, orderBy: { createdAt: 'desc' } });
@@ -445,6 +585,27 @@ export class AdmissionsService {
     await this.prisma.applicant.update({ where: { id: applicant.id }, data: { passportPhotoUrl: verified.key } });
     await this.audit.log({ action: AuditAction.CREATE, targetTable: 'application_documents', targetId: document.id, newValues: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO, sizeBytes: verified.sizeBytes } });
     return { documentId: document.id, status: document.status, message: 'Photograph uploaded and queued for admissions review.' };
+  }
+
+  private createPreSubmitPhotoProof(value: PreSubmitPhotoProof): string {
+    const secret = this.requireTrackingSecret();
+    const payload = Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+    const signature = createHmac('sha256', secret).update(payload).digest('hex');
+    return `${payload}.${signature}`;
+  }
+
+  private async verifyPreSubmitPhotoProof(proof: string, idempotencyKey: string): Promise<PreSubmitPhotoProof> {
+    const secret = this.requireTrackingSecret();
+    const [payload, signature] = proof.split('.');
+    if (!payload || !signature || !/^[a-f0-9]{64}$/i.test(signature)) throw new BadRequestException('Passport photograph proof is invalid or expired.');
+    const expected = createHmac('sha256', secret).update(payload).digest('hex');
+    if (!timingSafeEqual(Buffer.from(signature.toLowerCase()), Buffer.from(expected))) throw new BadRequestException('Passport photograph proof is invalid or expired.');
+    let parsed: PreSubmitPhotoProof;
+    try { parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as PreSubmitPhotoProof; } catch { throw new BadRequestException('Passport photograph proof is invalid or expired.'); }
+    if (parsed.idempotencyKey !== idempotencyKey || !parsed.key.startsWith(`admissions/pre-submit/${idempotencyKey}/passport-photo/`) || !['image/jpeg', 'image/png'].includes(parsed.contentType) || parsed.sizeBytes < 1 || parsed.sizeBytes > MAX_PHOTO_BYTES || Date.now() - parsed.issuedAt > 30 * 60 * 1000) {
+      throw new BadRequestException('Passport photograph proof is invalid or expired.');
+    }
+    return parsed;
   }
 
   private async findTrackedApplicant(applicationNo: string, trackingToken: string) {
@@ -483,6 +644,35 @@ export class AdmissionsService {
       ninMasked: nin ? '***********' : null,
     }));
     return { applicants: safeApplicants, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async getAccessibilitySupport(applicantId: string) {
+    const request = await this.prisma.applicationAccessibilityRequest.findFirst({ where: { application: { applicantId } }, select: { id: true, requested: true, supportAreas: true, requestedAdjustments: true, supportDescriptionEncrypted: true, preferredContactMethod: true, preferredFormat: true, consentAccepted: true, consentVersion: true, consentAt: true, status: true, assignedSupportOfficerId: true, createdAt: true, updatedAt: true, closedAt: true } });
+    if (!request) return { requested: false };
+    let supportDescription: string | null = null;
+    if (request.supportDescriptionEncrypted) {
+      try { supportDescription = decryptPii(request.supportDescriptionEncrypted); } catch { supportDescription = '[UNAVAILABLE]'; }
+    }
+    const { supportDescriptionEncrypted: _redacted, ...safe } = request;
+    return { ...safe, supportDescription };
+  }
+
+  async updateAccessibilitySupport(applicantId: string, dto: import('./dto/admissions.dto').UpdateAccessibilitySupportDto, actorId: string) {
+    const request = await this.prisma.applicationAccessibilityRequest.findFirst({ where: { application: { applicantId } } });
+    if (!request) throw new NotFoundException('No accessibility-support request exists for this application.');
+    const allowed: Partial<Record<AccessibilitySupportStatus, AccessibilitySupportStatus[]>> = {
+      [AccessibilitySupportStatus.REQUESTED]: [AccessibilitySupportStatus.CONTACTED, AccessibilitySupportStatus.DECLINED, AccessibilitySupportStatus.CLOSED],
+      [AccessibilitySupportStatus.CONTACTED]: [AccessibilitySupportStatus.ARRANGED, AccessibilitySupportStatus.DECLINED, AccessibilitySupportStatus.CLOSED],
+      [AccessibilitySupportStatus.ARRANGED]: [AccessibilitySupportStatus.CLOSED],
+      [AccessibilitySupportStatus.DECLINED]: [AccessibilitySupportStatus.CLOSED],
+    };
+    const next = dto.status as AccessibilitySupportStatus;
+    if (request.status !== next && !allowed[request.status]?.includes(next)) throw new UnprocessableEntityException(`Cannot transition accessibility support from ${request.status} to ${next}.`);
+    const assignedSupportOfficerId = dto.assignedSupportOfficerId ?? request.assignedSupportOfficerId;
+    if (next === AccessibilitySupportStatus.ARRANGED && !assignedSupportOfficerId) throw new BadRequestException('Assign an Accessibility/Student Support officer before marking support as arranged.');
+    const updated = await this.prisma.applicationAccessibilityRequest.update({ where: { id: request.id }, data: { status: next, assignedSupportOfficerId, closedAt: next === AccessibilitySupportStatus.CLOSED ? new Date() : null } });
+    await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'application_accessibility_support', targetId: request.id, newValues: { status: updated.status, assignedSupportOfficerId: updated.assignedSupportOfficerId } }, actorId);
+    return { id: updated.id, status: updated.status, assignedSupportOfficerId: updated.assignedSupportOfficerId, closedAt: updated.closedAt };
   }
 
   async findById(id: string) {
@@ -894,19 +1084,52 @@ export class AdmissionsService {
       !!dto.firstName && !!dto.lastName && !!dto.dateOfBirth && !!dto.gender && !!dto.nationality,
       !!dto.phone && !!dto.email,
       !!dto.admissionCycleId && !!admissionType && !!dto.programmeChoice1Id,
-      admissionType !== AdmissionType.UTME || !!dto.jambRegNo,
+      admissionType !== AdmissionType.UTME || (!!dto.jambRegNo && dto.jambScore !== undefined),
       !!dto.oLevelResults?.length,
       !!dto.residentialAddress,
       !!dto.guardian,
+      !!dto.passportPhotoProof,
+      !!dto.privacyNoticeAccepted,
       !!dto.declarationAccepted,
+      !dto.supportRequested || !!dto.supportConsentAccepted,
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }
 
-  private calculateAge(dob: Date, at: Date): number {
-    let age = at.getUTCFullYear() - dob.getUTCFullYear();
-    const month = at.getUTCMonth() - dob.getUTCMonth();
-    if (month < 0 || (month === 0 && at.getUTCDate() < dob.getUTCDate())) age--;
+  private validateAdmissionSpecificDetails(admissionType: AdmissionType, dto: CreateApplicantDto): void {
+    const details = dto.admissionDetails ?? {};
+    const required = (value: unknown, label: string) => { if (typeof value !== 'string' || value.trim().length < 2) throw new BadRequestException(`${label} is required for ${admissionType} applications.`); };
+    if (admissionType === AdmissionType.UTME) {
+      required(dto.jambRegNo, 'JAMB registration number');
+      if (dto.jambScore === undefined || dto.jambScore < 0 || dto.jambScore > 400) throw new BadRequestException('A valid UTME score is required for UTME applications.');
+    }
+    if (admissionType === AdmissionType.DE) {
+      required(details.highestQualification, 'Highest qualification');
+      required(details.awardingInstitution, 'Awarding institution');
+      if (!details.graduationYear) throw new BadRequestException('Graduation year is required for Direct Entry applications.');
+    }
+    if (admissionType === AdmissionType.TRANSFER) {
+      required(details.previousInstitution, 'Previous institution');
+      required(details.previousProgramme, 'Previous programme');
+      required(details.transferReason, 'Transfer reason');
+    }
+    if (admissionType === AdmissionType.POSTGRADUATE) {
+      required(details.highestQualification, 'Highest qualification');
+      required(details.awardingInstitution, 'Awarding institution');
+    }
+    if (admissionType === AdmissionType.INTERNATIONAL) {
+      required(details.travelDocumentStatus, 'Travel-document status');
+      required(details.englishProficiencyStatus, 'English-proficiency status');
+    }
+    if (admissionType === AdmissionType.SANDWICH || admissionType === AdmissionType.REMEDIAL) {
+      required(details.studyPreference, 'Study preference');
+    }
+  }
+
+  private calculateAge(dob: Date, now: Date): number {
+    let age = now.getUTCFullYear() - dob.getUTCFullYear();
+    const month = now.getUTCMonth() - dob.getUTCMonth();
+    if (month < 0 || (month === 0 && now.getUTCDate() < dob.getUTCDate())) age--;
     return age;
   }
 

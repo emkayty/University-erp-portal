@@ -149,6 +149,9 @@ export class NotificationsProcessor extends WorkerHost {
       case 'admission.status_updated':
         await this.handleAdmissionStatusUpdated(payload);
         break;
+      case 'admissions.application_submitted':
+        await this.handleApplicationSubmitted(payload);
+        break;
       case 'calendar.activated':
       case 'calendar.suspended':
       case 'calendar.resumed':
@@ -261,6 +264,18 @@ export class NotificationsProcessor extends WorkerHost {
       templateKey:    'admission_rejected',
       subject:        'Your Application Status Update',
       body:           this.renderTemplate('admission_rejected', { reason }),
+    });
+  }
+
+  private async handleApplicationSubmitted(payload: Record<string, unknown>) {
+    const { email, firstName, applicationNo, paymentStatus } = payload;
+    await this.logNotification({
+      recipientId: null,
+      recipientEmail: email as string,
+      channel: 'EMAIL',
+      templateKey: 'admission_application_submitted',
+      subject: 'UniPortal Admission Application Received',
+      body: this.renderTemplate('admission_application_submitted', { name: firstName, applicationNo, paymentStatus }),
     });
   }
 
@@ -509,6 +524,7 @@ export class NotificationsProcessor extends WorkerHost {
       admission_rejected: `Your admission application has been reviewed. Status: REJECTED. Reason: {{reason}}. You may re-apply next session.`,
       admission_offer: `Dear {{name}}, congratulations — you have been offered admission. Log in to accept your offer.`,
       admission_status_update: `Dear {{name}}, your application status has changed to {{status}}.`,
+      admission_application_submitted: `Dear {{name}}, your UniPortal admission application {{applicationNo}} has been received. Keep the application number and private tracking credential safe. Current payment status: {{paymentStatus}}.`,
       calendar_activated: `A new academic calendar has been activated.`,
       calendar_suspended: `Academic operations have been suspended. Reason: {{reason}}. You will be notified when normal operations resume.`,
       calendar_resumed: `Academic operations have resumed as of {{resumedAt}}. Registration, results, and timetable access are restored.`,

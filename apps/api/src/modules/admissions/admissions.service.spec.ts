@@ -1,6 +1,7 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AdmissionType, ApplicantStatus } from '@prisma/client';
+import { createHmac } from 'node:crypto';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
@@ -21,6 +22,9 @@ import { decryptPii } from '@uniportal/utils';
 // now has. Relative dates make the default cycle "currently open" no
 // matter when the suite runs.
 const DAY = 24 * 60 * 60 * 1000;
+const TEST_IDEMPOTENCY = '11111111-1111-4111-8111-111111111111';
+const TEST_TRACKING_SECRET = 'test-admissions-tracking-secret-012345678901234567890123456789';
+const TEST_PHOTO_PROOF = (() => { const payload = Buffer.from(JSON.stringify({ idempotencyKey: TEST_IDEMPOTENCY, key: `admissions/pre-submit/${TEST_IDEMPOTENCY}/passport-photo/test.jpg`, contentType: 'image/jpeg', sizeBytes: 1024, issuedAt: Date.now() }), 'utf8').toString('base64url'); return `${payload}.${createHmac('sha256', TEST_TRACKING_SECRET).update(payload).digest('hex')}`; })();
 const makeCycle = (o: Partial<Record<string, unknown>> = {}) => ({
   id: 'cycle-1', academicYear: '2025/2026', cycleName: 'Main 2025',
   admissionType: AdmissionType.UTME, isActive: true,
@@ -47,7 +51,7 @@ describe('AdmissionsService', () => {
   let audit:   jest.Mocked<AuditService>;
 
   beforeEach(async () => {
-    process.env.ADMISSIONS_TRACKING_SECRET = 'test-admissions-tracking-secret-012345678901234567890123456789';
+    process.env.ADMISSIONS_TRACKING_SECRET = TEST_TRACKING_SECRET;
     const applicant = {
       findUniqueOrThrow: jest.fn().mockResolvedValue(makeApplicant()),
       findMany:          jest.fn().mockResolvedValue([]),
@@ -98,6 +102,7 @@ describe('AdmissionsService', () => {
     const storage = {
       presignPost: jest.fn(),
       verifyObject: jest.fn(),
+      verifyImageObject: jest.fn(),
     };
 
     // Deep-audit fix (Aug 2026): generateApplicationNo() and
@@ -120,6 +125,7 @@ describe('AdmissionsService', () => {
         previousEducation: { createMany: jest.fn() },
         oLevelSitting: { create: jest.fn().mockResolvedValue({ id: 'sitting-1' }) },
         oLevelSubject: { createMany: jest.fn() },
+        applicationDocument: { create: jest.fn().mockResolvedValue({ id: 'document-1', status: 'PENDING' }) },
         $executeRaw: jest.fn().mockResolvedValue(undefined),
       })),
     };
@@ -197,19 +203,19 @@ describe('AdmissionsService', () => {
       gender: 'Male', nationality: 'Nigerian', phone: '08012345678',
       email: 'adewale@test.com', admissionType: 'UTME' as never,
       admissionCycleId: 'cycle-1', programmeChoice1Id: 'prog-1',
-      jambRegNo: '12345678AB', jambScore: 220, declarationAccepted: true,
+      jambRegNo: '12345678AB', jambScore: 220, declarationAccepted: true, privacyNoticeAccepted: true, passportPhotoProof: TEST_PHOTO_PROOF,
     };
 
     it('creates application on valid input', async () => {
       prisma.applicant.create.mockResolvedValue(makeApplicant());
-      const result = await svc.apply(validDto);
+      const result = await svc.apply(validDto, TEST_IDEMPOTENCY);
       expect(result.applicationNo).toBeDefined();
     });
 
     it('encrypts NIN at rest and excludes it from the public response', async () => {
       process.env.ENCRYPTION_KEY_HEX = '11'.repeat(32);
       const rawNin = '12345678901';
-      const result = await svc.apply({ ...validDto, nin: rawNin, ninConsentAccepted: true });
+      const result = await svc.apply({ ...validDto, nin: rawNin, ninConsentAccepted: true }, TEST_IDEMPOTENCY);
       const storedNin = prisma.applicant.create.mock.calls[0]?.[0]?.data?.nin as string;
       expect(storedNin).toBeDefined();
       expect(storedNin).not.toBe(rawNin);
@@ -219,51 +225,50 @@ describe('AdmissionsService', () => {
     });
 
     it('rejects NIN submission without the privacy consent acknowledgment', async () => {
-      await expect(svc.apply({ ...validDto, nin: '12345678901' }))
+      await expect(svc.apply({ ...validDto, nin: '12345678901' }, TEST_IDEMPOTENCY))
         .rejects.toThrow('NIN identity-verification privacy notice');
     });
 
     it('derives admission type from the selected cycle when the client omits it', async () => {
       prisma.applicant.create.mockResolvedValue(makeApplicant());
       const { admissionType: _ignored, ...cycleOnlyDto } = validDto;
-      await svc.apply(cycleOnlyDto);
+      await svc.apply(cycleOnlyDto, TEST_IDEMPOTENCY);
       expect(prisma.applicant.create).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ admissionType: AdmissionType.UTME }),
       }));
     });
 
     it('rejects a client admission type that conflicts with the selected cycle', async () => {
-      await expect(svc.apply({ ...validDto, admissionType: 'DE' as never }))
+      await expect(svc.apply({ ...validDto, admissionType: 'DE' as never }, TEST_IDEMPOTENCY))
         .rejects.toThrow('match the selected admission cycle');
     });
 
     it('rejects applicant under 16 years old', async () => {
       const youngDob = new Date();
       youngDob.setFullYear(youngDob.getFullYear() - 14);
-      await expect(svc.apply({ ...validDto, dateOfBirth: youngDob.toISOString().split('T')[0]! }))
+      await expect(svc.apply({ ...validDto, dateOfBirth: youngDob.toISOString().split('T')[0]! }, TEST_IDEMPOTENCY))
         .rejects.toThrow('16 years old');
     });
 
     it('rejects when cycle is not active', async () => {
       prisma.admissionCycle.findUniqueOrThrow.mockResolvedValue(makeCycle({ isActive: false }));
-      await expect(svc.apply(validDto))
-        .rejects.toThrow(UnprocessableEntityException);
+      await expect(svc.apply(validDto, TEST_IDEMPOTENCY)).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('rejects when cycle capacity is reached', async () => {
       prisma.admissionCycle.findUniqueOrThrow.mockResolvedValue(makeCycle({ maxApplicants: 5 }));
       prisma.applicant.count.mockResolvedValue(5);
-      await expect(svc.apply(validDto)).rejects.toThrow('capacity reached');
+      await expect(svc.apply(validDto, TEST_IDEMPOTENCY)).rejects.toThrow('capacity reached');
     });
 
     it('rejects when programme choices are the same', async () => {
-      await expect(svc.apply({ ...validDto, programmeChoice2Id: 'prog-1' }))
+      await expect(svc.apply({ ...validDto, programmeChoice2Id: 'prog-1' }, TEST_IDEMPOTENCY))
         .rejects.toThrow('different');
     });
 
     it('records a durable JAMB verification event inside the application transaction', async () => {
       prisma.applicant.create.mockResolvedValue(makeApplicant());
-      await svc.apply(validDto);
+      await svc.apply(validDto, TEST_IDEMPOTENCY);
       expect(outbox.write).toHaveBeenCalledWith(
         expect.anything(), 'admissions.jamb_verification_requested',
         { applicantId: 'app-1', jambRegNo: '12345678AB' },

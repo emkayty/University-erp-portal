@@ -81,6 +81,8 @@ model User {
   dsrRequestsFiled       DataSubjectRequest[]              @relation("DsrRequestedBy")
   securityIncidentsFiled SecurityIncident[]                @relation("IncidentReportedBy")
   policyAcknowledgements UniversityPolicyAcknowledgement[]
+  accessibilitySupportAssignments ApplicationAccessibilityRequest[] @relation("AccessibilitySupportOfficer")
+  applicationChangeRequestsReviewed ApplicationChangeRequest[] @relation("ApplicationChangeRequestReviewer")
 
   @@index([email], map: "idx_users_email_active")
   @@index([phone], map: "idx_users_phone_active")
@@ -894,9 +896,12 @@ model AdmissionCycle {
   cycleName     String        @db.VarChar(100)
   admissionType AdmissionType
   openDate      DateTime
-  closeDate     DateTime
-  utmeMinScore  Int?          @db.SmallInt
-  maxApplicants Int?
+  closeDate            DateTime
+  utmeMinScore         Int?          @db.SmallInt
+  applicationFeeRequired Boolean     @default(false)
+  applicationFeeAmount Decimal?      @db.Decimal(12, 2)
+  applicationFeeCurrency String       @default("NGN") @db.VarChar(3)
+  maxApplicants        Int?
   isActive      Boolean       @default(false)
   createdAt     DateTime      @default(now())
 
@@ -937,6 +942,7 @@ model Applicant {
   email                 String          @db.VarChar(255)
   admissionType         AdmissionType
   admissionCycleId      String          @db.Uuid
+  admissionDetails      Json?
   programmeChoice1Id    String          @db.Uuid
   programmeChoice2Id    String?         @db.Uuid
   programmeChoice3Id    String?         @db.Uuid
@@ -1083,6 +1089,9 @@ model Application {
 
   applicant      Applicant             @relation(fields: [applicantId], references: [id], onDelete: Cascade)
   admissionCycle AdmissionCycle        @relation(fields: [admissionCycleId], references: [id])
+  consents       ApplicationConsent[]
+  accessibilitySupport ApplicationAccessibilityRequest?
+  changeRequests ApplicationChangeRequest[]
   documents      ApplicationDocument[]
   oLevelSittings OLevelSitting[]
   education      PreviousEducation[]
@@ -1092,6 +1101,74 @@ model Application {
 
   @@index([admissionCycleId, status], map: "idx_application_cycle_status")
   @@map("applications")
+}
+
+enum ApplicationConsentType {
+  TERMS
+  PRIVACY_NOTICE
+  NIN_PROCESSING
+  SUPPORT_CONTACT
+}
+
+enum ApplicationChangeRequestType {
+  CORRECTION
+  WITHDRAWAL
+}
+
+enum ApplicationChangeRequestStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+model ApplicationChangeRequest {
+  id                         String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId              String                         @db.Uuid
+  requestType                ApplicationChangeRequestType
+  reasonEncrypted            String                         @db.Text
+  requestedChangesEncrypted  String?                        @db.Text
+  status                     ApplicationChangeRequestStatus @default(PENDING)
+  reviewedById               String?                        @db.Uuid
+  reviewNoteEncrypted        String?                        @db.Text
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
+  reviewedAt                 DateTime?
+  completedAt                DateTime?
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("ApplicationChangeRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, status], map: "idx_application_change_request_status")
+  @@map("application_change_requests")
+}
+
+model ApplicationDraft {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tokenHash         String   @unique @db.VarChar(64)
+  payloadEncrypted  String   @db.Text
+  expiresAt         DateTime
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastLoadedAt      DateTime?
+
+  @@index([expiresAt], map: "idx_application_draft_expiry")
+  @@map("application_drafts")
+}
+
+model ApplicationConsent {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String                 @db.Uuid
+  consentType   ApplicationConsentType
+  version       String                 @db.VarChar(50)
+  acceptedAt   DateTime               @default(now())
+  evidence     Json?
+  application  Application            @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, consentType, version], map: "uq_application_consent_version")
+  @@index([applicationId, consentType], map: "idx_application_consent")
+  @@map("application_consents")
 }
 
 enum ApplicationStatus {
@@ -1260,6 +1337,39 @@ enum VerificationStatus {
   UNDER_REVIEW
   VERIFIED
   REJECTED
+}
+
+enum AccessibilitySupportStatus {
+  REQUESTED
+  CONTACTED
+  ARRANGED
+  DECLINED
+  CLOSED
+}
+
+model ApplicationAccessibilityRequest {
+  id                         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId              String                    @unique @db.Uuid
+  requested                  Boolean                   @default(false)
+  supportAreas               Json?
+  requestedAdjustments       Json?
+  supportDescriptionEncrypted String?                  @db.Text
+  preferredContactMethod     String?                   @db.VarChar(30)
+  preferredFormat            String?                   @db.VarChar(40)
+  consentAccepted            Boolean                   @default(false)
+  consentVersion             String?                   @db.VarChar(50)
+  consentAt                  DateTime?
+  status                     AccessibilitySupportStatus @default(REQUESTED)
+  assignedSupportOfficerId   String?                   @db.Uuid
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  closedAt                   DateTime?
+
+  application              Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  assignedSupportOfficer   User?       @relation("AccessibilitySupportOfficer", fields: [assignedSupportOfficerId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt], map: "idx_accessibility_support_status")
+  @@map("application_accessibility_support")
 }
 
 model ApplicationDocument {
