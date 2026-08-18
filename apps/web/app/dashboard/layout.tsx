@@ -173,7 +173,7 @@ const ALL_NAV = [
     href: "/dashboard/clinic",
     label: "Health",
     icon: HeartPulse,
-    roles: ["SUPER_ADMIN", "VC", "STAFF", "STUDENT"],
+    roles: ["SUPER_ADMIN", "STAFF", "STUDENT"],
   },
   {
     href: "/dashboard/transport",

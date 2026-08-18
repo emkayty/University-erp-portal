@@ -40,13 +40,14 @@ export function useRegisterPatient() {
   });
 }
 
-export function useAppointments(filters?: Record<string, string>) {
+export function useAppointments(filters?: Record<string, string>, enabled = true) {
   const p = new URLSearchParams({ pageSize: '20', ...filters });
   return useQuery({
     queryKey: clinicKeys.appointments(filters),
     queryFn:  () => apiClient.get<{ appointments: AppointmentV1[]; total: number }>(
       `/clinic/appointments?${p.toString()}`,
     ),
+    enabled,
     staleTime: 30_000,
   });
 }
@@ -99,20 +100,22 @@ export function useCreateMedicalRecord() {
   });
 }
 
-export function useDrugs(page = 1) {
+export function useDrugs(page = 1, enabled = true) {
   return useQuery({
     queryKey: [...clinicKeys.drugs, page],
     queryFn:  () => apiClient.get<{ drugs: DrugV1[]; total: number }>(
       `/clinic/drugs?page=${page}&pageSize=50`,
     ),
+    enabled,
     staleTime: 60_000,
   });
 }
 
-export function useLowStockDrugs() {
+export function useLowStockDrugs(enabled = true) {
   return useQuery({
     queryKey: clinicKeys.lowStock,
     queryFn:  () => apiClient.get<DrugV1[]>('/clinic/drugs/low-stock'),
+    enabled,
     staleTime: 30_000,
   });
 }

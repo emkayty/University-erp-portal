@@ -96,11 +96,11 @@ export class ClinicController {
    * GET /api/v1/clinic/appointments
    * Query appointments. Health staff see all; patients filter by own patientId.
    */
-  @Roles('STAFF', 'SUPER_ADMIN')
+  @Roles('STAFF', 'STUDENT', 'SUPER_ADMIN')
   @StaffScopes('health')
   @Get('appointments')
-  getAppointments(@Query() query: GetAppointmentsQueryDto) {
-    return this.clinic.getAppointments(query);
+  getAppointments(@Query() query: GetAppointmentsQueryDto, @CurrentUser() user: JwtPayload) {
+    return this.clinic.getAppointments(query, user);
   }
 
   /**

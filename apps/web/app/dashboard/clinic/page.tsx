@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   useAppointments, useUpdateAppointmentStatus, useCreateMedicalRecord,
-  useDrugs, useLowStockDrugs, useAdjustStock, useCreateDrug,
+  useDrugs, useLowStockDrugs, useAdjustStock,
 } from '@/hooks/use-clinic';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
@@ -23,6 +23,8 @@ type Tab = 'appointments' | 'drugs' | 'low-stock';
 
 export default function ClinicPage() {
   const user = useAuthStore((s) => s.user);
+  const isStudent = user?.primaryRole === 'STUDENT';
+  const canManageClinic = user?.primaryRole === 'STAFF' || user?.primaryRole === 'SUPER_ADMIN';
   const [tab, setTab]              = useState<Tab>('appointments');
   const [statusFilter, setStatus]  = useState('');
   const [recordApptId, setRecord]  = useState<string | null>(null);
@@ -36,9 +38,9 @@ export default function ClinicPage() {
   const [msg, setMsg]              = useState('');
 
   const filters = statusFilter ? { status: statusFilter } : undefined;
-  const { data: apptData, isLoading: apptLoading }  = useAppointments(filters);
-  const { data: drugsData, isLoading: drugsLoading } = useDrugs();
-  const { data: lowStock = [] }                       = useLowStockDrugs();
+  const { data: apptData, isLoading: apptLoading }  = useAppointments(filters, Boolean(isStudent || canManageClinic));
+  const { data: drugsData, isLoading: drugsLoading } = useDrugs(1, canManageClinic);
+  const { data: lowStock = [] }                       = useLowStockDrugs(canManageClinic);
 
   const { mutate: updateStatus, isPending: updatingStatus } = useUpdateAppointmentStatus();
   const { mutate: createRecord, isPending: recording }      = useCreateMedicalRecord();
@@ -79,20 +81,24 @@ export default function ClinicPage() {
     );
   };
 
-  const tabs: { k: Tab; l: string }[] = [
-    { k: 'appointments', l: `Appointments (${appointments.length})` },
-    { k: 'drugs',        l: `Drug Inventory (${drugs.length})` },
-    { k: 'low-stock',    l: `Low Stock ${lowStock.length > 0 ? `⚠ ${lowStock.length}` : ''}` },
-  ];
+  const tabs: { k: Tab; l: string }[] = canManageClinic
+    ? [
+        { k: 'appointments', l: `Appointments (${appointments.length})` },
+        { k: 'drugs',        l: `Drug Inventory (${drugs.length})` },
+        { k: 'low-stock',    l: `Low Stock ${lowStock.length > 0 ? `⚠ ${lowStock.length}` : ''}` },
+      ]
+    : [{ k: 'appointments', l: `My Appointments (${appointments.length})` }];
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Health Clinic</h2>
+          <h2 className="text-xl font-semibold text-foreground">{isStudent ? 'My Health Clinic' : 'Health Clinic'}</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Medical records are AES-256 encrypted end-to-end.
+            {isStudent
+              ? 'View your clinic appointments and permitted health information.'
+              : 'Medical records are AES-256-GCM encrypted before storage.'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -151,11 +157,11 @@ export default function ClinicPage() {
                           {formatDate(appt.appointmentDate)}
                         </span>
                       </div>
-                      <p className="text-xs text-muted-foreground">Patient ID: {appt.patientId}</p>
+                      {!isStudent && <p className="text-xs text-muted-foreground">Patient ID: {appt.patientId}</p>}
                       {appt.reason && <p className="text-xs text-muted-foreground">Reason: {appt.reason}</p>}
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
+                    {canManageClinic && <div className="flex flex-wrap gap-2">
                       {appt.status === 'SCHEDULED' && (
                         <>
                           <Button size="sm" loading={updatingStatus}
@@ -172,7 +178,7 @@ export default function ClinicPage() {
                           </Button>
                         </>
                       )}
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Inline medical record form */}
@@ -217,7 +223,7 @@ export default function ClinicPage() {
       )}
 
       {/* ── Drug Inventory ─────────────────────────────────────────────── */}
-      {tab === 'drugs' && (
+      {canManageClinic && tab === 'drugs' && (
         <div className="space-y-3">
           {drugsLoading ? (
             <div className="animate-pulse h-48 rounded bg-muted" />
@@ -300,7 +306,7 @@ export default function ClinicPage() {
       )}
 
       {/* ── Low-Stock Alerts ───────────────────────────────────────────── */}
-      {tab === 'low-stock' && (
+      {canManageClinic && tab === 'low-stock' && (
         <div className="space-y-3">
           {lowStock.length === 0 ? (
             <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">

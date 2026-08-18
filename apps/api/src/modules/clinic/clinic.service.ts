@@ -208,11 +208,28 @@ export class ClinicService {
     return updated;
   }
 
-  async getAppointments(query: GetAppointmentsQueryDto) {
+  async getAppointments(
+    query: GetAppointmentsQueryDto,
+    requestingUser?: { sub: string; role: string },
+  ) {
     const { patientId, doctorUserId, status, date, page = 1, pageSize = 20 } = query;
     const where: Record<string, unknown> = {};
 
-    if (patientId)    where['patientId']    = patientId;
+    if (requestingUser?.role === 'STUDENT') {
+      const ownPatient = await this.prisma.patient.findUnique({
+        where: { userId: requestingUser.sub },
+        select: { id: true },
+      });
+      if (!ownPatient) {
+        return { appointments: [], total: 0, page, pageSize, totalPages: 0 };
+      }
+      // Never trust a student-supplied patientId: force the authenticated
+      // student’s own patient scope at the service boundary.
+      where['patientId'] = ownPatient.id;
+    } else if (patientId) {
+      where['patientId'] = patientId;
+    }
+
     if (doctorUserId) where['doctorUserId'] = doctorUserId;
     if (status)       where['status']       = status;
     if (date) {
