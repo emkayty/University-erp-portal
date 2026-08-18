@@ -16,12 +16,14 @@ fi
 # the first successful test seed. Do not log the password.
 if [[ "${RUN_DB_SEED:-false}" == "true" ]]; then
   # Render Free cannot complete the full reference-data seed within its
-  # memory limit. In the managed staging test environment, default to the
-  # explicit lightweight administrator refresh unless a future deployment
-  # deliberately overrides it with SEED_ADMIN_ONLY=false.
-  if [[ "${RENDER_MANAGED_DB:-false}" == "true" && "${NODE_ENV:-}" == "staging" ]]; then
+  # memory limit. In the explicitly enabled Render managed-database test
+  # environment, default to the lightweight administrator refresh regardless
+  # of NODE_ENV; a future deployment may deliberately override it with
+  # SEED_ADMIN_ONLY=false.
+  if [[ "${RENDER_MANAGED_DB:-false}" == "true" ]]; then
     : "${SEED_ADMIN_ONLY:=true}"
     export SEED_ADMIN_ONLY
+    echo "Render managed test mode: using admin-only seed"
   fi
 
   if [[ -z "${SEED_ADMIN_EMAIL:-}" || -z "${SEED_ADMIN_PASSWORD:-}" ]]; then
