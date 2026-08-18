@@ -22,6 +22,29 @@ async function main() {
     throw new Error('REFUSE_PRODUCTION_SEED_WITH_DEFAULT_ADMIN_CREDENTIALS');
   }
 
+  const institution = await prisma.institutionSettings.upsert({
+    where: { id: '00000000-0000-0000-0000-000000000001' },
+    update: {},
+    create: {
+      id: '00000000-0000-0000-0000-000000000001',
+      institutionName: process.env.SEED_INSTITUTION_NAME || 'University of Lagos',
+      institutionCode: process.env.SEED_INSTITUTION_CODE || 'UNILAG',
+      institutionType: 'UNIVERSITY',
+      defaultCurrency: 'NGN',
+      feeWaiverCapHodPct: 30,
+      feeWaiverCapBursarPct: 80,
+      deanApprovalRequired: false,
+      gradingSystem: 'NIGERIAN_5_POINT',
+      minCreditUnitsPerSem: 15,
+      maxCreditUnitsPerSem: 24,
+      mfaMandatoryRoles: ['SUPER_ADMIN', 'BURSAR', 'VC'],
+      featureFlags: {},
+      corsAllowedOrigin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000',
+    },
+    select: { institutionName: true },
+  });
+  console.log(`  ✓ InstitutionSettings: ${institution.institutionName}`);
+
   const passwordHash = await bcrypt.hash(password, 12);
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
 
