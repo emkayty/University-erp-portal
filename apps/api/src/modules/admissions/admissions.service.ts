@@ -3,20 +3,21 @@ import {
   Injectable, Logger, NotFoundException, ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { AuditAction, ApplicantStatus, AdmissionType, ApplicationStatus, ApplicationPaymentStatus, VerificationStatus, AdmissionDecisionType, AdmissionDecisionReason, ScreeningResult, ApplicationDocumentType, Prisma } from '@prisma/client';
 
-import { buildAdvisoryLockKey } from '@uniportal/utils';
+import { buildAdvisoryLockKey, encryptPii } from '@uniportal/utils';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
 import { PrismaService } from '../../database/prisma.service';
 import { DirectPrismaService } from '../../database/direct-prisma.service';
+import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { OLevelExamTypeEnum } from './dto/admissions.dto';
 import type {
   CreateAdmissionCycleDto, CreateApplicantDto,
   MatriculateApplicantDto, OLevelSubjectResultDto, RecordOLevelResultsDto,
-  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, RegisterApplicationDocumentDto, OLevelGradeEnum,
+  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto, OLevelGradeEnum,
 } from './dto/admissions.dto';
 
 type EligibilityEvaluationOptions = {
@@ -55,6 +56,7 @@ export class AdmissionsService {
     private readonly direct:   DirectPrismaService,
     private readonly audit:    AuditService,
     private readonly outbox:   OutboxService,
+    private readonly storage:  PrivateObjectStorageService,
   ) {}
 
   // ── Admission Cycles ───────────────────────────────────────────────────────
@@ -296,6 +298,9 @@ export class AdmissionsService {
     if (!dto.declarationAccepted) {
       throw new BadRequestException('You must accept the application declaration before submitting.');
     }
+    if (dto.nin && !dto.ninConsentAccepted) {
+      throw new BadRequestException('Please acknowledge the NIN identity-verification privacy notice before submitting a NIN.');
+    }
     const origin = await this.validateOriginLocation(dto);
     await this.validateAddressReference(dto.residentialAddress);
     await this.validateAddressReference(dto.permanentAddress);
@@ -357,6 +362,7 @@ export class AdmissionsService {
         admissionCycleId: dto.admissionCycleId, programmeChoice1Id: dto.programmeChoice1Id,
         programmeChoice2Id: dto.programmeChoice2Id ?? null, programmeChoice3Id: dto.programmeChoice3Id ?? null,
         jambRegNo: dto.jambRegNo ?? null, jambScore: dto.jambScore ?? null,
+        nin: dto.nin ? encryptPii(dto.nin.trim()) : null,
         declarationAccepted: true, declarationAcceptedAt: now, submittedAt: now,
         status: ApplicantStatus.SUBMITTED,
       }});
@@ -418,6 +424,36 @@ export class AdmissionsService {
     return { id: created.applicant.id, applicationNo: created.applicationNo, completionPercent, trackingToken: this.createTrackingToken(created.applicationNo, email) };
   }
 
+  async presignApplicantPhoto(dto: ApplicantPhotoPresignDto) {
+    const applicant = await this.findTrackedApplicant(dto.applicationNo, dto.trackingToken);
+    const extension = dto.contentType === 'image/png' ? 'png' : 'jpg';
+    const key = `admissions/${applicant.applicationNo}/passport-photo/${randomUUID()}.${extension}`;
+    return this.storage.presignPost(key, dto.contentType, dto.sizeBytes);
+  }
+
+  async completeApplicantPhoto(dto: ApplicantPhotoCompleteDto) {
+    const applicant = await this.findTrackedApplicant(dto.applicationNo, dto.trackingToken);
+    const prefix = `admissions/${applicant.applicationNo}/passport-photo/`;
+    if (!dto.key.startsWith(prefix)) throw new BadRequestException('Photograph key is not scoped to this application.');
+    const verified = await this.storage.verifyObject(dto.key, dto.sizeBytes, dto.contentType);
+    const application = await this.prisma.application.findUnique({ where: { applicantId: applicant.id }, select: { id: true } });
+    if (!application) throw new NotFoundException('Application record not found.');
+    const existing = await this.prisma.applicationDocument.findFirst({ where: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO }, orderBy: { createdAt: 'desc' } });
+    const document = existing
+      ? await this.prisma.applicationDocument.update({ where: { id: existing.id }, data: { fileUrl: verified.key, originalFileName: dto.originalFileName ?? null, mimeType: verified.contentType, sizeBytes: verified.sizeBytes, status: VerificationStatus.PENDING, rejectionReason: null, verifiedAt: null, verifiedById: null, version: { increment: 1 } } })
+      : await this.prisma.applicationDocument.create({ data: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO, fileUrl: verified.key, originalFileName: dto.originalFileName ?? null, mimeType: verified.contentType, sizeBytes: verified.sizeBytes, status: VerificationStatus.PENDING } });
+    await this.prisma.applicant.update({ where: { id: applicant.id }, data: { passportPhotoUrl: verified.key } });
+    await this.audit.log({ action: AuditAction.CREATE, targetTable: 'application_documents', targetId: document.id, newValues: { applicationId: application.id, documentType: ApplicationDocumentType.PASSPORT_PHOTO, sizeBytes: verified.sizeBytes } });
+    return { documentId: document.id, status: document.status, message: 'Photograph uploaded and queued for admissions review.' };
+  }
+
+  private async findTrackedApplicant(applicationNo: string, trackingToken: string) {
+    const applicant = await this.prisma.applicant.findFirst({ where: { applicationNo: applicationNo.trim().toUpperCase(), deletedAt: null }, select: { id: true, applicationNo: true, email: true } });
+    const valid = applicant ? this.isTrackingTokenValid(applicant.applicationNo, applicant.email, trackingToken.trim()) : false;
+    if (!applicant || !valid) throw new NotFoundException('Application not found or tracking credential is invalid.');
+    return applicant;
+  }
+
   async findAll(filters: {
     status?: ApplicantStatus; admissionType?: AdmissionType;
     cycleId?: string; page: number; pageSize: number;
@@ -442,11 +478,15 @@ export class AdmissionsService {
       }),
       this.prisma.applicant.count({ where }),
     ]);
-    return { applicants, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    const safeApplicants = applicants.map(({ nin, ...applicant }) => ({
+      ...applicant,
+      ninMasked: nin ? '***********' : null,
+    }));
+    return { applicants: safeApplicants, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
   async findById(id: string) {
-    return this.prisma.applicant.findUniqueOrThrow({
+    const applicant = await this.prisma.applicant.findUniqueOrThrow({
       where:   { id },
       include: {
         programmeChoice1: true,
@@ -461,6 +501,8 @@ export class AdmissionsService {
         student:          { select: { id: true, matricNo: true } },
       },
     });
+    const { nin, ...safeApplicant } = applicant;
+    return { ...safeApplicant, ninMasked: nin ? '***********' : null };
   }
 
   async updateStatus(id: string, dto: UpdateApplicantStatusDto, actorId: string) {

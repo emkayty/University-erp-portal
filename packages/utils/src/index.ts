@@ -7,3 +7,4 @@ export * from './payroll';
 
 // Integrated academic-domain engines (Deep Audit Stages 2–8)
 export * from './academic-domain-engine';
+export * from './encryption';

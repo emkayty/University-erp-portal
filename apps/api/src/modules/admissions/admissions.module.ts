@@ -6,6 +6,7 @@ import { QUEUE_NAMES } from '../../common/queue-names';
 import { isWorkerProcess } from '../../common/runtime/process-role';
 import { AdmissionsController } from './admissions.controller';
 import { AdmissionsService } from './admissions.service';
+import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { AdmissionsOpsProcessor } from './jobs/admissions-ops.processor';
 
 @Module({
@@ -16,6 +17,7 @@ import { AdmissionsOpsProcessor } from './jobs/admissions-ops.processor';
   controllers: [AdmissionsController],
   providers: [
     AdmissionsService,
+    PrivateObjectStorageService,
     AuditService,
     ...(isWorkerProcess() ? [AdmissionsOpsProcessor] : []),
   ],

@@ -3,10 +3,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AdmissionType, ApplicantStatus } from '@prisma/client';
 
 import { AuditService } from '../../common/audit/audit.service';
+import { PrivateObjectStorageService } from '../../common/storage/private-object-storage.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
 import { PrismaService } from '../../database/prisma.service';
 import { DirectPrismaService } from '../../database/direct-prisma.service';
 import { AdmissionsService } from './admissions.service';
+import { decryptPii } from '@uniportal/utils';
 
 // P0-9 FIX (this pass — see docs/CHANGELOG.md): openDate/closeDate
 // used to be hardcoded to 2025-01-01/2025-12-31. That was valid when this
@@ -92,6 +94,12 @@ describe('AdmissionsService', () => {
     outbox = { write: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<OutboxService>;
     audit  = { log: jest.fn() }  as unknown as jest.Mocked<AuditService>;
 
+    // Public applicant photograph upload dependency.
+    const storage = {
+      presignPost: jest.fn(),
+      verifyObject: jest.fn(),
+    };
+
     // Deep-audit fix (Aug 2026): generateApplicationNo() and
     // assertSuperAdminCap()-style methods now use DirectPrismaService's
     // advisory-lock pattern (see MatricNumberService, the original
@@ -123,6 +131,7 @@ describe('AdmissionsService', () => {
         { provide: DirectPrismaService, useValue: direct },
         { provide: OutboxService,       useValue: outbox },
         { provide: AuditService,        useValue: audit },
+        { provide: PrivateObjectStorageService, useValue: storage },
       ],
     }).compile();
 
@@ -160,6 +169,7 @@ describe('AdmissionsService', () => {
 
   afterEach(() => {
     delete process.env.ADMISSIONS_TRACKING_SECRET;
+    delete process.env.ENCRYPTION_KEY_HEX;
   });
 
   // ── public tracking ─────────────────────────────────────────────────────────
@@ -194,6 +204,23 @@ describe('AdmissionsService', () => {
       prisma.applicant.create.mockResolvedValue(makeApplicant());
       const result = await svc.apply(validDto);
       expect(result.applicationNo).toBeDefined();
+    });
+
+    it('encrypts NIN at rest and excludes it from the public response', async () => {
+      process.env.ENCRYPTION_KEY_HEX = '11'.repeat(32);
+      const rawNin = '12345678901';
+      const result = await svc.apply({ ...validDto, nin: rawNin, ninConsentAccepted: true });
+      const storedNin = prisma.applicant.create.mock.calls[0]?.[0]?.data?.nin as string;
+      expect(storedNin).toBeDefined();
+      expect(storedNin).not.toBe(rawNin);
+      expect(decryptPii(storedNin)).toBe(rawNin);
+      expect(result).not.toHaveProperty('nin');
+      delete process.env.ENCRYPTION_KEY_HEX;
+    });
+
+    it('rejects NIN submission without the privacy consent acknowledgment', async () => {
+      await expect(svc.apply({ ...validDto, nin: '12345678901' }))
+        .rejects.toThrow('NIN identity-verification privacy notice');
     });
 
     it('derives admission type from the selected cycle when the client omits it', async () => {

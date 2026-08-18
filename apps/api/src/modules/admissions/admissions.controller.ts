@@ -13,7 +13,7 @@ import { AdmissionsService } from './admissions.service';
 import {
   CreateAdmissionCycleDto, CreateApplicantDto,
   MatriculateApplicantDto, RecordOLevelResultsDto, VerifyOLevelResultsDto, VerifyJambDto,
-  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, VerifyApplicationDocumentDto, RegisterApplicationDocumentDto,
+  ScreenApplicantsDto, UpdateApplicantStatusDto, TrackApplicationDto, CreateAdmissionRequirementDto, VerifyApplicationDocumentDto, RegisterApplicationDocumentDto, ApplicantPhotoPresignDto, ApplicantPhotoCompleteDto,
 } from './dto/admissions.dto';
 
 @ApiTags('Admissions')
@@ -106,6 +106,24 @@ export class AdmissionsController {
   @ApiOperation({ summary: 'Submit new application (public endpoint)' })
   async apply(@Body() dto: CreateApplicantDto, @IdempotencyKey() idempotencyKey?: string) {
     return { success: true, data: await this.svc.apply(dto, idempotencyKey) };
+  }
+
+  @Post('public/photo/presign')
+  @Public()
+  @Throttle({ api: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Public applicant passport-photo upload presign' })
+  async presignApplicantPhoto(@Body() dto: ApplicantPhotoPresignDto) {
+    return { success: true, data: await this.svc.presignApplicantPhoto(dto) };
+  }
+
+  @Post('public/photo/complete')
+  @Public()
+  @Throttle({ api: { limit: 5, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Complete and verify public applicant passport-photo upload' })
+  async completeApplicantPhoto(@Body() dto: ApplicantPhotoCompleteDto) {
+    return { success: true, data: await this.svc.completeApplicantPhoto(dto) };
   }
 
   @Get('applications')

@@ -295,7 +295,8 @@ export class StudentsService {
     });
 
     this.logger.log(`Matriculated: ${matricNo} (applicant ${applicant.id})`);
-    return { student, temporaryPassword: tempPassword };
+    const { nin, ...safeStudent } = student;
+    return { student: { ...safeStudent, ninMasked: nin ? '***********' : null }, temporaryPassword: tempPassword };
   }
 
   // ── Find / List ────────────────────────────────────────────────────────────

@@ -150,6 +150,8 @@ export class CreateApplicantDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() declarationAccepted?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(10,11) jambRegNo?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(400) jambScore?: number;
+  @ApiPropertyOptional({ description: 'Applicant NIN; stored encrypted and never returned in public responses.' }) @IsOptional() @Matches(/^\d{11}$/, { message: 'NIN must contain exactly 11 digits.' }) nin?: string;
+  @ApiPropertyOptional({ description: 'Explicit acknowledgment for processing NIN for admission identity verification.' }) @IsOptional() @IsBoolean() ninConsentAccepted?: boolean;
   @ApiPropertyOptional({ type: [OLevelSubjectResultDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => OLevelSubjectResultDto) oLevelResults?: OLevelSubjectResultDto[];
 }
 
@@ -179,6 +181,18 @@ export class ScreenApplicantsDto {
 export class TrackApplicationDto {
   @ApiProperty({ example: '202620UT00001' }) @IsString() @Length(6,30) applicationNo: string;
   @ApiProperty({ description: '64-character tracking credential returned once after submission' }) @IsString() @Length(64,64) trackingToken: string;
+}
+
+export class ApplicantPhotoPresignDto extends TrackApplicationDto {
+  @ApiProperty({ enum: ['image/jpeg', 'image/png'] }) @IsString() @IsEnum({ JPEG: 'image/jpeg', PNG: 'image/png' }) contentType: string;
+  @ApiProperty({ minimum: 1, maximum: 2097152 }) @IsInt() @Min(1) @Max(2 * 1024 * 1024) sizeBytes: number;
+}
+
+export class ApplicantPhotoCompleteDto extends TrackApplicationDto {
+  @ApiProperty() @IsString() @Length(1, 1000) key: string;
+  @ApiProperty({ enum: ['image/jpeg', 'image/png'] }) @IsString() @IsEnum({ JPEG: 'image/jpeg', PNG: 'image/png' }) contentType: string;
+  @ApiProperty({ minimum: 1, maximum: 2097152 }) @IsInt() @Min(1) @Max(2 * 1024 * 1024) sizeBytes: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() @Length(1, 255) originalFileName?: string;
 }
 
 export class AdmissionSubjectRequirementDto {

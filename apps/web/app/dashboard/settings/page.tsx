@@ -215,7 +215,7 @@ export default function SettingsPage() {
   const [flagNote, setFlagNote] = useState("");
   const form = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
-    defaultValues: { mfaMandatoryRoles: ["SUPER_ADMIN", "BURSAR", "VC"] },
+    defaultValues: { primaryColor: "#0056B3", mfaMandatoryRoles: ["SUPER_ADMIN", "BURSAR", "VC"] },
   });
   const mfaRoles = form.watch("mfaMandatoryRoles") ?? [];
 
