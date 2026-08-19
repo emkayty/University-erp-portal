@@ -118,6 +118,20 @@ export class HostelService {
     return { message: 'Room vacated successfully' };
   }
 
+  async getActiveAllocations(academicYear?: string) {
+    return this.prisma.roomAllocation.findMany({
+      where: {
+        status: AllocationStatus.ACTIVE,
+        ...(academicYear ? { academicYear } : {}),
+      },
+      include: {
+        room: { include: { hostelBlock: { select: { id: true, name: true, gender: true } } } },
+        student: { select: { id: true, matricNo: true, firstName: true, lastName: true } },
+      },
+      orderBy: [{ academicYear: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
   async getStudentAllocation(studentId: string, academicYear: string) {
     return this.prisma.roomAllocation.findFirst({
       where: { studentId, academicYear, status: AllocationStatus.ACTIVE },

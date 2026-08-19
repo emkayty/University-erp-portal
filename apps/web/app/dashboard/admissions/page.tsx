@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label';
 import {
   useCycles, useApplications, useUpdateApplicationStatus,
   useCreateCycle, useActivateCycle, useScreenBulk,
+  useAccessibilitySupport, useUpdateAccessibilitySupport,
+  useApplicationChangeRequests, useUpdateApplicationChangeRequest,
 } from '@/hooks/use-admissions';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
@@ -25,6 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const ADMISSION_TYPES = ['UTME','DE','TRANSFER','POSTGRADUATE','SANDWICH','INTERNATIONAL','REMEDIAL'];
+const SUPPORT_STATUS_OPTIONS = ['REQUESTED', 'CONTACTED', 'ARRANGED', 'DECLINED', 'CLOSED'] as const;
 
 const cycleSchema = z.object({
   academicYear:   z.string().regex(/^\d{4}\/\d{4}$/, 'Format: YYYY/YYYY'),
@@ -38,8 +41,9 @@ type CycleForm = z.infer<typeof cycleSchema>;
 
 export default function AdmissionsPage() {
   const user       = useAuthStore((s) => s.user);
-  const canManage  = ['SUPER_ADMIN','REGISTRAR'].includes(user?.primaryRole ?? '');
-  const isStaff    = ['SUPER_ADMIN','REGISTRAR','STAFF'].includes(user?.primaryRole ?? '');
+  const effectiveRoles = user?.effectiveRoles?.length ? user.effectiveRoles : (user?.primaryRole ? [user.primaryRole] : []);
+  const canManage  = effectiveRoles.some((role) => ['SUPER_ADMIN','REGISTRAR'].includes(role));
+  const isStaff    = effectiveRoles.some((role) => ['SUPER_ADMIN','REGISTRAR','STAFF','SUPPORT_STAFF'].includes(role));
 
   const [tab,             setTab]           = useState<'cycles'|'applications'>('applications');
   const [statusFilter,    setStatusFilter]  = useState('');
@@ -52,6 +56,8 @@ export default function AdmissionsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [showRejectionForm, setShowRejectionForm] = useState(false);
   const [pendingRejection, setPendingRejection] = useState<ApplicantV1 | null>(null);
+  const [supportOfficerId, setSupportOfficerId] = useState('');
+  const [changeNote, setChangeNote] = useState<Record<string, string>>({});
 
   const { data: cycles     = [] } = useCycles();
   const { data: apps       = [], isLoading } = useApplications({
@@ -61,6 +67,10 @@ export default function AdmissionsPage() {
     pageSize: 100,
   });
 
+  const { data: accessibilitySupport, isLoading: supportLoading } = useAccessibilitySupport(selectedApp?.id);
+  const { data: changeRequests = [], isLoading: changeRequestsLoading } = useApplicationChangeRequests(selectedApp?.id);
+  const { mutate: updateSupport, isPending: updatingSupport } = useUpdateAccessibilitySupport();
+  const { mutate: updateChangeRequest, isPending: updatingChangeRequest } = useUpdateApplicationChangeRequest();
   const { mutate: createCycle,  isPending: creating   } = useCreateCycle();
   const { mutate: activateCycle, isPending: activating } = useActivateCycle();
   const { mutate: updateStatus, isPending: updating   } = useUpdateApplicationStatus();
@@ -81,6 +91,24 @@ export default function AdmissionsPage() {
     updateStatus({ id, status, rejectionReason: reason }, {
       onSuccess: () => { setSelectedApp(null); setShowRejectionForm(false); setRejectionReason(''); },
       onError:   (e) => setActionError(e.message),
+    });
+  };
+
+  const handleSupportUpdate = (status: NonNullable<typeof accessibilitySupport>['status']) => {
+    if (!selectedApp || !status) return;
+    setActionError('');
+    updateSupport({ applicantId: selectedApp.id, status, assignedSupportOfficerId: supportOfficerId || accessibilitySupport?.assignedSupportOfficerId || undefined }, {
+      onSuccess: () => setSupportOfficerId(''),
+      onError: (error) => setActionError(error.message),
+    });
+  };
+
+  const handleChangeRequestUpdate = (requestId: string, status: 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'COMPLETED') => {
+    if (!selectedApp) return;
+    setActionError('');
+    updateChangeRequest({ applicantId: selectedApp.id, requestId, status, note: changeNote[requestId] || undefined }, {
+      onSuccess: () => setChangeNote((current) => ({ ...current, [requestId]: '' })),
+      onError: (error) => setActionError(error.message),
     });
   };
 
@@ -245,6 +273,21 @@ export default function AdmissionsPage() {
                   <div><span className="text-muted-foreground">Programme:</span> {selectedApp.programmeChoice1Name ?? selectedApp.programmeChoice1Id.slice(0,8)}</div>
                   <div><span className="text-muted-foreground">Status:</span> <span className={cn('rounded-full px-2 py-0.5 text-xs', STATUS_COLORS[selectedApp.status])}>{selectedApp.status}</span></div>
                 </div>
+                {isStaff && accessibilitySupport?.requested && (
+                  <section className="space-y-3 rounded-md border border-blue-200 bg-blue-50 p-3 dark:bg-blue-950/20">
+                    <div><h3 className="text-sm font-semibold">Accessibility / student support</h3><p className="text-xs text-muted-foreground">Handle operational accommodation requests without requesting diagnostic information.</p></div>
+                    {supportLoading ? <p className="text-xs">Loading support request…</p> : <>
+                      <div className="grid gap-2 text-xs sm:grid-cols-2"><div><span className="text-muted-foreground">Areas:</span> {accessibilitySupport.supportAreas?.join(', ') || '—'}</div><div><span className="text-muted-foreground">Adjustments:</span> {accessibilitySupport.requestedAdjustments?.join(', ') || '—'}</div><div><span className="text-muted-foreground">Contact:</span> {accessibilitySupport.preferredContactMethod || '—'} / {accessibilitySupport.preferredFormat || '—'}</div><div><span className="text-muted-foreground">Description:</span> {accessibilitySupport.supportDescription || '—'}</div></div>
+                      <div className="flex flex-wrap items-end gap-2"><label className="text-xs">Support officer ID<input className="mt-1 h-9 rounded-md border bg-background px-2 text-sm" value={supportOfficerId || accessibilitySupport.assignedSupportOfficerId || ''} onChange={(event) => setSupportOfficerId(event.target.value)} placeholder="UUID (optional)" /></label>{SUPPORT_STATUS_OPTIONS.map((status) => <Button key={status} size="sm" variant={accessibilitySupport.status === status ? 'default' : 'outline'} disabled={accessibilitySupport.status === status} loading={updatingSupport} onClick={() => handleSupportUpdate(status)}>{status}</Button>)}</div>
+                    </>}
+                  </section>
+                )}
+                {isStaff && (
+                  <section className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:bg-amber-950/20">
+                    <div><h3 className="text-sm font-semibold">Applicant change requests</h3><p className="text-xs text-muted-foreground">Review correction or withdrawal requests and record a concise decision note.</p></div>
+                    {changeRequestsLoading ? <p className="text-xs">Loading change requests…</p> : changeRequests.length === 0 ? <p className="text-xs text-muted-foreground">No change requests recorded.</p> : <div className="space-y-3">{changeRequests.map((request) => <div key={request.id} className="rounded-md border bg-background p-3"><div className="flex flex-wrap items-center justify-between gap-2 text-xs"><strong>{request.requestType}</strong><span className="rounded-full bg-muted px-2 py-1">{request.status}</span></div><p className="mt-2 text-sm">{request.reason || 'No reason supplied.'}</p>{request.requestedChanges && <pre className="mt-2 max-h-32 overflow-auto rounded bg-muted p-2 text-[11px]">{JSON.stringify(request.requestedChanges, null, 2)}</pre>}<textarea className="mt-2 w-full rounded-md border bg-background px-2 py-2 text-xs" rows={2} value={changeNote[request.id] || ''} onChange={(event) => setChangeNote((current) => ({ ...current, [request.id]: event.target.value }))} placeholder="Review note (optional)" /><div className="mt-2 flex flex-wrap gap-2">{request.status === 'PENDING' && <Button size="sm" variant="outline" loading={updatingChangeRequest} onClick={() => handleChangeRequestUpdate(request.id, 'UNDER_REVIEW')}>Start review</Button>}{!['REJECTED', 'COMPLETED'].includes(request.status) && <><Button size="sm" loading={updatingChangeRequest} onClick={() => handleChangeRequestUpdate(request.id, 'APPROVED')}>Approve</Button><Button size="sm" variant="destructive" loading={updatingChangeRequest} onClick={() => handleChangeRequestUpdate(request.id, 'REJECTED')}>Reject</Button></>}{request.status === 'APPROVED' && <Button size="sm" variant="outline" loading={updatingChangeRequest} onClick={() => handleChangeRequestUpdate(request.id, 'COMPLETED')}>Mark completed</Button>}</div></div>)}</div>}
+                  </section>
+                )}
                 {canManage && (
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                     {selectedApp.status === 'PENDING' && (

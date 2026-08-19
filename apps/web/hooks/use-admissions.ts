@@ -79,6 +79,74 @@ export function useUpdateApplicationStatus() {
   });
 }
 
+export type AccessibilitySupportReview = {
+  id?: string;
+  requested: boolean;
+  supportAreas?: string[];
+  requestedAdjustments?: string[];
+  supportDescription?: string | null;
+  preferredContactMethod?: string | null;
+  preferredFormat?: string | null;
+  consentAccepted?: boolean;
+  status?: 'REQUESTED' | 'CONTACTED' | 'ARRANGED' | 'DECLINED' | 'CLOSED';
+  assignedSupportOfficerId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  closedAt?: string | null;
+};
+
+export type ApplicationChangeRequest = {
+  id: string;
+  requestType: 'CORRECTION' | 'WITHDRAWAL';
+  status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+  reason?: string | null;
+  requestedChanges?: Record<string, unknown> | null;
+  reviewNote?: string | null;
+  reviewedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  reviewedById?: string | null;
+};
+
+export function useAccessibilitySupport(applicantId?: string) {
+  return useQuery({
+    queryKey: ['admissions', 'applications', applicantId, 'accessibility-support'],
+    queryFn: () => apiClient.get<AccessibilitySupportReview>(`/admissions/applications/${applicantId}/accessibility-support`),
+    enabled: Boolean(applicantId),
+  });
+}
+
+export function useUpdateAccessibilitySupport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicantId, status, assignedSupportOfficerId }: { applicantId: string; status: AccessibilitySupportReview['status']; assignedSupportOfficerId?: string }) =>
+      apiClient.patch(`/admissions/applications/${applicantId}/accessibility-support`, { status, assignedSupportOfficerId: assignedSupportOfficerId || undefined }),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', variables.applicantId, 'accessibility-support'] });
+    },
+  });
+}
+
+export function useApplicationChangeRequests(applicantId?: string) {
+  return useQuery({
+    queryKey: ['admissions', 'applications', applicantId, 'change-requests'],
+    queryFn: () => apiClient.get<ApplicationChangeRequest[]>(`/admissions/applications/${applicantId}/change-requests`),
+    enabled: Boolean(applicantId),
+  });
+}
+
+export function useUpdateApplicationChangeRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ applicantId, requestId, status, note }: { applicantId: string; requestId: string; status: ApplicationChangeRequest['status']; note?: string }) =>
+      apiClient.patch(`/admissions/applications/${applicantId}/change-requests/${requestId}`, { status, note: note || undefined }),
+    onSuccess: (_data, variables) => {
+      void qc.invalidateQueries({ queryKey: ['admissions', 'applications', variables.applicantId, 'change-requests'] });
+    },
+  });
+}
+
 export function useScreenBulk() {
   const qc = useQueryClient();
   return useMutation({

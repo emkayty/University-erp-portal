@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditAction, RoleName } from '@prisma/client';
 import Redis from 'ioredis';
@@ -8,6 +8,7 @@ import { decryptPii, encryptPii } from '@uniportal/utils';
 import type { JwtPayload, RoleName as RoleNameType, StaffScopeAttribute, UserV1 } from '@uniportal/types';
 
 import { AuditService } from '../../common/audit/audit.service';
+import { AuthorizationService, type EffectiveAuthorizationContext } from '../../common/authorization/authorization.service';
 import { REDIS_CLIENT } from '../../common/redis/redis.module';
 import { PrismaService } from '../../database/prisma.service';
 import type { MfaSetupResult } from './services/mfa.service';
@@ -63,6 +64,7 @@ export class AuthService {
     private readonly audit:     AuditService,
     private readonly config:    ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Optional() private readonly authorization?: AuthorizationService,
   ) {
     this.isProd = config.get('NODE_ENV') === 'production';
   }
@@ -324,13 +326,16 @@ export class AuthService {
     const newRefresh = await this.tokens.issueRefreshToken(user.id, {
       sessionId: uuid(), deviceInfo,
     });
-    const payload    = await this.buildJwtPayload(user.id, user.roles, user.mfaEnabled);
+    const authorization = this.authorization
+      ? await this.authorization.getEffectiveContext(user.id)
+      : undefined;
+    const payload    = await this.buildJwtPayload(user.id, user.roles, user.mfaEnabled, authorization);
     const newAccess  = this.tokens.generateAccessToken(payload);
 
     return {
       accessToken:  newAccess,
       refreshToken: newRefresh,
-      user:         this.mapUserToDto(user, user.roles, user.student?.id),
+      user:         this.mapUserToDto(user, user.roles, user.student?.id, authorization),
     };
   }
 
@@ -414,7 +419,10 @@ export class AuthService {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId }, include: { roles: true, student: { select: { id: true } } },
     });
-    return this.mapUserToDto(user, user.roles, user.student?.id);
+    const authorization = this.authorization
+      ? await this.authorization.getEffectiveContext(userId)
+      : undefined;
+    return this.mapUserToDto(user, user.roles, user.student?.id, authorization);
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────
@@ -429,7 +437,13 @@ export class AuthService {
     });
     const activeRoles = this.filterActiveRoles(roles);
     if (!activeRoles.length) throw new UnauthorizedException('No active authorization role is assigned to this account');
-    const payload   = await this.buildJwtPayload(userId, activeRoles, mfaVerified);
+    const authorization = this.authorization
+      ? await this.authorization.getEffectiveContext(userId)
+      : undefined;
+    if (authorization && authorization.roles.length === 0) {
+      throw new UnauthorizedException('No active authorization role is assigned to this account');
+    }
+    const payload   = await this.buildJwtPayload(userId, activeRoles, mfaVerified, authorization);
     const access    = this.tokens.generateAccessToken(payload);
     const sessionId = uuid();
     const refresh   = await this.tokens.issueRefreshToken(userId, { sessionId, deviceInfo });
@@ -456,7 +470,7 @@ export class AuthService {
       type:         'success',
       accessToken:  access,
       refreshToken: refresh,
-      user:         this.mapUserToDto(user, user.roles, user.student?.id),
+      user:         this.mapUserToDto(user, user.roles, user.student?.id, authorization),
     };
   }
 
@@ -464,11 +478,12 @@ export class AuthService {
     userId:      string,
     roles:       Array<{ roleName: RoleName; staffScope: unknown }>,
     mfaVerified: boolean,
+    authorization?: EffectiveAuthorizationContext,
   ): Promise<Omit<JwtPayload, 'iat' | 'exp' | 'jti'>> {
-    const roleNames = roles.map((r) => r.roleName);
+    const roleNames = authorization?.roles ?? roles.map((r) => r.roleName);
     const primaryRole = this.resolvePrimaryRole(roleNames);
     const staffRole   = roles.find((r) => r.roleName === RoleName.STAFF);
-    const effectiveScopes = roles.flatMap((role) => {
+    const effectiveScopes = authorization?.scopes ?? roles.flatMap((role) => {
       const scope = role.staffScope as StaffScopeAttribute | null;
       return scope?.scopes ?? [];
     });
@@ -483,7 +498,7 @@ export class AuthService {
       sub:           userId,
       role:          primaryRole as RoleNameType,
       roles:         roleNames as RoleNameType[],
-      staffScope:    (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,
+      staffScope:    authorization?.staffScopes[0] ?? (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,
       effectiveScopes,
       institutionId,
       mfaVerified,
@@ -512,9 +527,10 @@ export class AuthService {
     user:  { id: string; email: string; phone: string | null; isActive: boolean; mfaEnabled: boolean; lastLoginAt: Date | null; createdAt: Date; updatedAt: Date },
     roles: Array<{ roleName: RoleName; staffScope: unknown; grantedAt: Date; effectiveFrom?: Date; effectiveUntil?: Date | null; revokedAt?: Date | null; grantReason?: string | null }>,
     studentId?: string,
+    authorization?: EffectiveAuthorizationContext,
   ): UserV1 {
     const activeRoles = this.filterActiveRoles(roles);
-    const primaryRole = this.resolvePrimaryRole(activeRoles.map((r) => r.roleName));
+    const primaryRole = this.resolvePrimaryRole(authorization?.roles ?? activeRoles.map((r) => r.roleName));
     const staffRole   = activeRoles.find((r) => r.roleName === RoleName.STAFF);
     return {
       id:          user.id,
@@ -526,7 +542,7 @@ export class AuthService {
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       createdAt:   user.createdAt.toISOString(),
       updatedAt:   user.updatedAt.toISOString(),
-      roles:       roles.map((r) => ({
+      roles:       activeRoles.map((r) => ({
         roleName:  r.roleName as RoleNameType,
         staffScope: (r.staffScope as StaffScopeAttribute | null) ?? null,
         grantedAt: r.grantedAt.toISOString(),
@@ -535,8 +551,14 @@ export class AuthService {
         ...(r.revokedAt !== undefined ? { revokedAt: r.revokedAt?.toISOString() ?? null } : {}),
         ...(r.grantReason !== undefined ? { grantReason: r.grantReason ?? null } : {}),
       })),
+      ...(authorization ? {
+        effectiveRoles: authorization.roles as RoleNameType[],
+        effectiveScopes: authorization.scopes,
+        delegatedRoles: authorization.delegatedRoles,
+        authorizationEvaluatedAt: authorization.evaluatedAt,
+      } : {}),
       primaryRole: primaryRole as RoleNameType,
-      staffScope:  (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,
+      staffScope:  authorization?.staffScopes[0] ?? (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,
     };
   }
 

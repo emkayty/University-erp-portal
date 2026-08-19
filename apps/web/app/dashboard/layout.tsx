@@ -50,6 +50,7 @@ const ALL_NAV = [
     label: "Admissions",
     icon: ClipboardList,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF"],
+    scope: "admissions",
   },
   {
     href: "/dashboard/students",
@@ -76,18 +77,21 @@ const ALL_NAV = [
     label: "Assessment",
     icon: ClipboardCheck,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF"],
+    scope: "lecturer",
   },
   {
     href: "/dashboard/exams",
     label: "Exams",
     icon: ListChecks,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF", "STUDENT"],
+    scope: "timetable",
   },
   {
     href: "/dashboard/enterprise",
     label: "Enterprise Operations",
     icon: Building2,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "HR_MANAGER", "STAFF"],
+    scope: "records",
   },
   {
     href: "/dashboard/notifications",
@@ -114,6 +118,7 @@ const ALL_NAV = [
       "STAFF",
       "STUDENT",
     ],
+    scope: "lecturer",
   },
   {
     href: "/dashboard/calendar",
@@ -126,6 +131,7 @@ const ALL_NAV = [
     label: "Curriculum",
     icon: FileText,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF"],
+    scope: "records",
   },
   {
     href: "/dashboard/clearance",
@@ -138,12 +144,14 @@ const ALL_NAV = [
     label: "Fees & Payments",
     icon: WalletCards,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "BURSAR", "STAFF", "STUDENT"],
+    scope: "finance_clerk",
   },
   {
     href: "/dashboard/library",
     label: "Library",
     icon: Library,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF", "STUDENT"],
+    scope: "library",
   },
   {
     href: "/dashboard/lms",
@@ -156,6 +164,7 @@ const ALL_NAV = [
     label: "HR",
     icon: Users,
     roles: ["SUPER_ADMIN", "VC", "HR_MANAGER", "STAFF"],
+    scope: "hr_clerk",
   },
   {
     href: "/dashboard/payroll",
@@ -168,30 +177,36 @@ const ALL_NAV = [
     label: "Hostel",
     icon: Building2,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF", "STUDENT"],
+    scope: "hostel",
   },
   {
     href: "/dashboard/clinic",
     label: "Health",
     icon: HeartPulse,
-    roles: ["SUPER_ADMIN", "STAFF", "STUDENT"],
+    roles: ["SUPER_ADMIN", "STAFF", "STUDENT", "SUPPORT_STAFF"],
+    requiredScope: "health",
+    scope: "health",
   },
   {
     href: "/dashboard/transport",
     label: "Transport",
     icon: Bus,
     roles: ["SUPER_ADMIN", "VC", "STAFF", "STUDENT"],
+    scope: "transport",
   },
   {
     href: "/dashboard/research",
     label: "Research",
     icon: FlaskConical,
     roles: ["SUPER_ADMIN", "VC", "STAFF"],
+    scope: "research",
   },
   {
     href: "/dashboard/alumni",
     label: "Alumni",
     icon: Users,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF"],
+    scope: "alumni",
   },
   {
     href: "/dashboard/reports",
@@ -212,13 +227,17 @@ const ALL_NAV = [
     href: "/dashboard/privacy",
     label: "Privacy Operations",
     icon: ShieldAlert,
-    roles: ["SUPER_ADMIN", "STAFF"],
+    roles: ["SUPER_ADMIN", "STAFF", "SUPPORT_STAFF"],
+    requiredScope: "dpo",
+    scope: "dpo",
   },
   {
     href: "/dashboard/security-incidents",
     label: "Security Incidents",
     icon: ShieldAlert,
-    roles: ["SUPER_ADMIN", "STAFF"],
+    roles: ["SUPER_ADMIN", "STAFF", "SUPPORT_STAFF"],
+    requiredScope: "dpo",
+    scope: "dpo",
   },
   {
     href: "/dashboard/users",
@@ -246,11 +265,21 @@ const ALL_NAV = [
   },
 ] as const;
 
-function canSee(item: (typeof ALL_NAV)[number], role?: RoleName) {
-  return (
-    item.roles === "ALL" ||
-    (!!role && (item.roles as readonly RoleName[]).includes(role))
-  );
+function canSee(
+  item: (typeof ALL_NAV)[number],
+  roles: readonly RoleName[],
+  scopes: readonly StaffScope[],
+) {
+  if (item.roles === "ALL") return true;
+  const itemScope = (item as { scope?: StaffScope }).scope;
+  const requiredScope = (item as { requiredScope?: StaffScope }).requiredScope;
+  const roleAllowed = roles.some((role) => (item.roles as readonly RoleName[]).includes(role));
+  const scopeAllowed = itemScope ? scopes.includes(itemScope) : false;
+  if (!roleAllowed && !scopeAllowed) return false;
+  if (requiredScope && (roles.includes("STAFF") || roles.includes("SUPPORT_STAFF")) && !roles.includes("SUPER_ADMIN")) {
+    return scopes.includes(requiredScope);
+  }
+  return true;
 }
 
 function roleLabel(role?: RoleName) {
@@ -301,9 +330,13 @@ export default function DashboardLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const effectiveRoles = user?.effectiveRoles?.length
+    ? user.effectiveRoles
+    : user?.roles?.map((role) => role.roleName) ?? (user?.primaryRole ? [user.primaryRole] : []);
+  const effectiveScopes = user?.effectiveScopes ?? user?.staffScope?.scopes ?? [];
   const nav = useMemo(
-    () => ALL_NAV.filter((item) => canSee(item, user?.primaryRole)),
-    [user?.primaryRole],
+    () => ALL_NAV.filter((item) => canSee(item, effectiveRoles, effectiveScopes)),
+    [effectiveRoles, effectiveScopes],
   );
   const current = nav.find(
     (item) =>

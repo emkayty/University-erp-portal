@@ -12,6 +12,8 @@ import { SearchController } from './modules/search/search.controller';
 import { TransportController } from './modules/transport/transport.controller';
 import { AuthController } from './modules/auth/auth.controller';
 import { NotificationsController } from './modules/notifications/notifications.controller';
+import { PrivacyController } from './modules/privacy/privacy.controller';
+import { SecurityController } from './modules/security/security.controller';
 import { SKIP_REQUEST_RLS_TRANSACTION_KEY } from './common/decorators';
 
 /**
@@ -31,6 +33,8 @@ describe('API route contracts', () => {
     ['search', SearchController, 'search'],
     ['transport', TransportController, 'transport'],
     ['notifications', NotificationsController, 'enterprise/notifications'],
+    ['privacy', PrivacyController, 'privacy'],
+    ['security', SecurityController, 'security'],
   ];
 
   it.each(versionedControllers)('%s uses a relative v1 controller declaration', (_name, controller, path) => {

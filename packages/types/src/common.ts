@@ -96,7 +96,8 @@ export type StaffScope =
   | 'research'
   | 'alumni'
   | 'timetable'
-  | 'records';
+  | 'records'
+  | 'dpo';
 
 export interface StaffScopeAttribute {
   scopes: StaffScope[];

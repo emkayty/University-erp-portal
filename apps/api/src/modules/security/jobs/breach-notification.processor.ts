@@ -76,13 +76,13 @@ export class BreachNotificationProcessor extends WorkerHost {
    *  not worth a shared-utility extraction for this alone. */
   private async findDpoAndVcRecipients(): Promise<string[]> {
     const candidates = await this.prisma.user.findMany({
-      where: { roles: { some: { OR: [{ roleName: 'VC' }, { roleName: 'STAFF' }] } } },
+      where: { roles: { some: { OR: [{ roleName: 'VC' }, { roleName: 'STAFF' }, { roleName: 'SUPPORT_STAFF' }] } } },
       include: { roles: true },
     });
     return candidates
       .filter((u) => u.roles.some((r) =>
         r.roleName === 'VC'
-        || (r.roleName === 'STAFF' && ((r.staffScope as { scopes?: string[] } | null)?.scopes ?? []).includes('dpo')),
+        || ((r.roleName === 'STAFF' || r.roleName === 'SUPPORT_STAFF') && ((r.staffScope as { scopes?: string[] } | null)?.scopes ?? []).includes('dpo')),
       ))
       .map((u) => u.id);
   }

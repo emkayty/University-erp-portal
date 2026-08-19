@@ -25,7 +25,7 @@ describe('HostelService', () => {
       student: { findUniqueOrThrow: jest.fn().mockResolvedValue({ gender: 'MALE' }) },
       roomAllocation: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'allocation-1', roomId: 'room-1', studentId: 'student-1', status: AllocationStatus.ACTIVE }), findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'allocation-1', roomId: 'room-1', status: AllocationStatus.ACTIVE }), update: jest.fn().mockResolvedValue({}) },
     };
-    prisma = { $transaction: jest.fn((fn: (client: any) => unknown) => fn(tx)), room: { findUniqueOrThrow: jest.fn() }, student: { findUniqueOrThrow: jest.fn() }, roomAllocation: { findUnique: jest.fn() } };
+    prisma = { $transaction: jest.fn((fn: (client: any) => unknown) => fn(tx)), room: { findUniqueOrThrow: jest.fn() }, student: { findUniqueOrThrow: jest.fn() }, roomAllocation: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) } };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({ providers: [HostelService, { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit }] }).compile();
     service = module.get(HostelService);
@@ -46,6 +46,12 @@ describe('HostelService', () => {
   it('rejects cross-gender allocation', async () => {
     tx.student.findUniqueOrThrow.mockResolvedValue({ gender: 'FEMALE' });
     await expect(service.allocateRoom({ roomId: 'room-1', studentId: 'student-1', academicYear: '2025/2026', startDate: '2025-09-01' })).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('lists active allocations for the selected academic year', async () => {
+    prisma.roomAllocation.findMany.mockResolvedValue([{ id: 'allocation-1', academicYear: '2025/2026' }]);
+    await expect(service.getActiveAllocations('2025/2026')).resolves.toEqual([{ id: 'allocation-1', academicYear: '2025/2026' }]);
+    expect(prisma.roomAllocation.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { status: AllocationStatus.ACTIVE, academicYear: '2025/2026' } }));
   });
 
   it('does not allow vacancy to drive occupancy below zero', async () => {

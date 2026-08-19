@@ -77,6 +77,11 @@ describe('AuthorizationService', () => {
     })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('accepts an explicitly scoped DPO assignment', () => {
+    const h = makeHarness();
+    expect(() => h.service.validateRoleAssignment(RoleName.STAFF, { scopes: ['dpo'] })).not.toThrow();
+  });
+
   it('rejects delegations longer than 31 days', async () => {
     const h = makeHarness();
     await expect(h.service.createDelegation({

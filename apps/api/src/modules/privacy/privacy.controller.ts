@@ -36,7 +36,7 @@ import { PrivacyService } from './privacy.service';
 @ApiTags('privacy')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
-@Controller('privacy')
+@Controller({ path: 'privacy', version: '1' })
 export class PrivacyController {
   constructor(private readonly privacy: PrivacyService) {}
 
@@ -48,7 +48,7 @@ export class PrivacyController {
   }
 
   @ApiOperation({ summary: 'Canonical Person DSR intake — DPO or SUPER_ADMIN; identity verification required' })
-  @Roles('STAFF', 'SUPER_ADMIN')
+  @Roles('STAFF', 'SUPPORT_STAFF', 'SUPER_ADMIN')
   @StaffScopes('dpo')
   @Post('person/:personId/intake')
   intakePersonRequest(
@@ -104,7 +104,7 @@ export class PrivacyController {
 
   private assertSelfOrDpo(userId: string, user: JwtPayload): void {
     if (user.sub === userId || user.role === 'SUPER_ADMIN') return;
-    const isDpo = user.role === 'STAFF'
+    const isDpo = (user.role === 'STAFF' || user.role === 'SUPPORT_STAFF')
       && ((user.staffScope as StaffScopeAttribute | null)?.scopes ?? []).includes('dpo' as never);
     if (!isDpo) {
       throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'You may only access your own data' });

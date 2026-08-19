@@ -11,6 +11,13 @@ export interface UserRoleDto {
   grantReason?: string | null;
 }
 
+export interface EffectiveDelegationDto {
+  roleName: RoleName;
+  delegationId: string;
+  delegatorId: string;
+  endsAt: string;
+}
+
 export interface UserV1 extends BaseEntity {
   email: string;
   phone: string | null;
@@ -20,6 +27,13 @@ export interface UserV1 extends BaseEntity {
   mfaEnabled: boolean;
   lastLoginAt: string | null;
   roles: UserRoleDto[];
+  /** Effective roles include currently active role delegations. */
+  effectiveRoles?: RoleName[];
+  /** Effective staff scopes include scopes from active assignments and delegations. */
+  effectiveScopes?: StaffScope[];
+  /** Sanitized active delegation summaries for frontend navigation and governance UX. */
+  delegatedRoles?: EffectiveDelegationDto[];
+  authorizationEvaluatedAt?: string;
   // Derived — primary role (highest privilege)
   primaryRole: RoleName;
   staffScope: StaffScopeAttribute | null;

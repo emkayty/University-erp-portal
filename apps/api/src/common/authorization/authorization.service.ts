@@ -272,7 +272,7 @@ export class AuthorizationService {
     }
     const validScopes = new Set<StaffScope>([
       'admissions', 'finance_clerk', 'hr_clerk', 'lecturer', 'library', 'hostel',
-      'health', 'transport', 'research', 'alumni', 'timetable', 'records',
+      'health', 'transport', 'research', 'alumni', 'timetable', 'records', 'dpo',
     ]);
     if ((value.scopes as unknown[]).some((scope) => typeof scope !== 'string' || !validScopes.has(scope as StaffScope))) {
       throw new ConflictException({ code: 'AUTHZ_INVALID_SCOPE', message: 'One or more supplied authorization scopes are invalid.' });
