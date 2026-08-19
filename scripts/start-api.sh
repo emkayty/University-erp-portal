@@ -3,6 +3,14 @@ set -euo pipefail
 
 : "${NODE_ENV:=production}"
 : "${PROCESS_ROLE:=api}"
+# Render supplies PORT=10000 (or another assigned port). Local development
+# continues to use API_PORT=3001 when PORT is not set.
+if [[ -n "${PORT:-}" ]]; then
+  export API_PORT="$PORT"
+else
+  : "${API_PORT:=3001}"
+  export API_PORT
+fi
 export NODE_ENV PROCESS_ROLE
 source /app/scripts/db/resolve-runtime-database-urls.sh
 
