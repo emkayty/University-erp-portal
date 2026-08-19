@@ -80,18 +80,20 @@ export const usersAdminKeys = {
   accessReview: (windowDays: number) => ['users', 'access-review', windowDays] as const,
 };
 
-export function useAdminUsers() {
+export function useAdminUsers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: usersAdminKeys.all,
     queryFn: () => apiClient.get<AdminUser[]>('/users?page=1&pageSize=200'),
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useAccessReview(windowDays = 30) {
+export function useAccessReview(windowDays = 30, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: usersAdminKeys.accessReview(windowDays),
     queryFn: () => apiClient.get<AccessReview>(`/users/access-review?windowDays=${windowDays}`),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

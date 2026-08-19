@@ -250,7 +250,7 @@ const ALL_NAV = [
     href: "/dashboard/audit-logs",
     label: "Audit & Security",
     icon: ShieldCheck,
-    roles: ["SUPER_ADMIN", "VC", "REGISTRAR"],
+    roles: ["SUPER_ADMIN"],
   },
   {
     href: "/dashboard/policies",

@@ -24,6 +24,7 @@ import {
   useUpdateUniversityPolicy,
 } from "@/hooks/use-university-policies";
 import { cn } from "@/lib/utils";
+import { hasEffectiveRole } from "@/lib/authz";
 import { useAuthStore } from "@/stores/auth.store";
 
 const categories: Array<[UniversityPolicyCategory, string]> = [
@@ -96,9 +97,9 @@ function compact(form: PolicyFormData) {
 
 export default function UniversityPoliciesPage() {
   const user = useAuthStore((state) => state.user);
-  const role = user?.primaryRole;
-  const canAuthor = role === "SUPER_ADMIN" || role === "REGISTRAR";
-  const canReview = role === "SUPER_ADMIN" || role === "VC";
+  const canView = hasEffectiveRole(user, "SUPER_ADMIN", "VC", "REGISTRAR");
+  const canAuthor = hasEffectiveRole(user, "SUPER_ADMIN", "REGISTRAR");
+  const canReview = hasEffectiveRole(user, "SUPER_ADMIN", "VC");
   const [status, setStatus] = useState<UniversityPolicyStatus | undefined>();
   const [category, setCategory] = useState<
     UniversityPolicyCategory | undefined
@@ -113,10 +114,10 @@ export default function UniversityPoliciesPage() {
     () => ({ status, category, search: search.trim() || undefined }),
     [status, category, search],
   );
-  const { data: list, isLoading } = useUniversityPolicies(filters);
+  const { data: list, isLoading } = useUniversityPolicies(filters, { enabled: canView });
   const { data: selected, isLoading: selectedLoading } =
-    useUniversityPolicy(selectedId);
-  const { data: acknowledgementData } = usePolicyAcknowledgements(selectedId);
+    useUniversityPolicy(selectedId, { enabled: canView });
+  const { data: acknowledgementData } = usePolicyAcknowledgements(selectedId, { enabled: canView });
   const create = useCreateUniversityPolicy();
   const update = useUpdateUniversityPolicy();
   const lifecycle = usePolicyLifecycleAction();
@@ -204,6 +205,27 @@ export default function UniversityPoliciesPage() {
     selected?.status === "DRAFT" || selected?.status === "REJECTED";
   const fieldClass =
     "w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60";
+
+  if (!canView) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold">University Policies</h2>
+          <p className="text-sm text-muted-foreground">
+            Published policies remain available through the staff and student policy view.
+          </p>
+        </div>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="font-medium">Access restricted</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Draft and lifecycle management is limited to authorised governance roles.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">

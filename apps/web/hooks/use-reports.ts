@@ -142,7 +142,10 @@ export function useMyDashboard() {
 }
 
 // ── Audit logs ────────────────────────────────────────────────────────────────
-export function useAuditLogs(params?: Record<string, string>) {
+export function useAuditLogs(
+  params?: Record<string, string>,
+  options?: { enabled?: boolean },
+) {
   const qs = new URLSearchParams({ pageSize: '50', ...params }).toString();
   return useQuery({
     queryKey: reportKeys.auditLogs(params),
@@ -150,6 +153,7 @@ export function useAuditLogs(params?: Record<string, string>) {
       `/audit-logs?${qs}`,
     ),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

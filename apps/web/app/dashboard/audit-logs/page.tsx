@@ -4,7 +4,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuditLogs } from '@/hooks/use-reports';
+import { hasEffectiveRole } from '@/lib/authz';
 import { cn, formatDate } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth.store';
 
 const ACTION_COLORS: Record<string, string> = {
   CREATE:       'bg-green-100 text-green-700',
@@ -28,6 +30,8 @@ const AUDIT_ACTIONS = [
 const SENSITIVE_TABLES = new Set(['medical_records', 'prescriptions', 'payslips', 'payments']);
 
 export default function AuditLogsPage() {
+  const user = useAuthStore((state) => state.user);
+  const canView = hasEffectiveRole(user, 'SUPER_ADMIN');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage]       = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -39,9 +43,34 @@ export default function AuditLogsPage() {
   const [dateFrom,    setDateFrom]    = useState('');
   const [dateTo,      setDateTo]      = useState('');
 
-  const { data, isLoading } = useAuditLogs({ ...filters, page: String(page) });
+  const { data, isLoading } = useAuditLogs(
+    { ...filters, page: String(page) },
+    { enabled: canView },
+  );
 
   const logs = data?.logs ?? [];
+
+  if (!canView) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">Audit Logs</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Immutable, append-only record of system actions.
+          </p>
+        </div>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="font-medium text-foreground">Access restricted</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Audit logs are limited to Super Administrators because they can
+              contain security-sensitive operational metadata.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const applyFilters = () => {
     const f: Record<string, string> = {};

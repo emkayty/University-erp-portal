@@ -88,6 +88,7 @@ export function useUniversityPolicies(
     category?: UniversityPolicyCategory;
     search?: string;
   } = {},
+  options?: { enabled?: boolean },
 ) {
   const params = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => {
@@ -98,15 +99,19 @@ export function useUniversityPolicies(
     queryKey: universityPolicyKeys.list(filters),
     queryFn: () =>
       apiClient.get<PolicyListResponse>(`/university-policies${suffix}`),
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useUniversityPolicy(id?: string) {
+export function useUniversityPolicy(
+  id?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: universityPolicyKeys.detail(id ?? "none"),
     queryFn: () =>
       apiClient.get<UniversityPolicy>(`/university-policies/${id}`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
   });
 }
 
@@ -158,7 +163,10 @@ export function usePolicyLifecycleAction() {
   });
 }
 
-export function usePolicyAcknowledgements(id?: string) {
+export function usePolicyAcknowledgements(
+  id?: string,
+  options?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["university-policies", id, "acknowledgements"],
     queryFn: () =>
@@ -170,6 +178,6 @@ export function usePolicyAcknowledgements(id?: string) {
         }>;
         total: number;
       }>(`/university-policies/${id}/acknowledgements`),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && (options?.enabled ?? true),
   });
 }

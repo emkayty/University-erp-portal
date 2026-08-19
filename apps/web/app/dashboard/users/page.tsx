@@ -18,6 +18,8 @@ import {
   type AdminUser,
 } from '@/hooks/use-users-admin';
 import type { RoleName, StaffScope } from '@uniportal/types';
+import { hasEffectiveRole } from '@/lib/authz';
+import { useAuthStore } from '@/stores/auth.store';
 
 const scopedRoles: RoleName[] = ['STAFF', 'SUPPORT_STAFF'];
 const staffScopeLabels: Record<StaffScope, string> = {
@@ -92,6 +94,8 @@ function UserRoleSummary({ user }: { user: AdminUser }) {
 }
 
 export default function UsersAdminPage() {
+  const user = useAuthStore((state) => state.user);
+  const canManageUsers = hasEffectiveRole(user, 'SUPER_ADMIN');
   const [filter, setFilter] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [newRole, setNewRole] = useState<RoleName>('STAFF');
@@ -113,8 +117,8 @@ export default function UsersAdminPage() {
   const [delegationReason, setDelegationReason] = useState('');
   const [reviewWindow, setReviewWindow] = useState(30);
 
-  const { data: users = [], isLoading, isError } = useAdminUsers();
-  const { data: accessReview, isLoading: reviewLoading, isError: reviewError } = useAccessReview(reviewWindow);
+  const { data: users = [], isLoading, isError } = useAdminUsers({ enabled: canManageUsers });
+  const { data: accessReview, isLoading: reviewLoading, isError: reviewError } = useAccessReview(reviewWindow, { enabled: canManageUsers });
   const createUser = useCreateAdminUser();
   const setActive = useSetUserActive();
   const grant = useGrantUserRole();
@@ -128,6 +132,26 @@ export default function UsersAdminPage() {
     [filter, users],
   );
   const selectedUser = users.find((user) => user.id === selectedUserId);
+
+  if (!canManageUsers) {
+    return (
+      <div className="space-y-4">
+        <header>
+          <p className="text-sm text-muted-foreground">Identity and access lifecycle administration</p>
+          <h1 className="text-2xl font-semibold">User Administration</h1>
+        </header>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="font-medium">Access restricted</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              User administration is limited to Super Administrators. Contact your
+              authorised administrator if you need an access change.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   function resetCreateForm() {
     setNewEmail('');
