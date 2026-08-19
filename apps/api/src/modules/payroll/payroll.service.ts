@@ -1,6 +1,6 @@
 import {
   BadRequestException, ConflictException, Injectable, Logger,
-  StreamableFile, UnprocessableEntityException,
+  StreamableFile, UnprocessableEntityException, Optional,
 } from '@nestjs/common';
 import { AuditAction, EmploymentStatus, PayrollStatus } from '@prisma/client';
 import { decryptPii } from '@uniportal/utils';
@@ -9,6 +9,7 @@ import {
   IPPIS_CSV_HEADER, PENCOM_CSV_HEADER,
 } from '@uniportal/utils';
 import { AuditService } from '../../common/audit/audit.service';
+import { AuthorizationService } from '../../common/authorization/authorization.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { CreatePayrollRunDto, PayrollActionDto } from './dto/payroll.dto';
 
@@ -19,6 +20,7 @@ export class PayrollService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    @Optional() private readonly authorization?: AuthorizationService,
   ) {}
 
   // ── Payroll Run CRUD ───────────────────────────────────────────────────────
@@ -208,6 +210,14 @@ export class PayrollService {
     const run = await this.prisma.payrollRun.findUniqueOrThrow({ where: { id: runId } });
     if (run.status !== PayrollStatus.COMPUTED)
       throw new UnprocessableEntityException({ code: 'BUSINESS_RULE_INVALID_STATE', message: `Payroll must be COMPUTED before approval (current: ${run.status})` });
+
+    if (run.initiatedById) {
+      if (this.authorization) {
+        await this.authorization.assertIndependentApproval(run.initiatedById, actorId, 'payroll run');
+      } else if (run.initiatedById === actorId) {
+        throw new UnprocessableEntityException({ code: 'AUTHZ_SELF_APPROVAL', message: 'The payroll initiator cannot approve the same payroll run.' });
+      }
+    }
 
     const updated = await this.prisma.payrollRun.update({
       where: { id: runId },

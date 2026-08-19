@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 import type { JwtPayload } from '@uniportal/types';
 import { REDIS_CLIENT } from '../../../common/redis/redis.module';
 import { PrismaService } from '../../../database/prisma.service';
+import { AuthorizationService } from '../../../common/authorization/authorization.service';
 
 const USER_STATUS_CACHE_TTL = 60; // 60s — balances security and performance
 const userStatusKey = (id: string) => `user:status:${id}`;
@@ -35,6 +36,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   constructor(
     config:  ConfigService,
     private readonly prisma: PrismaService,
+    private readonly authorization: AuthorizationService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
     const pubKeyB64 = config.get<string>('JWT_PUBLIC_KEY_B64', '');
@@ -96,8 +98,18 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     // closes. Attached to the returned user object, not the signed token,
     // so no re-login is required for this fix to take effect and no
     // existing token-issuing code needed to change.
+    const authorization = await this.authorization.getEffectiveContext(payload.sub);
+    if (authorization.roles.length === 0) {
+      throw new UnauthorizedException({
+        code: 'AUTH_NO_ACTIVE_ROLE',
+        message: 'No active authorization role is assigned to this account',
+      });
+    }
+    const primaryRole = this.authorization.resolvePrimaryRole(authorization.roles);
+    const staffScope = authorization.staffScopes[0] ?? null;
+
     let studentId: string | undefined;
-    if (payload.role === 'STUDENT') {
+    if (primaryRole === 'STUDENT') {
       const cachedStudentId = await this.redis.get(studentIdKey(payload.sub));
       if (cachedStudentId) {
         studentId = cachedStudentId;
@@ -116,6 +128,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       }
     }
 
-    return { ...payload, studentId };
+    return {
+      ...payload,
+      role: primaryRole,
+      roles: authorization.roles,
+      staffScope,
+      effectiveScopes: authorization.scopes,
+      studentId,
+    };
   }
 }

@@ -17,6 +17,7 @@ import { resolveRedisConnection } from './common/redis/redis-connection';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { FeatureFlagGuard } from './common/guards/feature-flag.guard';
 import { RlsModule } from './common/rls/rls.module';
+import { AuthorizationModule } from './common/authorization/authorization.module';
 import { RlsInterceptor } from './common/rls/rls.interceptor';
 import { ResponseEnvelopeInterceptor } from './common/interceptors/response-envelope.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
@@ -65,6 +66,7 @@ import { UniversityPoliciesModule } from './modules/policies/university-policies
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv, cache: true }),
     ScheduleModule.forRoot(),
     RlsModule, // audit remediation R2 — global RLS ambient-context service
+    AuthorizationModule,
     // AUDIT-C1 fix: EventEmitterModule.forRoot(...) removed. As of this fix,
     // nothing in the codebase injects EventEmitter2 or declares @OnEvent —
     // every domain event goes through OutboxService (common/outbox/) →

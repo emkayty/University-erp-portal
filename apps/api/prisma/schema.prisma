@@ -50,6 +50,8 @@ model User {
   updatedAt    DateTime  @updatedAt
 
   roles            UserRole[]
+  delegationsGranted  RoleDelegation[] @relation("DelegationGrantor")
+  delegationsReceived RoleDelegation[] @relation("DelegationDelegatee")
   sessions         Session[]
   auditLogsAsActor AuditLog[]        @relation("AuditActor")
   notificationLogs NotificationLog[]
@@ -90,18 +92,70 @@ model User {
 }
 
 model UserRole {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String   @db.Uuid
-  roleName   RoleName
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @db.Uuid
+  roleName      RoleName
   // ABAC scope for STAFF role: { "scopes": ["lecturer"], "deptId": "uuid" }
-  staffScope Json?
-  grantedAt  DateTime @default(now())
-  grantedBy  String?  @db.Uuid // userId of admin who granted this role
+  staffScope    Json?
+  grantedAt     DateTime  @default(now())
+  effectiveFrom DateTime  @default(now())
+  effectiveUntil DateTime?
+  revokedAt     DateTime?
+  revokedBy     String?   @db.Uuid
+  grantReason   String?   @db.VarChar(500)
+  grantedBy     String?   @db.Uuid // userId of admin who granted this role
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleName], name: "uq_user_role", map: "uq_user_role")
+  @@index([userId, effectiveFrom, effectiveUntil, revokedAt], map: "idx_user_roles_effective")
+  @@index([roleName, effectiveFrom, effectiveUntil, revokedAt], map: "idx_user_roles_role_effective")
   @@map("user_roles")
+}
+
+enum DelegationStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model RoleConflictRule {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleA     RoleName
+  roleB     RoleName
+  code      String   @unique @db.VarChar(80)
+  reason    String   @db.VarChar(500)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roleA, roleB], map: "uq_role_conflict_pair")
+  @@index([active], map: "idx_role_conflict_active")
+  @@map("role_conflict_rules")
+}
+
+model RoleDelegation {
+  id         String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  delegatorId String          @db.Uuid
+  delegateeId String          @db.Uuid
+  roleName   RoleName
+  staffScope Json?
+  startsAt   DateTime
+  endsAt     DateTime
+  status     DelegationStatus @default(ACTIVE)
+  reason     String           @db.VarChar(500)
+  approvedBy String?          @db.Uuid
+  revokedAt  DateTime?
+  revokedBy  String?          @db.Uuid
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  delegator User @relation("DelegationGrantor", fields: [delegatorId], references: [id], onDelete: Cascade)
+  delegatee User @relation("DelegationDelegatee", fields: [delegateeId], references: [id], onDelete: Cascade)
+
+  @@index([delegateeId, status, startsAt, endsAt], map: "idx_role_delegations_delegatee_active")
+  @@index([delegatorId, status, startsAt, endsAt], map: "idx_role_delegations_delegator_active")
+  @@map("role_delegations")
 }
 
 enum RoleName {

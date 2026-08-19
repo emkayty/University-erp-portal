@@ -153,8 +153,8 @@ export class FeesService {
   /**
    * Role-based waiver caps (read from InstitutionSettings, set in P2):
    *   - HOD:    up to feeWaiverCapHodPct    (default 30%) — goes to PENDING, needs Bursar approval
-   *   - BURSAR: up to feeWaiverCapBursarPct (default 80%) — auto-APPROVED immediately
-   *   - SUPER_ADMIN: treated as BURSAR cap, auto-APPROVED
+   *   - BURSAR: up to feeWaiverCapBursarPct (default 80%) — PENDING for independent approval
+   *   - SUPER_ADMIN: treated as BURSAR cap, also requires independent approval
    */
   async requestWaiver(dto: RequestWaiverDto, actorId: string, actorRole: RoleName, actorDepartmentId?: string) {
     const settings = await this.prisma.institutionSettings.findFirstOrThrow();
@@ -165,7 +165,9 @@ export class FeesService {
     if (actorRole === 'HOD' && !actorDepartmentId) {
       throw new ForbiddenException({ code: 'RBAC_SCOPE_FORBIDDEN', message: 'HOD fee waivers require a department scope' });
     }
-    const autoApprove = actorRole === 'BURSAR' || actorRole === 'SUPER_ADMIN';
+    // No human requester may self-approve a financial waiver. Even BURSAR and
+    // SUPER_ADMIN requests remain PENDING and require an independent approver.
+    const autoApprove = false;
 
     const waiver = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM student_fees WHERE id = ${dto.studentFeeId} FOR UPDATE`;

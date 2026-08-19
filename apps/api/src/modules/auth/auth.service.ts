@@ -100,7 +100,8 @@ export class AuthService {
     // Checked BEFORE the "already enrolled" gate below: a user whose role
     // requires MFA but who hasn't enrolled yet must not get a normal
     // session, full stop, regardless of what mfaEnabled currently says.
-    const userRoleNames = user.roles.map((r) => r.roleName);
+    const activeRoles = user ? this.filterActiveRoles(user.roles) : [];
+    const userRoleNames = activeRoles.map((r) => r.roleName);
     const settings = await this.prisma.institutionSettings.findFirst({
       select: { mfaMandatoryRoles: true },
     });
@@ -419,14 +420,16 @@ export class AuthService {
   // ── Internals ──────────────────────────────────────────────────────────────
   private async completeLogin(
     userId:      string,
-    roles:       Array<{ roleName: RoleName; staffScope: unknown; grantedAt: Date }>,
+    roles:       Array<{ roleName: RoleName; staffScope: unknown; grantedAt: Date; effectiveFrom?: Date; effectiveUntil?: Date | null; revokedAt?: Date | null; grantReason?: string | null }>,
     mfaVerified: boolean,
     deviceInfo:  { userAgent?: string; ip?: string },
   ): Promise<LoginResult> {
     const user      = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId }, include: { roles: true, student: { select: { id: true } } },
     });
-    const payload   = await this.buildJwtPayload(userId, roles, mfaVerified);
+    const activeRoles = this.filterActiveRoles(roles);
+    if (!activeRoles.length) throw new UnauthorizedException('No active authorization role is assigned to this account');
+    const payload   = await this.buildJwtPayload(userId, activeRoles, mfaVerified);
     const access    = this.tokens.generateAccessToken(payload);
     const sessionId = uuid();
     const refresh   = await this.tokens.issueRefreshToken(userId, { sessionId, deviceInfo });
@@ -462,8 +465,13 @@ export class AuthService {
     roles:       Array<{ roleName: RoleName; staffScope: unknown }>,
     mfaVerified: boolean,
   ): Promise<Omit<JwtPayload, 'iat' | 'exp' | 'jti'>> {
-    const primaryRole = this.resolvePrimaryRole(roles.map((r) => r.roleName));
+    const roleNames = roles.map((r) => r.roleName);
+    const primaryRole = this.resolvePrimaryRole(roleNames);
     const staffRole   = roles.find((r) => r.roleName === RoleName.STAFF);
+    const effectiveScopes = roles.flatMap((role) => {
+      const scope = role.staffScope as StaffScopeAttribute | null;
+      return scope?.scopes ?? [];
+    });
 
     // M-auth-1 fix: fetch institutionId from InstitutionSettings instead of hardcoding.
     // The hardcoded placeholder UUID '00000000-0000-0000-0000-000000000001' blocked
@@ -474,10 +482,20 @@ export class AuthService {
     return {
       sub:           userId,
       role:          primaryRole as RoleNameType,
+      roles:         roleNames as RoleNameType[],
       staffScope:    (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,
+      effectiveScopes,
       institutionId,
       mfaVerified,
     };
+  }
+
+  private filterActiveRoles<T extends { effectiveFrom?: Date; effectiveUntil?: Date | null; revokedAt?: Date | null }>(roles: T[], now = new Date()): T[] {
+    return roles.filter((role) =>
+      !role.revokedAt &&
+      (!role.effectiveFrom || role.effectiveFrom <= now) &&
+      (!role.effectiveUntil || role.effectiveUntil > now),
+    );
   }
 
   private resolvePrimaryRole(roles: RoleName[]): RoleName {
@@ -492,11 +510,12 @@ export class AuthService {
 
   mapUserToDto(
     user:  { id: string; email: string; phone: string | null; isActive: boolean; mfaEnabled: boolean; lastLoginAt: Date | null; createdAt: Date; updatedAt: Date },
-    roles: Array<{ roleName: RoleName; staffScope: unknown; grantedAt: Date }>,
+    roles: Array<{ roleName: RoleName; staffScope: unknown; grantedAt: Date; effectiveFrom?: Date; effectiveUntil?: Date | null; revokedAt?: Date | null; grantReason?: string | null }>,
     studentId?: string,
   ): UserV1 {
-    const primaryRole = this.resolvePrimaryRole(roles.map((r) => r.roleName));
-    const staffRole   = roles.find((r) => r.roleName === RoleName.STAFF);
+    const activeRoles = this.filterActiveRoles(roles);
+    const primaryRole = this.resolvePrimaryRole(activeRoles.map((r) => r.roleName));
+    const staffRole   = activeRoles.find((r) => r.roleName === RoleName.STAFF);
     return {
       id:          user.id,
       email:       user.email,
@@ -511,6 +530,10 @@ export class AuthService {
         roleName:  r.roleName as RoleNameType,
         staffScope: (r.staffScope as StaffScopeAttribute | null) ?? null,
         grantedAt: r.grantedAt.toISOString(),
+        ...(r.effectiveFrom ? { effectiveFrom: r.effectiveFrom.toISOString() } : {}),
+        ...(r.effectiveUntil !== undefined ? { effectiveUntil: r.effectiveUntil?.toISOString() ?? null } : {}),
+        ...(r.revokedAt !== undefined ? { revokedAt: r.revokedAt?.toISOString() ?? null } : {}),
+        ...(r.grantReason !== undefined ? { grantReason: r.grantReason ?? null } : {}),
       })),
       primaryRole: primaryRole as RoleNameType,
       staffScope:  (staffRole?.staffScope as StaffScopeAttribute | null) ?? null,

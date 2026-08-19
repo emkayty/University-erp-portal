@@ -688,6 +688,12 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get userRole() {
     return this.client.userRole;
   }
+  get roleDelegation() {
+    return this.client.roleDelegation;
+  }
+  get roleConflictRule() {
+    return this.client.roleConflictRule;
+  }
   get vehicle() {
     return this.client.vehicle;
   }

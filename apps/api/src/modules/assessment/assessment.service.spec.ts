@@ -8,6 +8,7 @@ import { AssessmentService } from './assessment.service';
 describe('AssessmentService academic-integrity controls', () => {
   let service: AssessmentService;
   const authorization = { assertOfferingAccess: jest.fn().mockResolvedValue(undefined) };
+  const authorizationPolicy = { assertIndependentApproval: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) } as unknown as jest.Mocked<AuditService>;
   const prisma: any = {
     courseOffering: { findUnique: jest.fn().mockResolvedValue({ id: 'offering-1', semesterId: 'semester-1' }), findUniqueOrThrow: jest.fn() },
@@ -23,7 +24,12 @@ describe('AssessmentService academic-integrity controls', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AssessmentService(prisma as PrismaService, audit, authorization as unknown as AcademicOfferingAuthorizationService);
+    service = new AssessmentService(
+      prisma as PrismaService,
+      audit,
+      authorization as unknown as AcademicOfferingAuthorizationService,
+      authorizationPolicy as any,
+    );
   });
 
   it('requires shared offering authorization before saving a mark', async () => {

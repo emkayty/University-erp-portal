@@ -132,10 +132,10 @@ describe('FeesService', () => {
       expect(txMock.feeWaiver.create).not.toHaveBeenCalled();
     });
 
-    it('Bursar requesting <=80% (cap) -> auto-APPROVED and applied immediately', async () => {
+    it('Bursar requesting <=80% (cap) -> remains pending for independent approval', async () => {
       txMock.studentFee.findUniqueOrThrow.mockResolvedValue(makeFee());
       txMock.feeWaiver.create.mockResolvedValue(makeWaiver({
-        status: WaiverStatus.APPROVED, waiverPct: new FakeDecimal(75), waiverAmount: new FakeDecimal(75000), approvedById: 'bursar-1',
+        status: WaiverStatus.PENDING, waiverPct: new FakeDecimal(75), waiverAmount: new FakeDecimal(75000), approvedById: null,
       }));
 
       const result = await svc.requestWaiver(
@@ -143,11 +143,9 @@ describe('FeesService', () => {
         'bursar-1', 'BURSAR',
       );
 
-      expect(result.status).toBe(WaiverStatus.APPROVED);
-      expect(txMock.studentFee.update).toHaveBeenCalledWith(expect.objectContaining({
-        data: { waiverAmount: expect.objectContaining({ value: 75000 }) },
-      }));
-      expect(clearance.recomputeStudentFee).toHaveBeenCalledWith(txMock, 'fee-1');
+      expect(result.status).toBe(WaiverStatus.PENDING);
+      expect(txMock.studentFee.update).not.toHaveBeenCalled();
+      expect(clearance.recomputeStudentFee).not.toHaveBeenCalled();
     });
 
     it('Bursar requesting >80% (over cap) -> BadRequestException', async () => {
@@ -161,16 +159,16 @@ describe('FeesService', () => {
       expect(txMock.feeWaiver.create).not.toHaveBeenCalled();
     });
 
-    it('SUPER_ADMIN is treated as BURSAR cap (auto-approve)', async () => {
+    it('SUPER_ADMIN is treated as BURSAR cap but still requires independent approval', async () => {
       txMock.studentFee.findUniqueOrThrow.mockResolvedValue(makeFee());
-      txMock.feeWaiver.create.mockResolvedValue(makeWaiver({ status: WaiverStatus.APPROVED, approvedById: 'admin-1' }));
+      txMock.feeWaiver.create.mockResolvedValue(makeWaiver({ status: WaiverStatus.PENDING, approvedById: null }));
 
       const result = await svc.requestWaiver(
         { studentFeeId: 'fee-1', waiverPct: 50, reason: 'Admin override for edge case' },
         'admin-1', 'SUPER_ADMIN',
       );
 
-      expect(result.status).toBe(WaiverStatus.APPROVED);
+      expect(result.status).toBe(WaiverStatus.PENDING);
     });
 
     it('rejects waiver request from a role other than HOD/BURSAR/SUPER_ADMIN', async () => {

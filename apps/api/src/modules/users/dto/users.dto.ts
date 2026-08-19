@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsEnum, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RoleName } from '@prisma/client';
 
@@ -19,9 +19,21 @@ export class CreateUserDto {
   @IsEnum(RoleName)
   roleName: RoleName;
 
-  @ApiPropertyOptional({ description: 'ABAC scope for STAFF role' })
+  @ApiPropertyOptional({ description: 'ABAC scope for STAFF or SUPPORT_STAFF role' })
   @IsOptional()
   staffScope?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ description: 'UTC effective start time; defaults to now', format: 'date-time' })
+  @IsOptional() @IsDateString()
+  effectiveFrom?: string;
+
+  @ApiPropertyOptional({ description: 'UTC expiry time; required for temporary assignments', format: 'date-time' })
+  @IsOptional() @IsDateString()
+  effectiveUntil?: string;
+
+  @ApiPropertyOptional({ description: 'Business reason or approved appointment reference' })
+  @IsOptional() @IsString() @MinLength(8)
+  grantReason?: string;
 }
 
 export class GrantRoleDto {
@@ -29,15 +41,43 @@ export class GrantRoleDto {
   @IsEnum(RoleName)
   roleName: RoleName;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'ABAC scope for STAFF or SUPPORT_STAFF role' })
   @IsOptional()
   staffScope?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional() @IsDateString()
+  effectiveFrom?: string;
+
+  @ApiPropertyOptional({ format: 'date-time' })
+  @IsOptional() @IsDateString()
+  effectiveUntil?: string;
+
+  @ApiPropertyOptional({ description: 'Business reason or approved appointment reference' })
+  @IsOptional() @IsString() @MinLength(8)
+  grantReason?: string;
 }
 
-export class RevokeRoleDto {
+export class CreateDelegationDto {
   @ApiProperty({ enum: RoleName })
   @IsEnum(RoleName)
   roleName: RoleName;
+
+  @ApiProperty({ format: 'date-time' })
+  @IsDateString()
+  startsAt: string;
+
+  @ApiProperty({ format: 'date-time' })
+  @IsDateString()
+  endsAt: string;
+
+  @ApiProperty({ minLength: 8 })
+  @IsString() @MinLength(8)
+  reason: string;
+
+  @ApiPropertyOptional({ description: 'ABAC scope for delegated STAFF or SUPPORT_STAFF authority' })
+  @IsOptional()
+  staffScope?: Record<string, unknown>;
 }
 
 export class SetActiveDto {

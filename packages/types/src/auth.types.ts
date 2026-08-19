@@ -1,10 +1,14 @@
-import type { BaseEntity, RoleName, StaffScopeAttribute } from './common';
+import type { BaseEntity, RoleName, StaffScope, StaffScopeAttribute } from './common';
 
 // ─── User Identity ────────────────────────────────────────────────────────────
 export interface UserRoleDto {
   roleName: RoleName;
   staffScope: StaffScopeAttribute | null;
   grantedAt: string;
+  effectiveFrom?: string;
+  effectiveUntil?: string | null;
+  revokedAt?: string | null;
+  grantReason?: string | null;
 }
 
 export interface UserV1 extends BaseEntity {
@@ -91,8 +95,10 @@ export interface JwtPayload {
   iat: number;           // issued at (unix timestamp)
   exp: number;           // expires at (unix timestamp)
   jti: string;           // unique token id
-  role: RoleName;        // primary role
+  role: RoleName;        // current primary role, resolved from active assignments
+  roles?: RoleName[];     // effective active and delegated roles
   staffScope: StaffScopeAttribute | null;
+  effectiveScopes?: StaffScope[];
   institutionId: string;
   mfaVerified: boolean;
   /**

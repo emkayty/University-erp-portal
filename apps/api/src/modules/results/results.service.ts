@@ -1,6 +1,6 @@
 import {
   BadRequestException, ConflictException, ForbiddenException,
-  Injectable, Logger, NotFoundException, UnprocessableEntityException,
+  Injectable, Logger, NotFoundException, Optional, UnprocessableEntityException,
 } from '@nestjs/common';
 import { AuditAction, ResultStatus, type Prisma } from '@prisma/client';
 
@@ -8,6 +8,7 @@ import { applyRepeatPolicy, computeCgpa, computeGradeForSystem, getDegreeClass, 
 import type { CourseRepeatPolicy } from '@uniportal/utils';
 
 import { AuditService } from '../../common/audit/audit.service';
+import { AuthorizationService } from '../../common/authorization/authorization.service';
 import { PrismaService } from '../../database/prisma.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
 import { RlsContextService } from '../../common/rls/rls-context.service';
@@ -79,8 +80,9 @@ export class ResultsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
-    private readonly outbox: OutboxService,
+        private readonly outbox:    OutboxService,
     private readonly rlsContext: RlsContextService,
+    @Optional() private readonly authorization?: AuthorizationService,
   ) {}
 
   // ── Submit (LECTURER) ──────────────────────────────────────────────────────
@@ -291,13 +293,19 @@ export class ResultsService {
     }
 
     const existing = await this.prisma.forRequest(this.rlsContext).studentResult.findUniqueOrThrow({ where: { id: resultId } });
-    if (existing.status !== ResultStatus.SENATE_PUBLISHED) {
+        if (existing.status !== ResultStatus.SENATE_PUBLISHED) {
       throw new UnprocessableEntityException({
         code: 'BUSINESS_RULE_INVALID_STATE',
         message: `Cannot amend a result in status "${existing.status}" — only SENATE_PUBLISHED results can be amended`,
       });
     }
-
+    if (existing.submittedById) {
+      if (this.authorization) {
+        await this.authorization.assertIndependentApproval(existing.submittedById, actorId, 'published result amendment');
+      } else if (existing.submittedById === actorId) {
+        throw new ForbiddenException({ code: 'AUTHZ_SELF_APPROVAL', message: 'The original result submitter cannot amend the same published result.' });
+      }
+    }
     const oldScore = existing.score;
     const settings = await this.prisma.institutionSettings.findFirst({ select: { gradingSystem: true, gradePolicyVersion: true } });
     const gradingSystem = (settings?.gradingSystem ?? existing.gradingSystemSnapshot ?? 'NIGERIAN_5_POINT') as 'NIGERIAN_5_POINT' | 'US_4_POINT';

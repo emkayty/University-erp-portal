@@ -1,10 +1,11 @@
 import {
   BadRequestException, ConflictException,
-  ForbiddenException, Injectable,
+  ForbiddenException, Injectable, Optional,
 } from '@nestjs/common';
 import { AuditAction, EmploymentStatus, LeaveStatus } from '@prisma/client';
 import { encryptPii } from '@uniportal/utils';
 import { AuditService } from '../../common/audit/audit.service';
+import { AuthorizationService } from '../../common/authorization/authorization.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { CreateSalaryGradeDto, CreateStaffDto, LeaveDecisionDto, RequestLeaveDto } from './dto/hr.dto';
 
@@ -13,6 +14,7 @@ export class HrService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
+    @Optional() private readonly authorization?: AuthorizationService,
   ) {}
 
   // ── Salary Grades ──────────────────────────────────────────────────────────
@@ -161,9 +163,20 @@ export class HrService {
     if (!['HOD','HR_MANAGER','REGISTRAR','SUPER_ADMIN'].includes(actorRole))
       throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'Only HR Manager or HOD can decide on leave requests' });
 
-    const leave = await this.prisma.leaveRequest.findUniqueOrThrow({ where: { id: leaveId } });
+    const leave = await this.prisma.leaveRequest.findUniqueOrThrow({
+      where: { id: leaveId },
+      include: { staff: { select: { userId: true } } },
+    });
     if (leave.status !== LeaveStatus.PENDING)
       throw new ConflictException({ code: 'DUPLICATE_RESOURCE', message: `Leave already ${leave.status}` });
+
+    if (leave.staff?.userId) {
+      if (this.authorization) {
+        await this.authorization.assertIndependentApproval(leave.staff.userId, actorId, 'leave request');
+      } else if (leave.staff.userId === actorId) {
+        throw new ForbiddenException({ code: 'AUTHZ_SELF_APPROVAL', message: 'The leave requester cannot approve or reject the same leave request.' });
+      }
+    }
 
     const newStatus = dto.action === 'APPROVE' ? LeaveStatus.APPROVED : LeaveStatus.REJECTED;
     const updated   = await this.prisma.leaveRequest.update({

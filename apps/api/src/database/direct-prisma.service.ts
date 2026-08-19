@@ -107,6 +107,8 @@ export class DirectPrismaService implements OnModuleInit, OnModuleDestroy {
   get application() { return this.base.application; }
   get user() { return this.base.user; }
   get userRole() { return this.base.userRole; }
+  get roleDelegation() { return this.base.roleDelegation; }
+  get roleConflictRule() { return this.base.roleConflictRule; }
 
   get $queryRaw() { return this.base.$queryRaw.bind(this.base); }
   get $queryRawUnsafe() { return this.base.$queryRawUnsafe.bind(this.base); }

@@ -268,10 +268,17 @@ describe('PayrollService', () => {
     it('APPROVE advances COMPUTED → APPROVED', async () => {
       prisma.payrollRun.findUniqueOrThrow.mockResolvedValueOnce(makeRun({ status: PayrollStatus.COMPUTED }));
       prisma.payrollRun.update.mockResolvedValueOnce(makeRun({ status: PayrollStatus.APPROVED }));
-      const result = await svc.applyAction('run-1', { action: 'APPROVE' }, 'bursar-1');
+      const result = await svc.applyAction('run-1', { action: 'APPROVE' }, 'payroll-approver-1');
       expect(prisma.payrollRun.update).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ status: PayrollStatus.APPROVED }),
       }));
+    });
+
+    it('APPROVE rejects the payroll initiator as a self-approver', async () => {
+      prisma.payrollRun.findUniqueOrThrow.mockResolvedValueOnce(makeRun({ status: PayrollStatus.COMPUTED, initiatedById: 'bursar-1' }));
+      await expect(svc.applyAction('run-1', { action: 'APPROVE' }, 'bursar-1'))
+        .rejects.toThrow(UnprocessableEntityException);
+      expect(prisma.payrollRun.update).not.toHaveBeenCalled();
     });
 
     it('APPROVE rejected if not in COMPUTED status', async () => {

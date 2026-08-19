@@ -4,6 +4,7 @@ import { computeGradeForSystem } from '@uniportal/utils';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AcademicOfferingAuthorizationService, AcademicActorRole } from '../../common/authorization/academic-offering-authorization.service';
+import { AuthorizationService } from '../../common/authorization/authorization.service';
 import type { ComponentDto, CreateSchemeDto, MarkDto, CsvUploadDto } from './dto';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class AssessmentService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly offeringAuthorization: AcademicOfferingAuthorizationService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   async createScheme(dto: CreateSchemeDto, actorId: string, actorRole: AcademicActorRole = 'STAFF') {
@@ -45,6 +47,7 @@ export class AssessmentService {
     await this.offeringAuthorization.assertOfferingAccess(courseOfferingId, actorId, actorRole);
     const scheme = await this.prisma.assessmentScheme.findFirst({ where: { courseOfferingId, status: 'DRAFT' }, orderBy: { version: 'desc' }, include: { components: true } });
     if (!scheme) throw new BadRequestException('No draft assessment scheme exists');
+    await this.authorization.assertIndependentApproval(scheme.createdById, actorId, 'assessment scheme');
     const total = scheme.components.reduce((n,c)=>n+Number(c.weight),0);
     if (Math.abs(total-100)>0.001 || !scheme.components.length) throw new BadRequestException('Assessment scheme must contain components totalling exactly 100%');
     return this.prisma.assessmentScheme.update({ where: { id: scheme.id }, data: { status: 'ACTIVE', approvedById: actorId, approvedAt: new Date(), effectiveFrom: new Date() }, include: { components: true } });
@@ -68,7 +71,7 @@ export class AssessmentService {
     const scheme = await this.prisma.assessmentScheme.findFirst({ where: { courseOfferingId, status: 'ACTIVE' }, orderBy: { version: 'desc' }, include: { components: { orderBy: { sequence: 'asc' } } } });
     if (!scheme) throw new BadRequestException('No active assessment scheme');
     const registrations = await this.prisma.courseRegistration.findMany({ where: { courseOfferingId, status: { in: ['REGISTERED','COMPLETED'] } }, include: { student: { select: { id:true, matricNo:true, firstName:true, lastName:true } } }, orderBy: { student: { matricNo: 'asc' } } });
-    const marks = await this.prisma.assessmentMark.findMany({ where: { courseOfferingId }, select: { studentId:true, componentId:true, score:true, status:true, version:true, examTimetableId:true } });
+    const marks = await this.prisma.assessmentMark.findMany({ where: { courseOfferingId }, select: { studentId:true, componentId:true, score:true, status:true, version:true, examTimetableId:true, enteredById:true } });
     const byStudent = new Map<string, any[]>(); for (const m of marks) { if (!byStudent.has(m.studentId)) byStudent.set(m.studentId,[]); byStudent.get(m.studentId)!.push(m); }
     const rows = registrations.map(r => { const ms = byStudent.get(r.student.id) ?? []; let final=0; for (const c of scheme.components) { const m=ms.find(x=>x.componentId===c.id); if(m) final += (Number(m.score)/Number(c.maxScore))*Number(c.weight); } const required = scheme.components.filter(c => c.isRequired); const complete=required.every(c=>ms.some(m=>m.componentId===c.id)); const finalized = complete && required.every(c=>ms.some(m=>m.componentId===c.id && m.status === 'FINALIZED')); return { student:r.student, marks:ms, finalScore:Math.round(final*100)/100, complete, finalized }; });
     return { scheme, rows, summary: { total: rows.length, complete: rows.filter(r=>r.complete).length, incomplete: rows.filter(r=>!r.complete).length, finalized: rows.filter(r=>r.finalized).length, unfinalized: rows.filter(r=>!r.finalized).length } };
@@ -83,6 +86,10 @@ export class AssessmentService {
 
   async generateDraftResults(courseOfferingId: string, actorId: string, actorRole: AcademicActorRole = 'STAFF') {
     const gb=await this.getGradebook(courseOfferingId, actorId, actorRole);
+    const selfEnteredBy = gb.rows.flatMap((row) => row.marks as Array<{ enteredById?: string }>).find((mark) => mark.enteredById === actorId)?.enteredById;
+    if (selfEnteredBy) {
+      await this.authorization.assertIndependentApproval(selfEnteredBy, actorId, 'assessment marks');
+    }
     if(gb.summary.incomplete) throw new BadRequestException(`${gb.summary.incomplete} student(s) have incomplete assessment marks`);
     if(gb.summary.unfinalized) throw new ConflictException(`${gb.summary.unfinalized} student(s) have unfinalized assessment marks`);
     const settings=await this.prisma.institutionSettings.findFirst({select:{gradingSystem:true,gradePolicyVersion:true}});
