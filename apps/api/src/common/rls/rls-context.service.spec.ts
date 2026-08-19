@@ -1,4 +1,4 @@
-import { RlsContextService } from './rls-context.service';
+import { FORCE_RLS_MODELS, RlsContextService } from './rls-context.service';
 
 describe('RlsContextService', () => {
   let svc: RlsContextService;
@@ -27,6 +27,11 @@ describe('RlsContextService', () => {
     await svc.run(fakeTx, async () => undefined);
 
     expect(svc.getClient()).toBeUndefined();
+  });
+
+  it('keeps notification records under the forced-RLS contract', () => {
+    expect(FORCE_RLS_MODELS.has('Notification')).toBe(true);
+    expect(FORCE_RLS_MODELS.has('NotificationPreference')).toBe(true);
   });
 
   it('isolates concurrent requests from each other (the whole point of AsyncLocalStorage over a module-level variable)', async () => {

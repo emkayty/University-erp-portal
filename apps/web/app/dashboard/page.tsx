@@ -63,19 +63,19 @@ const ACTIONS: Record<RoleName, { href: string; label: string; description: stri
     { href: '/dashboard/fees', label: 'Fees & payments', description: 'Monitor financial activity', icon: WalletCards },
     { href: '/dashboard/reports', label: 'Financial reports', description: 'Review finance reporting', icon: FileText },
     { href: '/dashboard/students', label: 'Student accounts', description: 'Support account enquiries', icon: GraduationCap },
-    { href: '/dashboard/settings', label: 'Configuration', description: 'Open permitted controls', icon: ShieldCheck },
+    { href: '/dashboard/clearance', label: 'Clearance status', description: 'Review finance-related clearance items', icon: ShieldCheck },
   ],
   HR_MANAGER: [
     { href: '/dashboard/hr', label: 'HR', description: 'Staff records and HR operations', icon: GraduationCap },
     { href: '/dashboard/payroll', label: 'Payroll', description: 'Payroll operations', icon: WalletCards },
     { href: '/dashboard/reports', label: 'Reports', description: 'People and payroll reporting', icon: FileText },
-    { href: '/dashboard/settings', label: 'Settings', description: 'Open permitted controls', icon: ShieldCheck },
+    { href: '/dashboard/enterprise', label: 'Enterprise operations', description: 'Review operational workflows', icon: ShieldCheck },
   ],
   VC: [
     { href: '/dashboard/reports', label: 'Executive reports', description: 'Decision-ready reporting', icon: FileText },
     { href: '/dashboard/academic', label: 'Academic overview', description: 'Academic lifecycle', icon: BookOpen },
     { href: '/dashboard/admissions', label: 'Admissions', description: 'Enrollment pipeline', icon: CheckCircle2 },
-    { href: '/dashboard/audit-logs', label: 'Governance', description: 'Audit and security oversight', icon: ShieldCheck },
+    { href: '/dashboard/policies', label: 'University policies', description: 'Review approved institutional policy', icon: ShieldCheck },
   ],
   SUPER_ADMIN: [
     { href: '/dashboard/settings', label: 'System settings', description: 'Institutional configuration', icon: Settings2 },
@@ -87,7 +87,7 @@ const ACTIONS: Record<RoleName, { href: string; label: string; description: stri
     { href: '/dashboard/students', label: 'Students', description: 'Find students within your access', icon: GraduationCap },
     { href: '/dashboard/calendar', label: 'Calendar', description: 'Important university dates', icon: CalendarDays },
     { href: '/dashboard/reports', label: 'Reports', description: 'Available support reporting', icon: FileText },
-    { href: '/dashboard/settings', label: 'Settings', description: 'Open permitted controls', icon: Settings2 },
+    { href: '/dashboard/notifications', label: 'Notifications', description: 'Review operational updates', icon: Bell },
   ],
   STAFF: [
     { href: '/dashboard/academic', label: 'Academic life', description: 'Services available to your scope', icon: BookOpen },
@@ -161,7 +161,7 @@ function TodayCard({ role }: { role: RoleName }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
-  const role = effectiveRolesOf(user)[0] ?? 'STUDENT';
+  const role = user?.primaryRole ?? effectiveRolesOf(user)[0] ?? 'STUDENT';
   const { data: snapshot, isLoading, isError, refetch } = useMyDashboard();
   const copy = ROLE_COPY[role];
   const quickActions = ACTIONS[role];

@@ -39,4 +39,19 @@ describe('RolesGuard', () => {
     const h = makeContext({ roles: ['SUPER_ADMIN'] }, undefined);
     await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(ForbiddenException);
   });
+
+  it('delegates scope-only routes instead of treating them as authenticated-only', async () => {
+    const h = makeContext({ scopes: ['health'] }, { sub: 'user-1' });
+
+    await expect(h.guard.canActivate(h.context)).resolves.toBe(true);
+    expect(h.authorization.assertRouteAccess).toHaveBeenCalledWith(
+      { sub: 'user-1' }, undefined, ['health'],
+    );
+  });
+
+  it('rejects a scope-only route without an authenticated request user', async () => {
+    const h = makeContext({ scopes: ['research'] }, undefined);
+    await expect(h.guard.canActivate(h.context)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(h.authorization.assertRouteAccess).not.toHaveBeenCalled();
+  });
 });

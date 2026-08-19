@@ -34,9 +34,10 @@ export function useGenerateReport() {
   });
 }
 
-export function useMyReportJobs(page = 1) {
+export function useMyReportJobs(page = 1, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: reportKeys.jobs(page),
+    enabled: options?.enabled ?? true,
     queryFn:  () => apiClient.get<{ jobs: ReportJobV1[]; total: number; totalPages: number }>(
       `/reports/jobs?page=${page}&pageSize=20`,
     ),
@@ -62,39 +63,43 @@ export function useReportJob(jobId: string | null) {
 }
 
 // ── Live reports ──────────────────────────────────────────────────────────────
-export function useEnrolmentStats(params?: Record<string, string>) {
+export function useEnrolmentStats(params?: Record<string, string>, options?: { enabled?: boolean }) {
   const qs = new URLSearchParams(params ?? {}).toString();
   return useQuery({
     queryKey: reportKeys.enrolment(params),
     queryFn:  () => apiClient.get<EnrolmentStatsV1>(`/reports/enrolment${qs ? `?${qs}` : ''}`),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useRevenueReport(params?: Record<string, string>) {
+export function useRevenueReport(params?: Record<string, string>, options?: { enabled?: boolean }) {
   const qs = new URLSearchParams(params ?? {}).toString();
   return useQuery({
     queryKey: reportKeys.revenue(params),
     queryFn:  () => apiClient.get<RevenueReportV1>(`/reports/revenue${qs ? `?${qs}` : ''}`),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useCgpaDistribution(params?: Record<string, string>) {
+export function useCgpaDistribution(params?: Record<string, string>, options?: { enabled?: boolean }) {
   const qs = new URLSearchParams(params ?? {}).toString();
   return useQuery({
     queryKey: reportKeys.cgpa(params),
     queryFn:  () => apiClient.get<CgpaDistributionV1>(`/reports/cgpa-distribution${qs ? `?${qs}` : ''}`),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useResultsStats(params?: Record<string, string>) {
+export function useResultsStats(params?: Record<string, string>, options?: { enabled?: boolean }) {
   const qs = new URLSearchParams(params ?? {}).toString();
   return useQuery({
     queryKey: reportKeys.results(params),
     queryFn:  () => apiClient.get<ResultsStatsV1>(`/reports/results-statistics${qs ? `?${qs}` : ''}`),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

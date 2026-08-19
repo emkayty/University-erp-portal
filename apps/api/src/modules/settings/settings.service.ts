@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { AuditAction, Prisma } from "@prisma/client";
 
-import { FEATURE_FLAG_KEYS, type FeatureFlagKey } from "@uniportal/config";
+import { DEFAULT_FEATURE_FLAGS, FEATURE_FLAG_KEYS, type FeatureFlagKey } from "@uniportal/config";
 
 import { AuditService } from "../../common/audit/audit.service";
 import { PrismaService } from "../../database/prisma.service";
@@ -17,6 +17,9 @@ import type { UpdateSettingsDto } from "./dto/settings.dto";
 export const SETTINGS_CACHE_KEY = "institution:settings";
 export const FEATURE_FLAG_CACHE = "institution:feature-flags";
 const CACHE_TTL = 300_000; // 5 minutes in ms
+const MODULE_FLAG_KEYS = [
+  'module_lms', 'module_health', 'module_transport', 'module_research', 'module_alumni',
+] as const;
 
 /**
  * SettingsService — manages the singleton InstitutionSettings record.
@@ -91,6 +94,18 @@ export class SettingsService {
 
     await this.cache.set(FEATURE_FLAG_CACHE, flags, CACHE_TTL);
     return flags;
+  }
+
+  /**
+   * Returns only module rollout state for authenticated navigation clients.
+   * Workflow/experimental flags remain Super Admin-only to avoid leaking
+   * internal rollout details and policy variants to ordinary users.
+   */
+  async getModuleCapabilities(): Promise<Record<(typeof MODULE_FLAG_KEYS)[number], boolean>> {
+    const flags = await this.getFeatureFlags();
+    return Object.fromEntries(
+      MODULE_FLAG_KEYS.map((key) => [key, flags[key] ?? DEFAULT_FEATURE_FLAGS[key]]),
+    ) as Record<(typeof MODULE_FLAG_KEYS)[number], boolean>;
   }
 
   // ── UPDATE ────────────────────────────────────────────────────────────────

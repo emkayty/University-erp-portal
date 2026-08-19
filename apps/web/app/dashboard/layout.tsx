@@ -31,13 +31,14 @@ import {
   Settings,
   FileText,
   Sparkles,
+  Activity,
 } from "lucide-react";
 
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
-import { usePublicBranding } from "@/hooks/use-settings";
+import { useModuleCapabilities, usePublicBranding } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn, getInitials } from "@/lib/utils";
-import { MODULE_ACCESS } from "@/lib/authz";
+import { effectiveRolesOf, effectiveScopesOf, MODULE_ACCESS } from "@/lib/authz";
 import type { RoleName, StaffScope } from "@uniportal/types";
 
 const ALL_NAV = [
@@ -160,6 +161,7 @@ const ALL_NAV = [
     label: "Learning",
     icon: BookOpen,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF", "STUDENT"],
+    moduleFlag: "module_lms",
   },
   {
     href: "/dashboard/hr",
@@ -188,6 +190,7 @@ const ALL_NAV = [
     roles: ["SUPER_ADMIN", "STAFF", "STUDENT", "SUPPORT_STAFF"],
     requiredScope: "health",
     scope: "health",
+    moduleFlag: "module_health",
   },
   {
     href: "/dashboard/transport",
@@ -195,6 +198,7 @@ const ALL_NAV = [
     icon: Bus,
     roles: ["SUPER_ADMIN", "VC", "STAFF", "STUDENT"],
     scope: "transport",
+    moduleFlag: "module_transport",
   },
   {
     href: "/dashboard/research",
@@ -202,6 +206,7 @@ const ALL_NAV = [
     icon: FlaskConical,
     roles: ["SUPER_ADMIN", "VC", "STAFF"],
     scope: "research",
+    moduleFlag: "module_research",
   },
   {
     href: "/dashboard/alumni",
@@ -209,6 +214,7 @@ const ALL_NAV = [
     icon: Users,
     roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF"],
     scope: "alumni",
+    moduleFlag: "module_alumni",
   },
   {
     href: "/dashboard/reports",
@@ -254,6 +260,12 @@ const ALL_NAV = [
     roles: ["SUPER_ADMIN"],
   },
   {
+    href: "/dashboard/reliability",
+    label: "Reliability Operations",
+    icon: Activity,
+    roles: ["SUPER_ADMIN"],
+  },
+  {
     href: "/dashboard/policies",
     label: "University Policies",
     icon: FileText,
@@ -271,7 +283,10 @@ function canSee(
   item: (typeof ALL_NAV)[number],
   roles: readonly RoleName[],
   scopes: readonly StaffScope[],
+  moduleCapabilities?: Record<string, boolean>,
 ) {
+  const moduleFlag = (item as { moduleFlag?: string }).moduleFlag;
+  if (moduleFlag && moduleCapabilities && moduleCapabilities[moduleFlag] === false) return false;
   if (item.roles === "ALL") return true;
   const itemScope = (item as { scope?: StaffScope }).scope;
   const requiredScope = (item as { requiredScope?: StaffScope }).requiredScope;
@@ -309,6 +324,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const { data: branding } = usePublicBranding();
+  const { data: moduleCapabilities } = useModuleCapabilities({ enabled: Boolean(user) });
   const { isLoading, isError } = useCurrentUser();
   const { mutate: logout, isPending: loggingOut } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -333,13 +349,11 @@ export default function DashboardLayout({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const effectiveRoles = user?.effectiveRoles?.length
-    ? user.effectiveRoles
-    : user?.roles?.map((role) => role.roleName) ?? (user?.primaryRole ? [user.primaryRole] : []);
-  const effectiveScopes = user?.effectiveScopes ?? user?.staffScope?.scopes ?? [];
+  const effectiveRoles = effectiveRolesOf(user);
+  const effectiveScopes = effectiveScopesOf(user);
   const nav = useMemo(
-    () => ALL_NAV.filter((item) => canSee(item, effectiveRoles, effectiveScopes)),
-    [effectiveRoles, effectiveScopes],
+    () => ALL_NAV.filter((item) => canSee(item, effectiveRoles, effectiveScopes, moduleCapabilities)),
+    [effectiveRoles, effectiveScopes, moduleCapabilities],
   );
   const current = nav.find(
     (item) =>
@@ -461,7 +475,7 @@ export default function DashboardLayout({
                 {user?.email ?? "—"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
-                {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
+                {roleLabel(user?.primaryRole ?? effectiveRoles[0])}
               </p>
             </div>
             <button
@@ -515,7 +529,7 @@ export default function DashboardLayout({
             <Bell className="h-5 w-5" aria-hidden="true" />
           </Link>
           <span className="hidden rounded-full bg-[--color-primary]/10 px-2.5 py-1 text-[11px] font-semibold text-[--color-primary] sm:inline-flex">
-            {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
+            {roleLabel(user?.primaryRole ?? effectiveRoles[0])}
           </span>
         </header>
 

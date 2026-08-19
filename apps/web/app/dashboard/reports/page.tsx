@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -7,9 +7,11 @@ import {
   useEnrolmentStats, useRevenueReport, useCgpaDistribution, useResultsStats,
 } from '@/hooks/use-reports';
 import { cn, formatDate } from '@/lib/utils';
-import type { ReportType } from '@uniportal/types';
+import { effectiveRolesOf, hasEffectiveAnyRole } from '@/lib/authz';
+import { useAuthStore } from '@/stores/auth.store';
+import type { ReportType, RoleName } from '@uniportal/types';
 
-const REPORT_TYPES: { value: ReportType; label: string; desc: string; roles: string[] }[] = [
+const REPORT_TYPES: { value: ReportType; label: string; desc: string; roles: RoleName[] }[] = [
   { value: 'ENROLMENT',          label: 'Enrolment Statistics', desc: 'Students by status, level, gender & mode', roles: ['REGISTRAR','VC','HOD','SUPER_ADMIN'] },
   { value: 'REVENUE',            label: 'Revenue Report',        desc: 'Fee income by gateway and month',         roles: ['BURSAR','VC','SUPER_ADMIN'] },
   { value: 'CGPA_DISTRIBUTION',  label: 'CGPA Distribution',    desc: 'Academic classification breakdown',        roles: ['REGISTRAR','HOD','VC','SUPER_ADMIN'] },
@@ -35,19 +37,41 @@ export default function ReportsPage() {
   const [dateTo, setTo]         = useState('');
   const [page, setPage]         = useState(1);
   const [err, setErr]           = useState('');
-  const [msg, setMsg]           = useState('');
+    const [msg, setMsg]         = useState('');
+  const user = useAuthStore((s) => s.user);
+  const effectiveRoles = effectiveRolesOf(user);
+  const canGenerate = hasEffectiveAnyRole(user, ['REGISTRAR', 'VC', 'BURSAR', 'HR_MANAGER', 'SUPER_ADMIN', 'HOD']);
+  const visibleReportTypes = useMemo(
+    () => REPORT_TYPES.filter((report) => report.roles.some((role) => effectiveRoles.includes(role))),
+    [effectiveRoles],
+  );
+  const canViewEnrolment = hasEffectiveAnyRole(user, ['REGISTRAR', 'VC', 'HOD', 'SUPER_ADMIN']);
+  const canViewRevenue = hasEffectiveAnyRole(user, ['BURSAR', 'VC', 'SUPER_ADMIN']);
+  const canViewCgpa = hasEffectiveAnyRole(user, ['REGISTRAR', 'HOD', 'VC', 'SUPER_ADMIN']);
+  const canViewResults = hasEffectiveAnyRole(user, ['REGISTRAR', 'HOD', 'VC', 'SUPER_ADMIN']);
 
   const { mutate: generate, isPending: generating } = useGenerateReport();
   const { data: jobData, isLoading: jobsLoading }   = useMyReportJobs(page);
 
-  const { data: enrolment, isLoading: enrolLoading }  = useEnrolmentStats();
-  const { data: revenue,   isLoading: revLoading }    = useRevenueReport();
-  const { data: cgpa,      isLoading: cgpaLoading }   = useCgpaDistribution();
-  const { data: results,   isLoading: resLoading }    = useResultsStats();
+  const { data: enrolment, isLoading: enrolLoading }  = useEnrolmentStats(undefined, { enabled: tab === 'live-enrolment' && canViewEnrolment });
+  const { data: revenue,   isLoading: revLoading }    = useRevenueReport(undefined, { enabled: tab === 'live-revenue' && canViewRevenue });
+  const { data: cgpa,      isLoading: cgpaLoading }   = useCgpaDistribution(undefined, { enabled: tab === 'live-cgpa' && canViewCgpa });
+  const { data: results,   isLoading: resLoading }    = useResultsStats(undefined, { enabled: tab === 'live-results' && canViewResults });
+
+  useEffect(() => {
+    if (visibleReportTypes.length && !visibleReportTypes.some((report) => report.value === selectedType)) {
+      setType(visibleReportTypes[0].value);
+    }
+  }, [selectedType, visibleReportTypes]);
 
   const jobs = jobData?.jobs ?? [];
 
+
   const handleGenerate = () => {
+    if (!canGenerate || !visibleReportTypes.some((report) => report.value === selectedType)) {
+      setErr('Your current authorization does not allow report generation.');
+      return;
+    }
     setErr(''); setMsg('');
     generate(
       { reportType: selectedType, reportFormat: format, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined },
@@ -62,12 +86,12 @@ export default function ReportsPage() {
   };
 
   const TABS: { k: Tab; l: string }[] = [
-    { k: 'generate',      l: 'Generate Report' },
-    { k: 'jobs',          l: `Job History (${jobData?.total ?? 0})` },
-    { k: 'live-enrolment',l: 'Enrolment' },
-    { k: 'live-revenue',  l: 'Revenue' },
-    { k: 'live-cgpa',     l: 'CGPA' },
-    { k: 'live-results',  l: 'Results' },
+    ...(canGenerate ? [{ k: 'generate' as Tab, l: 'Generate Report' }] : []),
+    { k: 'jobs', l: `Job History (${jobData?.total ?? 0})` },
+    ...(canViewEnrolment ? [{ k: 'live-enrolment' as Tab, l: 'Enrolment' }] : []),
+    ...(canViewRevenue ? [{ k: 'live-revenue' as Tab, l: 'Revenue' }] : []),
+    ...(canViewCgpa ? [{ k: 'live-cgpa' as Tab, l: 'CGPA' }] : []),
+    ...(canViewResults ? [{ k: 'live-results' as Tab, l: 'Results' }] : []),
   ];
 
   return (
@@ -94,7 +118,7 @@ export default function ReportsPage() {
       {msg && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
 
       {/* ── Generate ─────────────────────────────────────────────────────── */}
-      {tab === 'generate' && (
+      {tab === 'generate' && canGenerate && (
         <div className="space-y-4 max-w-2xl">
           <Card>
             <CardHeader><CardTitle className="text-sm">Configure Report</CardTitle></CardHeader>
@@ -102,7 +126,7 @@ export default function ReportsPage() {
               <div>
                 <label className="text-xs font-medium text-muted-foreground uppercase">Report Type</label>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {REPORT_TYPES.map((rt) => (
+                  {visibleReportTypes.map((rt) => (
                     <button key={rt.value}
                       onClick={() => setType(rt.value)}
                       className={cn(
@@ -150,6 +174,10 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {tab === 'generate' && !canGenerate && (
+        <Card><CardContent className="pt-5"><p className="text-sm font-semibold">Report generation is restricted</p><p className="mt-1 text-sm text-muted-foreground">Your role can review permitted report jobs, but it cannot create new report exports.</p></CardContent></Card>
       )}
 
       {/* ── Job History ───────────────────────────────────────────────────── */}

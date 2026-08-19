@@ -49,6 +49,45 @@ describe('AuthorizationService', () => {
     )).resolves.toBeDefined();
   });
 
+  it('allows a scope-only route when the effective scope matches', async () => {
+    const h = makeHarness();
+    h.prisma.userRole.findMany.mockResolvedValue([
+      { roleName: RoleName.STAFF, staffScope: { scopes: ['health'] } },
+    ]);
+
+    await expect(h.service.assertRouteAccess(
+      { sub: 'user-1' } as any,
+      undefined,
+      ['health'],
+    )).resolves.toBeDefined();
+  });
+
+  it('rejects a scope-only route when the effective scope does not match', async () => {
+    const h = makeHarness();
+    h.prisma.userRole.findMany.mockResolvedValue([
+      { roleName: RoleName.STAFF, staffScope: { scopes: ['library'] } },
+    ]);
+
+    await expect(h.service.assertRouteAccess(
+      { sub: 'user-1' } as any,
+      undefined,
+      ['health'],
+    )).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RBAC_SCOPE_FORBIDDEN' }) });
+  });
+
+  it('allows scope-only institutional overrides without a matching staff scope', async () => {
+    const h = makeHarness();
+    h.prisma.userRole.findMany.mockResolvedValue([
+      { roleName: RoleName.REGISTRAR, staffScope: null },
+    ]);
+
+    await expect(h.service.assertRouteAccess(
+      { sub: 'user-1' } as any,
+      undefined,
+      ['health'],
+    )).resolves.toBeDefined();
+  });
+
   it('rejects self role grants', async () => {
     const h = makeHarness();
     await expect(h.service.assertRoleGrantAllowed({

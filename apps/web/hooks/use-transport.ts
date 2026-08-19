@@ -10,11 +10,12 @@ export const transportKeys = {
   myBookings: ['transport', 'bookings', 'me'] as const,
 };
 
-export function useVehicles() {
+export function useVehicles(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: transportKeys.vehicles,
     queryFn:  () => apiClient.get<VehicleV1[]>('/transport/vehicles'),
     staleTime: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -35,11 +36,12 @@ export function useUpdateVehicleStatus() {
   });
 }
 
-export function useRoutes() {
+export function useRoutes(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: transportKeys.routes,
     queryFn:  () => apiClient.get<TransportRouteV1[]>('/transport/routes'),
     staleTime: 5 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -51,7 +53,7 @@ export function useCreateRoute() {
   });
 }
 
-export function useTrips(filters?: Record<string, string>) {
+export function useTrips(filters?: Record<string, string>, options?: { enabled?: boolean }) {
   const p = new URLSearchParams({ pageSize: '30', ...filters });
   return useQuery({
     queryKey: transportKeys.trips(filters),
@@ -59,6 +61,7 @@ export function useTrips(filters?: Record<string, string>) {
       `/transport/trips?${p.toString()}`,
     ),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -85,11 +88,12 @@ export function useUpdateTripStatus() {
   });
 }
 
-export function useMyBookings() {
+export function useMyBookings(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: transportKeys.myBookings,
     queryFn:  () => apiClient.get<TripBookingV1[]>('/transport/bookings/me'),
     staleTime: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

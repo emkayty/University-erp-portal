@@ -166,6 +166,8 @@ export class CreateApplicantDto {
   @ApiPropertyOptional({ type: [PreviousEducationDto] }) @IsOptional() @IsArray() @ValidateNested({ each: true }) @Type(() => PreviousEducationDto) previousEducation?: PreviousEducationDto[];
   @ApiPropertyOptional({ description: 'Candidate accepted the current application declaration and terms.' }) @IsOptional() @IsBoolean() declarationAccepted?: boolean;
   @ApiPropertyOptional({ description: 'Candidate acknowledged the current institutional privacy notice.' }) @IsOptional() @IsBoolean() privacyNoticeAccepted?: boolean;
+  @ApiPropertyOptional({ description: 'Optional Cloudflare Turnstile token when admissions human verification is enabled.' }) @IsOptional() @IsString() @Length(10, 4096) humanVerificationToken?: string;
+  @ApiPropertyOptional({ writeOnly: true, description: 'Invisible bot-trap field; legitimate applicants must leave it empty.' }) @IsOptional() @IsString() @Length(0, 200) website?: string;
   @ApiPropertyOptional({ description: 'Opaque pre-submission passport-photo proof issued by the API after upload verification.' }) @IsOptional() @IsString() @Length(32,512) passportPhotoProof?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(10,11) jambRegNo?: string;
   @ApiPropertyOptional() @IsOptional() @IsInt() @Min(0) @Max(400) jambScore?: number;

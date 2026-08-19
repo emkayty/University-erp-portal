@@ -69,6 +69,8 @@ ALTER TABLE course_registrations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE data_subject_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE security_incidents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE graduation_candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Notification" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "NotificationPreference" ENABLE ROW LEVEL SECURITY;
 SQL
 
 # Migration 0016 is a known-good normalization of the protected-table policies.
@@ -112,3 +114,17 @@ SQL
 else
   echo "RLS policy baseline already present; retaining existing policy definitions."
 fi
+
+# Notification tables are created by the Prisma schema rather than the historic
+# migration chain. Keep their request-identity policies in this supported
+# post-schema hardening path as well as in migration 0052, so db-push and
+# migration-based environments receive the same isolation contract.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+DROP POLICY IF EXISTS "notification_owner" ON "Notification";
+DROP POLICY IF EXISTS "notification_preference_owner" ON "NotificationPreference";
+CREATE POLICY "notification_owner" ON "Notification"
+  USING ("userId" = current_setting('app.current_user_id', true));
+CREATE POLICY "notification_preference_owner" ON "NotificationPreference"
+  USING ("userId" = current_setting('app.current_user_id', true))
+  WITH CHECK ("userId" = current_setting('app.current_user_id', true));
+SQL

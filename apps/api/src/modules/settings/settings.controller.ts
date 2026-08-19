@@ -22,6 +22,16 @@ export class SettingsController {
     return { success: true, data: await this.svc.getPublicBranding() };
   }
 
+  /**
+   * Authenticated navigation capability state. Only module rollout flags are
+   * returned; workflow and experimental flags remain administrator-only.
+   */
+  @Get('capabilities')
+  @ApiOperation({ summary: 'Get enabled module capabilities for the current session' })
+  async getCapabilities() {
+    return { success: true, data: await this.svc.getModuleCapabilities() };
+  }
+
   @Get()
   @Roles('SUPER_ADMIN', 'VC', 'REGISTRAR', 'BURSAR', 'HR_MANAGER')
   @ApiOperation({ summary: 'Get institution settings' })

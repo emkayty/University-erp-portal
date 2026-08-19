@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
@@ -14,6 +14,16 @@ interface RawDomainEvent {
   created_at: Date; processed_at: Date | null;
   dead_lettered_at: Date | null; next_attempt_at: Date | null;
   attempts: number; last_error: string | null;
+}
+
+export interface DeadLetterEvent {
+  id: string;
+  eventType: string;
+  payload: unknown;
+  createdAt: Date;
+  deadLetteredAt: Date | null;
+  attempts: number;
+  lastError: string | null;
 }
 
 /**
@@ -78,6 +88,68 @@ export class OutboxService {
       select: { id: true },
     });
     return event.id;
+  }
+
+  /**
+   * Returns a bounded operator view of dead-lettered events. Reads use the
+   * trusted system transaction because this endpoint is an administrative
+   * reliability operation, not an end-user domain query.
+   */
+  async listDeadLetters(limit = 50): Promise<DeadLetterEvent[]> {
+    const boundedLimit = Math.min(Math.max(Math.trunc(limit) || 50, 1), 100);
+    return this.prisma.runSystem(async (tx) => {
+      const rows = await tx.$queryRaw<RawDomainEvent[]>`
+        SELECT id, "eventType" AS event_type, payload, "createdAt" AS created_at,
+               "processedAt" AS processed_at, "deadLetteredAt" AS dead_lettered_at,
+               "nextAttemptAt" AS next_attempt_at, attempts, "lastError" AS last_error
+        FROM domain_events
+        WHERE "deadLetteredAt" IS NOT NULL AND "processedAt" IS NULL
+        ORDER BY "deadLetteredAt" DESC
+        LIMIT ${Prisma.raw(String(boundedLimit))}
+      `;
+      return rows.map((row) => ({
+        id: row.id,
+        eventType: row.event_type,
+        payload: row.payload,
+        createdAt: row.created_at,
+        deadLetteredAt: row.dead_lettered_at,
+        attempts: row.attempts,
+        lastError: row.last_error,
+      }));
+    });
+  }
+
+  /**
+   * Atomically makes one dead-letter eligible for the normal worker-owned
+   * dispatcher again. It does not enqueue directly from the HTTP process;
+   * the worker scheduler remains the sole outbox poller and BullMQ owner.
+   */
+  async replayDeadLetter(eventId: string): Promise<{ id: string; eventType: string; status: 'QUEUED_FOR_REPLAY' }> {
+    return this.prisma.runSystem(async (tx) => {
+      const rows = await tx.$queryRaw<RawDomainEvent[]>`
+        SELECT id, "eventType" AS event_type, payload, "createdAt" AS created_at,
+               "processedAt" AS processed_at, "deadLetteredAt" AS dead_lettered_at,
+               "nextAttemptAt" AS next_attempt_at, attempts, "lastError" AS last_error
+        FROM domain_events
+        WHERE id = ${eventId}::uuid
+        FOR UPDATE
+      `;
+      const event = rows[0];
+      if (!event) throw new NotFoundException('Dead-letter event not found');
+      if (event.processed_at) throw new ConflictException('Processed events cannot be replayed');
+      if (!event.dead_lettered_at) throw new ConflictException('Only dead-lettered events can be replayed');
+
+      await tx.$executeRaw`
+        UPDATE domain_events
+        SET attempts = 0,
+            "lastError" = NULL,
+            "nextAttemptAt" = NOW(),
+            "deadLetteredAt" = NULL
+        WHERE id = ${eventId}::uuid
+      `;
+
+      return { id: event.id, eventType: event.event_type, status: 'QUEUED_FOR_REPLAY' as const };
+    });
   }
 
   /** Called only by the worker-owned OutboxDispatchScheduler. */

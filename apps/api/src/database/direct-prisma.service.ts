@@ -104,6 +104,8 @@ export class DirectPrismaService implements OnModuleInit, OnModuleDestroy {
   get securityIncident() { return this.base.securityIncident; }
   get graduationCandidate() { return this.base.graduationCandidate; }
   get applicant() { return this.base.applicant; }
+  get notification() { return this.base.notification; }
+  get notificationPreference() { return this.base.notificationPreference; }
   get application() { return this.base.application; }
   get user() { return this.base.user; }
   get userRole() { return this.base.userRole; }

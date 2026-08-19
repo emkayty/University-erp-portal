@@ -38,6 +38,24 @@ describe('database/RLS production-role integration', () => {
     expect(Number(rows[0]?.count ?? 0)).toBe(0);
   });
 
+  it('uses the canonical current_user_id variable for enterprise owner policies', async () => {
+    const policies = await db.$queryRaw<Array<{ tablename: string; policyname: string; qual: string | null; with_check: string | null }>>`
+      SELECT tablename, policyname, qual, with_check
+      FROM pg_policies
+      WHERE schemaname = 'public'
+        AND ((tablename = 'Notification' AND policyname = 'notification_owner')
+          OR (tablename = 'NotificationPreference' AND policyname = 'notification_preference_owner'))
+      ORDER BY tablename
+    `;
+
+    expect(policies).toHaveLength(2);
+    for (const policy of policies) {
+      const expression = `${policy.qual ?? ''} ${policy.with_check ?? ''}`;
+      expect(expression).toContain('app.current_user_id');
+      expect(expression).not.toContain('app.user_id');
+    }
+  });
+
   it('scopes request identity to one transaction and does not leak it', async () => {
     const marker = '00000000-0000-0000-0000-000000000001';
     await db.$transaction(async (tx) => {

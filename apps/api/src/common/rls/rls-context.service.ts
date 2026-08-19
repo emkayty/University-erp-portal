@@ -41,6 +41,7 @@ export interface RlsIdentity {
 export const FORCE_RLS_MODELS = new Set([
   'Student', 'StudentResult', 'Payment', 'Payslip',
   'CourseRegistration', 'DataSubjectRequest', 'SecurityIncident', 'GraduationCandidate',
+  'Notification', 'NotificationPreference',
 ]);
 
 @Injectable()

@@ -49,6 +49,12 @@ describe('API route contracts', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, SettingsController.prototype.getPublicBranding)).toBe(true);
   });
 
+  it('exposes module capabilities as an authenticated versioned route', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, SettingsController.prototype.getCapabilities)).toBe('capabilities');
+    expect(Reflect.getMetadata(VERSION_METADATA, SettingsController.prototype.getCapabilities)).toBeUndefined();
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, SettingsController.prototype.getCapabilities)).toBeUndefined();
+  });
+
   it('exposes the target user id in the administrative MFA recovery route', () => {
     expect(Reflect.getMetadata(PATH_METADATA, AuthController.prototype.disableMfa)).toBe('mfa/:userId');
   });

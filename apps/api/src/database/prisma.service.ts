@@ -575,13 +575,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.mfaBackupCode;
   }
   get notification() {
-    return this.client.notification;
+    return (this.rlsContext.getClient() ?? this.system).notification;
   }
   get notificationLog() {
     return this.client.notificationLog;
   }
   get notificationPreference() {
-    return this.client.notificationPreference;
+    return (this.rlsContext.getClient() ?? this.system).notificationPreference;
   }
   get notificationTemplate() {
     return this.client.notificationTemplate;

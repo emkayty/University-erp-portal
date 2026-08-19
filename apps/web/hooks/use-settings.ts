@@ -7,6 +7,7 @@ import { apiClient, ApiClientError } from '@/lib/api-client';
 export const settingsKeys = {
   root: ['settings'] as const,
   flags: ['settings', 'flags'] as const,
+  moduleCapabilities: ['settings', 'module-capabilities'] as const,
   publicBranding: ['settings', 'public-branding'] as const,
 };
 
@@ -48,6 +49,24 @@ export function useFeatureFlags() {
     queryKey: settingsKeys.flags,
     queryFn:  () => apiClient.get<Record<string, boolean>>('/settings/feature-flags'),
     staleTime: 5 * 60_000,
+  });
+}
+
+export type ModuleCapabilitiesV1 = {
+  module_lms: boolean;
+  module_health: boolean;
+  module_transport: boolean;
+  module_research: boolean;
+  module_alumni: boolean;
+};
+
+export function useModuleCapabilities(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: settingsKeys.moduleCapabilities,
+    queryFn: () => apiClient.get<ModuleCapabilitiesV1>('/settings/capabilities'),
+    staleTime: 5 * 60_000,
+    retry: 1,
+    enabled: options?.enabled ?? true,
   });
 }
 

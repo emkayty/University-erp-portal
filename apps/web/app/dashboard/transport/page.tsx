@@ -7,6 +7,8 @@ import {
   useBookTrip, useCancelBooking, useUpdateTripStatus,
 } from '@/hooks/use-transport';
 import { useAuthStore } from '@/stores/auth.store';
+import { useModuleCapabilities } from '@/hooks/use-settings';
+import { effectiveRolesOf, hasEffectiveScope } from '@/lib/authz';
 import { cn, formatDate } from '@/lib/utils';
 
 const TRIP_COLORS: Record<string, string> = {
@@ -22,7 +24,11 @@ type Tab = 'trips' | 'fleet' | 'routes' | 'my-bookings';
 
 export default function TransportPage() {
   const user = useAuthStore((s) => s.user);
-  const isTransportStaff = user?.staffScope?.scopes?.includes('transport');
+  const effectiveRoles = effectiveRolesOf(user);
+  const isTransportStaff = effectiveRoles.includes('SUPER_ADMIN')
+    || (effectiveRoles.includes('STAFF') && hasEffectiveScope(user, 'transport'));
+  const { data: moduleCapabilities, isLoading: capabilitiesLoading, isError: capabilitiesError, refetch: refetchCapabilities } = useModuleCapabilities();
+  const moduleEnabled = moduleCapabilities?.module_transport === true;
 
   const [tab, setTab]          = useState<Tab>('trips');
   const [routeFilter, setRoute] = useState('');
@@ -35,16 +41,23 @@ export default function TransportPage() {
     ...(dateFilter  ? { date: dateFilter }     : {}),
   };
 
-  const { data: tripData,    isLoading: tripsLoading }  = useTrips(Object.keys(filters).length ? filters : undefined);
-  const { data: vehicles = [], isLoading: vehicleLoading } = useVehicles();
-  const { data: routes   = [] }                           = useRoutes();
-  const { data: myBookings = [] }                         = useMyBookings();
+  const { data: tripData,    isLoading: tripsLoading }  = useTrips(Object.keys(filters).length ? filters : undefined, { enabled: moduleEnabled });
+  const { data: vehicles = [], isLoading: vehicleLoading } = useVehicles({ enabled: moduleEnabled && isTransportStaff });
+  const { data: routes   = [] }                           = useRoutes({ enabled: moduleEnabled });
+  const { data: myBookings = [] }                         = useMyBookings({ enabled: moduleEnabled });
 
   const { mutate: bookTrip,   isPending: booking }    = useBookTrip();
   const { mutate: cancelBk,   isPending: cancelling } = useCancelBooking();
   const { mutate: updateTrip, isPending: updatingTrip } = useUpdateTripStatus();
 
   const trips = tripData?.trips ?? [];
+
+  if (capabilitiesLoading) {
+    return <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground" role="status">Checking Transport access…</div>;
+  }
+  if (capabilitiesError || !moduleEnabled) {
+    return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900" role="alert"><p className="font-semibold">Transport is not available</p><p className="mt-1">This module is disabled for the institution or its capability state could not be loaded.</p><Button className="mt-4" variant="outline" onClick={() => void refetchCapabilities()}>Retry</Button></div>;
+  }
 
   const handleBook = (tripId: string) => {
     setErr(''); setMsg('');

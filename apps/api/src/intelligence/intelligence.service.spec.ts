@@ -32,6 +32,14 @@ describe('IntelligenceService workflows', () => {
     expect(prisma.auditLog.create).toHaveBeenCalled();
   });
 
+  it('uses effective delegated roles for alert privilege checks', async () => {
+    prisma.enterpriseAlert.findUniqueOrThrow.mockResolvedValue({ id: 'alert-1', assignedToId: 'other', status: AlertStatus.ACKNOWLEDGED });
+    prisma.enterpriseAlert.update.mockResolvedValue({ id: 'alert-1', status: AlertStatus.RESOLVED });
+
+    await expect(service.resolveAlert('alert-1', 'actor-1', ['STAFF', 'REGISTRAR'])).resolves.toBeDefined();
+    expect(prisma.enterpriseAlert.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: AlertStatus.RESOLVED }) }));
+  });
+
   it('claims an unassigned task atomically', async () => {
     prisma.automationTask.findUniqueOrThrow.mockResolvedValue({ id: 'task-1', status: 'OPEN', assignedToId: null });
     await service.claimTask('task-1', 'actor-1');

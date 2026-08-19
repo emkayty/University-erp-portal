@@ -104,4 +104,39 @@ describe('OutboxService', () => {
     expect(tx.$executeRaw).toHaveBeenCalled();
     expect(admissions.add).toHaveBeenCalled();
   });
+
+  it('lists a bounded view of dead-lettered events', async () => {
+    const deadLetteredAt = new Date('2026-08-19T20:00:00.000Z');
+    tx.$queryRaw.mockResolvedValue([{
+      id: 'event-poison', event_type: 'example.failed', payload: { entityId: 'entity-1' },
+      created_at: new Date('2026-08-19T19:00:00.000Z'), processed_at: null,
+      dead_lettered_at: deadLetteredAt, next_attempt_at: null, attempts: 10, last_error: 'redis unavailable',
+    }]);
+
+    await expect(service.listDeadLetters(1000)).resolves.toEqual([expect.objectContaining({
+      id: 'event-poison', eventType: 'example.failed', deadLetteredAt, attempts: 10,
+    })]);
+  });
+
+  it('atomically makes a dead-letter eligible for worker replay', async () => {
+    tx.$queryRaw.mockResolvedValue([{
+      id: 'event-poison', event_type: 'example.failed', payload: {}, created_at: new Date(), processed_at: null,
+      dead_lettered_at: new Date(), next_attempt_at: null, attempts: 10, last_error: 'redis unavailable',
+    }]);
+
+    await expect(service.replayDeadLetter('event-poison')).resolves.toEqual({
+      id: 'event-poison', eventType: 'example.failed', status: 'QUEUED_FOR_REPLAY',
+    });
+    expect(tx.$executeRaw).toHaveBeenCalled();
+  });
+
+  it('rejects replay of an event that is not currently dead-lettered', async () => {
+    tx.$queryRaw.mockResolvedValue([{
+      id: 'event-live', event_type: 'example.created', payload: {}, created_at: new Date(), processed_at: null,
+      dead_lettered_at: null, next_attempt_at: null, attempts: 0, last_error: null,
+    }]);
+
+    await expect(service.replayDeadLetter('event-live')).rejects.toThrow('Only dead-lettered events can be replayed');
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+  });
 });

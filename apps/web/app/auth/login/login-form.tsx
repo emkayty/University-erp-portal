@@ -237,7 +237,7 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setStep('backup')}
-                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full min-h-11 text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 Use a backup code instead
               </button>
@@ -315,7 +315,7 @@ export function LoginForm() {
               <Label htmlFor="password" required>Password</Label>
               <Link
                 href="/auth/forgot-password"
-                className="text-xs text-[--color-primary] hover:underline focus-visible:outline-none focus-visible:underline"
+                className="inline-flex min-h-11 items-center text-xs text-[--color-primary] hover:underline focus-visible:outline-none focus-visible:underline"
               >
                 Forgot password?
               </Link>
@@ -330,7 +330,7 @@ export function LoginForm() {
                 error={credForm.formState.errors.password?.message}
                 {...credForm.register('password')}
               />
-              <button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="absolute right-1 top-1 inline-flex min-h-10 min-w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible}>
+              <button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="absolute right-1 top-1 inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible}>
                 {passwordVisible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>

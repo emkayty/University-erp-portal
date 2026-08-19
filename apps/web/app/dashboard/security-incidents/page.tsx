@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useCreateSecurityIncident, useSecurityIncidentAction, useSecurityIncidents } from '@/hooks/use-security-incidents';
+import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole, hasEffectiveScope } from '@/lib/authz';
 
 const incidentTypes = ['CREDENTIAL_BREACH', 'DATA_LEAK', 'UNAUTHORISED_ACCESS', 'MALWARE', 'PHYSICAL_BREACH', 'THIRD_PARTY_BREACH', 'OTHER'];
 
@@ -13,10 +15,16 @@ export default function SecurityIncidentsPage() {
   const [description, setDescription] = useState('');
   const [affectedUserIds, setAffectedUserIds] = useState('');
   const [notes, setNotes] = useState('');
+  const user = useAuthStore((s) => s.user);
+  const canManageIncidents = hasEffectiveRole(user, 'SUPER_ADMIN') || hasEffectiveScope(user, 'dpo');
   const create = useCreateSecurityIncident();
   const action = useSecurityIncidentAction();
-  const { data: incidents = [], isLoading, isError } = useSecurityIncidents();
+  const { data: incidents = [], isLoading, isError } = useSecurityIncidents({ enabled: canManageIncidents });
   const submit = (event: React.FormEvent) => { event.preventDefault(); create.mutate({ type, description, affectedUserIds: affectedUserIds.split(',').map((id) => id.trim()).filter(Boolean) }, { onSuccess: () => { setDescription(''); setAffectedUserIds(''); } }); };
+
+  if (!canManageIncidents) {
+    return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900" role="alert"><p className="font-semibold">Security incident operations are restricted</p><p className="mt-1">A Super Administrator or authorized DPO scope is required to access this workflow.</p></div>;
+  }
 
   return <div className="space-y-6">
     <header><p className="text-sm text-muted-foreground">Incident response and statutory workflow</p><h1 className="text-2xl font-semibold">Security Incidents</h1><p className="mt-1 max-w-3xl text-sm text-muted-foreground">Record incidents, contain affected sessions, confirm the out-of-band regulatory filing, and resolve only after an accountable DPO decision.</p></header>

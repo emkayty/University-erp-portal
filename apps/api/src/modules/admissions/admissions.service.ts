@@ -363,6 +363,38 @@ export class AdmissionsService {
     return { id: updated.id, status: updated.status, reviewedAt: updated.reviewedAt, completedAt: updated.completedAt };
   }
 
+  private async verifyHumanSubmission(dto: CreateApplicantDto): Promise<void> {
+    if (dto.website?.trim()) {
+      throw new BadRequestException('Automated admissions submissions are not accepted.');
+    }
+
+    const secret = process.env.ADMISSIONS_TURNSTILE_SECRET_KEY?.trim();
+    const verificationRequired = process.env.ADMISSIONS_TURNSTILE_REQUIRED === 'true' || Boolean(secret);
+    if (!verificationRequired) return;
+    if (!secret) {
+      throw new ServiceUnavailableException('Admissions human verification is not configured.');
+    }
+
+    const token = dto.humanVerificationToken?.trim();
+    if (!token) throw new BadRequestException('Complete the human verification challenge before submitting.');
+
+    try {
+      const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ secret, response: token }),
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) throw new Error(`Turnstile returned HTTP ${response.status}`);
+      const result = await response.json() as { success?: boolean };
+      if (!result.success) throw new BadRequestException('Human verification could not be confirmed. Please try again.');
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.warn(`Admissions human verification unavailable: ${String(error)}`);
+      throw new ServiceUnavailableException('Human verification is temporarily unavailable. Please try again.');
+    }
+  }
+
   async apply(dto: CreateApplicantDto, idempotencyKey?: string): Promise<{ id: string; applicationNo: string; completionPercent: number; trackingToken: string; paymentStatus: ApplicationPaymentStatus; applicationFee: { required: boolean; amount: Prisma.Decimal | null; currency: string } }> {
     this.requireTrackingSecret();
     if (!idempotencyKey) throw new BadRequestException('A submission idempotency key is required. Please retry from the application form.');
@@ -371,6 +403,7 @@ export class AdmissionsService {
       const previous = await this.findIdempotentReplay(idempotencyKey);
       if (previous) return previous;
     }
+    await this.verifyHumanSubmission(dto);
     const cycle = await this.prisma.admissionCycle.findUniqueOrThrow({ where: { id: dto.admissionCycleId } });
     const admissionType = cycle.admissionType as AdmissionType;
     const now = new Date();

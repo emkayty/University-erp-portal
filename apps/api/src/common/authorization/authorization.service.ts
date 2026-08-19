@@ -108,14 +108,15 @@ export class AuthorizationService {
     requiredScopes: string[] | undefined,
   ): Promise<EffectiveAuthorizationContext> {
     const context = await this.getEffectiveContext(user.sub);
-    if (!requiredRoles || requiredRoles.length === 0) return context;
 
-    const roleAllowed = requiredRoles.some((role) => context.roles.includes(role));
-    if (!roleAllowed) {
-      throw new ForbiddenException({
-        code: 'RBAC_FORBIDDEN',
-        message: `This action requires one of: ${requiredRoles.join(', ')}`,
-      });
+    if (requiredRoles?.length) {
+      const roleAllowed = requiredRoles.some((role) => context.roles.includes(role));
+      if (!roleAllowed) {
+        throw new ForbiddenException({
+          code: 'RBAC_FORBIDDEN',
+          message: `This action requires one of: ${requiredRoles.join(', ')}`,
+        });
+      }
     }
 
     if (requiredScopes?.length) {

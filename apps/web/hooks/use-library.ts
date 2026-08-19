@@ -9,7 +9,7 @@ export const libraryKeys = {
   overdue: ['library', 'loans', 'overdue'] as const,
 };
 
-export function useLibrarySearch(q?: string, category?: string, page = 1) {
+export function useLibrarySearch(q?: string, category?: string, page = 1, options?: { enabled?: boolean }) {
   const p = new URLSearchParams();
   if (q)        p.set('q',        q);
   if (category) p.set('category', category);
@@ -20,14 +20,16 @@ export function useLibrarySearch(q?: string, category?: string, page = 1) {
       `/library/items?${p.toString()}`
     ),
     staleTime: 2 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useMyLoans() {
+export function useMyLoans(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: libraryKeys.myLoans,
     queryFn:  () => apiClient.get<LibraryLoanV1[]>('/library/loans/my'),
     staleTime: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

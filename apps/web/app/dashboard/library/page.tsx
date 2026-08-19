@@ -22,8 +22,8 @@ export default function LibraryPage() {
   const [msg, setMsg]       = useState('');
   const [returnResult, setReturn] = useState<{ overdueDays: number; fineAmount: number } | null>(null);
 
-  const { data: searchRes, isLoading } = useLibrarySearch(query || undefined, cat || undefined);
-  const { data: loans = [] }           = useMyLoans();
+  const { data: searchRes, isLoading } = useLibrarySearch(query || undefined, cat || undefined, 1, { enabled: Boolean(user) });
+  const { data: loans = [] }           = useMyLoans({ enabled: Boolean(user) });
   const { mutate: borrow,  isPending: borrowing } = useBorrowItem();
   const { mutate: ret,     isPending: returning } = useReturnItem();
   const { mutate: renew,   isPending: renewing  } = useRenewLoan();

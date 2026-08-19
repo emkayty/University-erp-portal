@@ -42,9 +42,10 @@ export class RolesGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    // Routes without @Roles still require authentication through JwtAuthGuard,
-    // but do not impose an additional role restriction here.
-    if (!requiredRoles?.length) return true;
+    // Public routes return above. Any route carrying either role or scope
+    // metadata must be evaluated centrally; scope-only routes are still
+    // protected and must not silently fall through as authenticated-only.
+    if (!requiredRoles?.length && !requiredScopes?.length) return true;
 
     const request = context.switchToHttp().getRequest<Request & { user?: JwtPayload }>();
     const user = request.user;

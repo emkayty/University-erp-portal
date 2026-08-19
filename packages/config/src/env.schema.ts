@@ -60,6 +60,8 @@ export const envSchema = z.object({
   // AdmissionsService refuses public application/status operations unless this
   // secret is provisioned; optional here so admin/read-only processes can boot.
   ADMISSIONS_TRACKING_SECRET: z.string().min(32).optional(),
+  ADMISSIONS_TURNSTILE_SECRET_KEY: z.string().min(10).optional(),
+  ADMISSIONS_TURNSTILE_REQUIRED: envBoolean.default(false),
 
   // ─── AWS ──────────────────────────────────────────────────────────────────
   AWS_REGION: z.string().default('us-east-1'),

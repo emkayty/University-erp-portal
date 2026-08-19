@@ -8,8 +8,12 @@ export type SecurityIncident = {
   detectedAt: string; containedAt?: string | null; nitdaNotifiedAt?: string | null; resolvedAt?: string | null;
 };
 
-export function useSecurityIncidents() {
-  return useQuery({ queryKey: ['security', 'incidents'], queryFn: () => apiClient.get<SecurityIncident[]>('/security/incidents') });
+export function useSecurityIncidents(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['security', 'incidents'],
+    queryFn: () => apiClient.get<SecurityIncident[]>('/security/incidents'),
+    enabled: options?.enabled ?? true,
+  });
 }
 
 function refresh(qc: ReturnType<typeof useQueryClient>) {

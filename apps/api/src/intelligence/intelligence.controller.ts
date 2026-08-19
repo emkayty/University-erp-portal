@@ -16,13 +16,13 @@ export class IntelligenceController {
   @Get('alerts')
   @ApiOperation({ summary: 'List enterprise alerts visible to the current staff member' })
   async alerts(@Query('status') status?: string, @Query('domain') domain?: string, @CurrentUser() user?: JwtPayload) {
-    return this.intelligence.listAlerts({ status, domain, actorId: user?.sub, role: user?.role });
+    return this.intelligence.listAlerts({ status, domain, actorId: user?.sub, roles: user?.roles ?? (user?.role ? [user.role] : undefined) });
   }
 
   @Get('alerts/:id')
   @ApiOperation({ summary: 'Get an enterprise alert' })
   async alert(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user?: JwtPayload) {
-    return this.intelligence.getAlert(id, user?.sub, user?.role);
+    return this.intelligence.getAlert(id, user?.sub, user?.roles ?? (user?.role ? [user.role] : undefined));
   }
 
   @Patch('alerts/:id/acknowledge')
@@ -34,19 +34,19 @@ export class IntelligenceController {
   @Patch('alerts/:id/resolve')
   @ApiOperation({ summary: 'Resolve an enterprise alert' })
   async resolve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return this.intelligence.resolveAlert(id, user.sub, user.role);
+    return this.intelligence.resolveAlert(id, user.sub, user.roles ?? [user.role]);
   }
 
   @Patch('alerts/:id/dismiss')
   @ApiOperation({ summary: 'Dismiss an enterprise alert' })
   async dismiss(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
-    return this.intelligence.dismissAlert(id, user.sub, user.role);
+    return this.intelligence.dismissAlert(id, user.sub, user.roles ?? [user.role]);
   }
 
   @Get('tasks')
   @ApiOperation({ summary: 'List human-review automation tasks' })
   async tasks(@Query('status') status?: string, @Query('domain') domain?: string, @CurrentUser() user?: JwtPayload) {
-    return this.intelligence.listTasks({ status, domain, actorId: user?.sub, role: user?.role });
+    return this.intelligence.listTasks({ status, domain, actorId: user?.sub, roles: user?.roles ?? (user?.role ? [user.role] : undefined) });
   }
 
   @Post('tasks/:id/claim')
@@ -60,13 +60,13 @@ export class IntelligenceController {
   @Roles('SUPER_ADMIN', 'VC', 'REGISTRAR')
   @ApiOperation({ summary: 'Assign an automation task to an active user' })
   async assignTask(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignTaskDto, @CurrentUser() user: JwtPayload) {
-    return this.intelligence.assignTask(id, dto.assigneeId, user.sub, user.role);
+    return this.intelligence.assignTask(id, dto.assigneeId, user.sub, user.roles ?? [user.role]);
   }
 
   @Patch('tasks/:id/status')
   @Roles('SUPER_ADMIN', 'VC', 'REGISTRAR', 'STAFF')
   @ApiOperation({ summary: 'Advance or reopen an automation task' })
   async updateTaskStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTaskStatusDto, @CurrentUser() user: JwtPayload) {
-    return this.intelligence.updateTaskStatus(id, dto.status, user.sub, user.role, dto.note);
+    return this.intelligence.updateTaskStatus(id, dto.status, user.sub, user.roles ?? [user.role], dto.note);
   }
 }

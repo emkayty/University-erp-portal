@@ -3,6 +3,8 @@ import { AlertStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type { TaskStatus } from './intelligence.dto';
 
+type AuthorizationRoles = string | readonly string[];
+
 type RuleDefinition = {
   code: string;
   name: string;
@@ -100,12 +102,12 @@ export class IntelligenceService {
       requiresHumanReview: ['REQUEST_REVIEW', 'ESCALATE', 'FLAG'].includes(action.type),
     }));
   }
-  async listAlerts(filters: { status?: string; domain?: string; actorId?: string; role?: string } = {}) {
+  async listAlerts(filters: { status?: string; domain?: string; actorId?: string; roles?: AuthorizationRoles; role?: string } = {}) {
     return this.prisma.enterpriseAlert.findMany({
       where: {
         ...(filters.status ? { status: filters.status as any } : {}),
         ...(filters.domain ? { domain: filters.domain } : {}),
-        ...(filters.actorId && !['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(filters.role ?? '')
+        ...(filters.actorId && !this.hasPrivilegedRole(filters.roles ?? filters.role)
           ? { OR: [{ assignedToId: null }, { assignedToId: filters.actorId }] }
           : {}),
       },
@@ -114,20 +116,20 @@ export class IntelligenceService {
     });
   }
 
-  async getAlert(id: string, actorId?: string, role?: string) {
+  async getAlert(id: string, actorId?: string, roles?: AuthorizationRoles) {
     const alert = await this.prisma.enterpriseAlert.findUniqueOrThrow({ where: { id } });
-    if (alert.assignedToId && actorId && !['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role ?? '') && alert.assignedToId !== actorId) {
+    if (alert.assignedToId && actorId && !this.hasPrivilegedRole(roles) && alert.assignedToId !== actorId) {
       throw new ForbiddenException('This alert is not assigned to the current user.');
     }
     return alert;
   }
 
-  async listTasks(filters: { status?: string; domain?: string; actorId?: string; role?: string } = {}) {
+  async listTasks(filters: { status?: string; domain?: string; actorId?: string; roles?: AuthorizationRoles; role?: string } = {}) {
     return this.prisma.automationTask.findMany({
       where: {
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.domain ? { domain: filters.domain } : {}),
-        ...(filters.actorId && !['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(filters.role ?? '')
+        ...(filters.actorId && !this.hasPrivilegedRole(filters.roles ?? filters.role)
           ? { OR: [{ assignedToId: null }, { assignedToId: filters.actorId }] }
           : {}),
       },
@@ -151,9 +153,9 @@ export class IntelligenceService {
     return updated;
   }
 
-  async resolveAlert(alertId: string, actorId: string, role: string) {
+  async resolveAlert(alertId: string, actorId: string, roles: AuthorizationRoles) {
     const alert = await this.prisma.enterpriseAlert.findUniqueOrThrow({ where: { id: alertId } });
-    this.assertAlertActorCanAct(alert.assignedToId, actorId, role);
+    this.assertAlertActorCanAct(alert.assignedToId, actorId, roles);
     if (alert.status === AlertStatus.RESOLVED) return alert;
     if (alert.status === AlertStatus.DISMISSED) throw new ConflictException({ code: 'INVALID_ALERT_TRANSITION', message: 'Dismissed alerts cannot be resolved.' });
     const updated = await this.prisma.enterpriseAlert.update({ where: { id: alertId }, data: { status: AlertStatus.RESOLVED, resolvedAt: new Date() } });
@@ -163,9 +165,9 @@ export class IntelligenceService {
     return updated;
   }
 
-  async dismissAlert(alertId: string, actorId: string, role: string) {
+  async dismissAlert(alertId: string, actorId: string, roles: AuthorizationRoles) {
     const alert = await this.prisma.enterpriseAlert.findUniqueOrThrow({ where: { id: alertId } });
-    this.assertAlertActorCanAct(alert.assignedToId, actorId, role);
+    this.assertAlertActorCanAct(alert.assignedToId, actorId, roles);
     if (alert.status === AlertStatus.DISMISSED) return alert;
     if (alert.status === AlertStatus.RESOLVED) throw new ConflictException({ code: 'INVALID_ALERT_TRANSITION', message: 'Resolved alerts cannot be dismissed.' });
     const updated = await this.prisma.enterpriseAlert.update({ where: { id: alertId }, data: { status: AlertStatus.DISMISSED, resolvedAt: new Date() } });
@@ -195,8 +197,8 @@ export class IntelligenceService {
     return claimed;
   }
 
-  async assignTask(taskId: string, assigneeId: string, actorId: string, role: string) {
-    this.assertPrivilegedOperator(role);
+  async assignTask(taskId: string, assigneeId: string, actorId: string, roles: AuthorizationRoles) {
+    this.assertPrivilegedOperator(roles);
     const [task, assignee] = await Promise.all([
       this.prisma.automationTask.findUniqueOrThrow({ where: { id: taskId } }),
       this.prisma.user.findUnique({ where: { id: assigneeId }, select: { id: true, isActive: true } }),
@@ -210,10 +212,10 @@ export class IntelligenceService {
     return updated;
   }
 
-  async updateTaskStatus(taskId: string, status: TaskStatus, actorId: string, role: string, note?: string) {
+  async updateTaskStatus(taskId: string, status: TaskStatus, actorId: string, roles: AuthorizationRoles, note?: string) {
     const task = await this.prisma.automationTask.findUniqueOrThrow({ where: { id: taskId } });
     if (task.status === status) return task;
-    const privileged = ['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role);
+    const privileged = this.hasPrivilegedRole(roles);
     if (!privileged && task.assignedToId !== actorId) throw new ForbiddenException('Only the assigned operator can update this task.');
     const transitions: Record<string, string[]> = {
       OPEN: ['IN_PROGRESS', 'CANCELLED'], IN_PROGRESS: ['OPEN', 'COMPLETED', 'CANCELLED'], COMPLETED: [], CANCELLED: [],
@@ -226,12 +228,17 @@ export class IntelligenceService {
     return updated;
   }
 
-  private assertPrivilegedOperator(role: string) {
-    if (!['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role)) throw new ForbiddenException('Only privileged operators may assign tasks.');
+  private assertPrivilegedOperator(roles: AuthorizationRoles) {
+    if (!this.hasPrivilegedRole(roles)) throw new ForbiddenException('Only privileged operators may assign tasks.');
   }
 
-  private assertAlertActorCanAct(assignedToId: string | null, actorId: string, role: string) {
-    if (assignedToId && assignedToId !== actorId && !['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role)) throw new ForbiddenException('This alert is assigned to another staff member.');
+  private assertAlertActorCanAct(assignedToId: string | null, actorId: string, roles: AuthorizationRoles) {
+    if (assignedToId && assignedToId !== actorId && !this.hasPrivilegedRole(roles)) throw new ForbiddenException('This alert is assigned to another staff member.');
+  }
+
+  private hasPrivilegedRole(roles?: AuthorizationRoles): boolean {
+    const normalized = Array.isArray(roles) ? roles : roles ? [roles] : [];
+    return normalized.some((role) => ['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role));
   }
 
 }
