@@ -37,6 +37,7 @@ import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 import { usePublicBranding } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn, getInitials } from "@/lib/utils";
+import { MODULE_ACCESS } from "@/lib/authz";
 import type { RoleName, StaffScope } from "@uniportal/types";
 
 const ALL_NAV = [
@@ -171,7 +172,7 @@ const ALL_NAV = [
     href: "/dashboard/payroll",
     label: "Payroll",
     icon: WalletCards,
-    roles: ["SUPER_ADMIN", "VC", "BURSAR", "HR_MANAGER"],
+    roles: MODULE_ACCESS.payroll.navigationRoles,
   },
   {
     href: "/dashboard/hostel",

@@ -56,8 +56,13 @@ export class PayrollController {
     @CurrentUser() u: JwtPayload,
     @Query('year', new ParseIntPipe({ optional: true })) year?: number,
   ) {
-    const targetId = u.role === 'STAFF' ? u.sub : staffId;
-    return { success: true, data: await this.svc.getStaffPayslips(targetId, year) };
+    const effectiveRoles = u.roles?.length ? u.roles : [u.role];
+    const isStaffSelfService = effectiveRoles.includes('STAFF')
+      && !effectiveRoles.some((role) => ['BURSAR', 'HR_MANAGER', 'SUPER_ADMIN', 'REGISTRAR'].includes(role));
+    const data = isStaffSelfService
+      ? await this.svc.getOwnPayslips(u.sub, year)
+      : await this.svc.getStaffPayslips(staffId, year);
+    return { success: true, data };
   }
 
   // ── Export endpoints ───────────────────────────────────────────────────────

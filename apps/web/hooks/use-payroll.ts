@@ -9,11 +9,12 @@ export const payrollKeys = {
   myPayslips:  (id: string)    => ['payroll', 'staff', id] as const,
 };
 
-export function usePayrollRuns(year?: number) {
+export function usePayrollRuns(year?: number, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: payrollKeys.runs(year),
     queryFn:  () => apiClient.get<PayrollRunV1[]>(`/payroll/runs${year ? `?year=${year}` : ''}`),
     staleTime: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -35,20 +36,20 @@ export function usePayrollAction() {
   });
 }
 
-export function useRunPayslips(runId: string) {
+export function useRunPayslips(runId: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: payrollKeys.payslips(runId),
     queryFn:  () => apiClient.get<PayslipV1[]>(`/payroll/runs/${runId}/payslips`),
-    enabled:  !!runId,
+    enabled:  !!runId && (options?.enabled ?? true),
     staleTime: 60_000,
   });
 }
 
-export function useMyPayslips(staffId: string) {
+export function useMyPayslips(staffId: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: payrollKeys.myPayslips(staffId),
     queryFn:  () => apiClient.get<PayslipV1[]>(`/payroll/staff/${staffId}/payslips`),
-    enabled:  !!staffId,
+    enabled:  !!staffId && (options?.enabled ?? true),
     staleTime: 5 * 60_000,
   });
 }

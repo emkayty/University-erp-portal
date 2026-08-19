@@ -250,6 +250,19 @@ describe('PayrollService', () => {
     });
   });
 
+  describe('self-service payslips', () => {
+    it('resolves a Staff record through its userId', async () => {
+      await svc.getOwnPayslips('user-1', 2026);
+
+      expect(prisma.payslip.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: {
+          staff: { userId: 'user-1' },
+          payrollRun: { periodYear: 2026 },
+        },
+      }));
+    });
+  });
+
   describe('applyAction() — payroll FSM', () => {
     it('COMPUTE: generates payslips and advances to COMPUTED', async () => {
       const result = await svc.applyAction('run-1', { action: 'COMPUTE' }, 'bursar-1');

@@ -279,6 +279,14 @@ export class PayrollService {
     });
   }
 
+  async getOwnPayslips(userId: string, year?: number) {
+    return this.prisma.payslip.findMany({
+      where:   { staff: { userId }, ...(year ? { payrollRun: { periodYear: year } } : {}) },
+      include: { payrollRun: { select: { label: true, periodMonth: true, periodYear: true } } },
+      orderBy: [{ payrollRun: { periodYear: 'desc' } }, { payrollRun: { periodMonth: 'desc' } }],
+    });
+  }
+
   // ── Export: IPPIS CSV ──────────────────────────────────────────────────────
   /**
    * Generates IPPIS-format CSV for a COMPUTED/APPROVED/DISBURSED payroll run.

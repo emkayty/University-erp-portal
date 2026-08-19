@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { usePayrollRuns, useCreatePayrollRun, usePayrollAction, useRunPayslips, useMyPayslips } from '@/hooks/use-payroll';
 import { useAuthStore } from '@/stores/auth.store';
-import { hasEffectiveRole } from '@/lib/authz';
+import { hasEffectiveAnyRole, MODULE_ACCESS } from '@/lib/authz';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
 import type { PayrollRunV1 } from '@uniportal/types';
@@ -18,10 +18,13 @@ const STATUS_COLORS: Record<string, string> = {
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default function PayrollPage() {
-  const user   = useAuthStore((s) => s.user);
-  const role = user?.effectiveRoles?.[0] ?? user?.primaryRole ?? '';
-  const isStaff   = role === 'STAFF';
-  const canManage = hasEffectiveRole(user, 'BURSAR', 'HR_MANAGER', 'SUPER_ADMIN');
+  const user = useAuthStore((s) => s.user);
+  const canViewRuns = hasEffectiveAnyRole(user, MODULE_ACCESS.payroll.viewRuns);
+  const canViewRunPayslips = hasEffectiveAnyRole(user, MODULE_ACCESS.payroll.viewRunPayslips);
+  const canManage = hasEffectiveAnyRole(user, MODULE_ACCESS.payroll.manage);
+  const isStaff = hasEffectiveAnyRole(user, MODULE_ACCESS.payroll.ownPayslips) && !canViewRuns;
+  const canViewOwnPayslips = isStaff;
+  const canViewPayroll = canViewRuns || canViewOwnPayslips;
 
   const [tab,        setTab]    = useState<'runs'|'payslips'>(isStaff ? 'payslips' : 'runs');
   const [selectedRun, setSel]   = useState<PayrollRunV1 | null>(null);
@@ -32,9 +35,9 @@ export default function PayrollPage() {
   const [form, setForm]         = useState({ periodMonth: 1, periodYear: year, label: '' });
   const [downloading, setDownloading] = useState<string | null>(null);
 
-  const { data: runs = [],    isLoading }  = usePayrollRuns(year);
-  const { data: payslips = [] }            = useRunPayslips(selectedRun?.id ?? '');
-  const { data: myPayslips = [] }          = useMyPayslips(isStaff ? (user?.id ?? '') : '');
+  const { data: runs = [],    isLoading }  = usePayrollRuns(year, { enabled: canViewRuns });
+  const { data: payslips = [] }            = useRunPayslips(selectedRun?.id ?? '', { enabled: canViewRunPayslips });
+  const { data: myPayslips = [] }          = useMyPayslips(isStaff ? (user?.id ?? '') : '', { enabled: canViewOwnPayslips });
 
   const { mutate: createRun,  isPending: creating  } = useCreatePayrollRun();
   const { mutate: doAction,   isPending: actioning  } = usePayrollAction();
@@ -83,15 +86,37 @@ export default function PayrollPage() {
     }
   };
 
+  if (!canViewPayroll) {
+    return (
+      <div className="space-y-4">
+        <header>
+          <p className="text-sm text-muted-foreground">Salary processing and payslip services</p>
+          <h2 className="text-xl font-semibold text-foreground">Payroll</h2>
+        </header>
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="font-medium">Access restricted</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Payroll access is limited to authorised payroll, finance, HR, registrar, and staff self-service roles.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Payroll</h2>
         <div className="flex gap-2">
-          {!isStaff && <button onClick={() => setTab('runs')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='runs'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Payroll Runs</button>}
-          <button onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
-            {isStaff ? 'My Payslips' : 'Payslips'}
-          </button>
+          {canViewRuns && <button onClick={() => setTab('runs')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='runs'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Payroll Runs</button>}
+          {canViewOwnPayslips && <button onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
+            My Payslips
+          </button>}
+          {!isStaff && canViewRunPayslips && <button onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
+            Payslips
+          </button>}
         </div>
       </div>
 
@@ -99,7 +124,7 @@ export default function PayrollPage() {
       {actionMsg  && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{actionMsg}</div>}
 
       {/* ── Payroll Runs ─────────────────────────────────────────────────── */}
-      {tab === 'runs' && (
+      {tab === 'runs' && canViewRuns && (
         <div className="space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <select value={year} onChange={(e) => setYear(parseInt(e.target.value))}
@@ -163,7 +188,7 @@ export default function PayrollPage() {
                           {run.disbursedAt && <p className="text-xs text-muted-foreground">Disbursed: {formatDate(run.disbursedAt)}</p>}
                         </div>
                         <div className="flex gap-2 flex-wrap">
-                          <Button size="sm" variant="outline" onClick={() => { setSel(run); setTab('payslips'); }}>View Payslips</Button>
+                          {canViewRunPayslips && <Button size="sm" variant="outline" onClick={() => { setSel(run); setTab('payslips'); }}>View Payslips</Button>}
                           {canManage && next && (
                             <Button size="sm" loading={actioning} onClick={() => handleAction(run, next)}>{next}</Button>
                           )}
@@ -185,7 +210,7 @@ export default function PayrollPage() {
       )}
 
       {/* ── Payslips ──────────────────────────────────────────────────────── */}
-      {tab === 'payslips' && (
+      {tab === 'payslips' && (canViewOwnPayslips || canViewRunPayslips) && (
         <div className="space-y-4">
           {isStaff ? (
             myPayslips.length === 0 ? (
