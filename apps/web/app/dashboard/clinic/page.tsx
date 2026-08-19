@@ -8,6 +8,7 @@ import {
   useDrugs, useLowStockDrugs, useAdjustStock,
 } from '@/hooks/use-clinic';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { cn, formatDate } from '@/lib/utils';
 
 const APPT_STATUS_COLORS: Record<string, string> = {
@@ -23,8 +24,8 @@ type Tab = 'appointments' | 'drugs' | 'low-stock';
 
 export default function ClinicPage() {
   const user = useAuthStore((s) => s.user);
-  const isStudent = user?.primaryRole === 'STUDENT';
-  const canManageClinic = user?.primaryRole === 'STAFF' || user?.primaryRole === 'SUPER_ADMIN';
+  const isStudent = hasEffectiveRole(user, 'STUDENT');
+  const canManageClinic = hasEffectiveRole(user, 'STAFF', 'SUPPORT_STAFF', 'SUPER_ADMIN');
   const [tab, setTab]              = useState<Tab>('appointments');
   const [statusFilter, setStatus]  = useState('');
   const [recordApptId, setRecord]  = useState<string | null>(null);

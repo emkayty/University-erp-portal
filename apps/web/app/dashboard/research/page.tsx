@@ -10,6 +10,7 @@ import {
 } from '@/hooks/use-research';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
+import { hasEffectiveRole } from '@/lib/authz';
 import type { ResearchStatus } from '@uniportal/types';
 
 const STATUS_COLORS: Record<ResearchStatus, string> = {
@@ -34,7 +35,7 @@ type Tab = 'projects' | 'summary';
 export default function ResearchPage() {
   const user       = useAuthStore((s) => s.user);
   const isResearch = user?.staffScope?.scopes?.includes('research');
-  const isAdmin    = user?.primaryRole === 'REGISTRAR' || user?.primaryRole === 'VC' || user?.primaryRole === 'SUPER_ADMIN';
+  const isAdmin = hasEffectiveRole(user, 'REGISTRAR', 'VC', 'SUPER_ADMIN');
 
   const [tab, setTab]           = useState<Tab>('projects');
   const [selectedId, setSelected] = useState<string | null>(null);

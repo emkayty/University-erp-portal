@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,8 +34,8 @@ type QuizAttempt = { id: string; status: string; score?: string | number | null;
 
 export default function LmsPage() {
   const user = useAuthStore((s) => s.user);
-  const canManage = ['SUPER_ADMIN','VC','REGISTRAR','STAFF'].includes(user?.primaryRole ?? '');
-  const isStudent = user?.primaryRole === 'STUDENT';
+  const canManage = hasEffectiveRole(user, 'SUPER_ADMIN', 'VC', 'REGISTRAR', 'STAFF', 'SUPPORT_STAFF');
+  const isStudent = hasEffectiveRole(user, 'STUDENT');
   const { data: enrolledCourses = [] } = useQuery({
     queryKey: ['lms', 'my-courses'],
     queryFn: () => apiClient.get<Array<{ id: string; course: { code: string; title: string }; semesterModel?: { name: string; academicYear: string } }>>('/lms/my-courses'),

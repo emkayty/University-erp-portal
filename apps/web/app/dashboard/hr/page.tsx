@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useStaff, usePendingLeaves, useDecideLeave, useCreateSalaryGrade, useSalaryGrades } from '@/hooks/use-hr';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
+import { effectiveRolesOf } from '@/lib/authz';
 import type { LeaveRequestV1 } from '@uniportal/types';
 
 const STATUS_COLORS: Record<string,string> = { ACTIVE:'badge-success', ON_LEAVE:'badge-warning', SUSPENDED:'badge-danger', RETIRED:'badge-neutral', TERMINATED:'badge-neutral' };
@@ -16,7 +17,7 @@ export default function HrPage() {
   const searchParams = useSearchParams();
   const requestedStaffId = searchParams.get('staffId');
   const user   = useAuthStore((s) => s.user);
-  const role   = user?.primaryRole ?? '';
+  const role = effectiveRolesOf(user)[0] ?? '';
   const canHr  = ['HR_MANAGER','REGISTRAR','SUPER_ADMIN'].includes(role);
   const canHod = role === 'HOD';
 

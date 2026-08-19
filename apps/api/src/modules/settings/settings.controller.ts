@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayload } from '@uniportal/types';
 
-import { CurrentUser, Roles } from '../../common/decorators';
+import { CurrentUser, Public, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UpdateFeatureFlagDto, UpdateSettingsDto } from './dto/settings.dto';
 import { SettingsService } from './settings.service';
@@ -14,6 +14,13 @@ import { SettingsService } from './settings.service';
 @ApiBearerAuth('access-token')
 export class SettingsController {
   constructor(private readonly svc: SettingsService) {}
+
+  @Public()
+  @Get('public/branding')
+  @ApiOperation({ summary: 'Public institution branding and contact information' })
+  async getPublicBranding() {
+    return { success: true, data: await this.svc.getPublicBranding() };
+  }
 
   @Get()
   @Roles('SUPER_ADMIN', 'VC', 'REGISTRAR', 'BURSAR', 'HR_MANAGER')

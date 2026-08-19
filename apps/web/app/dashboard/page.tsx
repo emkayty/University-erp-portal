@@ -12,6 +12,7 @@ import { useMyDashboard } from '@/hooks/use-reports';
 import type { DashboardSnapshotV1 } from '@uniportal/types';
 import type { RoleName } from '@uniportal/types';
 import { cn } from '@/lib/utils';
+import { effectiveRolesOf } from '@/lib/authz';
 import { DashboardCommandPalette } from '@/components/dashboard/dashboard-command-palette';
 
 const ROLE_LABELS: Record<RoleName, string> = {
@@ -160,7 +161,7 @@ function TodayCard({ role }: { role: RoleName }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user);
-  const role = user?.primaryRole ?? 'STUDENT';
+  const role = effectiveRolesOf(user)[0] ?? 'STUDENT';
   const { data: snapshot, isLoading, isError, refetch } = useMyDashboard();
   const copy = ROLE_COPY[role];
   const quickActions = ACTIONS[role];

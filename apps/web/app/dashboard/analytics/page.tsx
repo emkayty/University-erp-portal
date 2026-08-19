@@ -1,11 +1,12 @@
 'use client';
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   useAnalyticsDashboard, useHodDashboard, useAuditSummary,
 } from '@/hooks/use-reports';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
+import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
 
 // ── Sparkline bar visualisation ───────────────────────────────────────────────
 function MiniBar({ value, max, color = 'bg-[--color-primary]' }: { value: number; max: number; color?: string }) {
@@ -47,18 +48,18 @@ type DashTab = 'overview' | 'hod' | 'audit';
 
 export default function AnalyticsPage() {
   const user   = useAuthStore((s) => s.user);
-  const role   = user?.primaryRole ?? '';
+  const role = effectiveRolesOf(user)[0] ?? '';
   const deptId = user?.staffScope?.deptId;
 
-  const isAdmin = role === 'VC' || role === 'SUPER_ADMIN';
-  const isHod   = role === 'HOD';
+  const isAdmin = hasEffectiveRole(user, 'VC', 'SUPER_ADMIN');
+  const isHod = hasEffectiveRole(user, 'HOD');
 
-  const defaultTab: DashTab = isAdmin ? 'overview' : isHod ? 'hod' : 'audit';
+  const defaultTab: DashTab = isAdmin ? 'overview' : 'hod';
   const [tab, setTab] = useState<DashTab>(defaultTab);
 
-  const { data: kpi,    isLoading: kpiLoading }   = useAnalyticsDashboard();
-  const { data: hod,    isLoading: hodLoading }   = useHodDashboard(isHod ? undefined : undefined);
-  const { data: audit,  isLoading: auditLoading } = useAuditSummary();
+  const { data: kpi, isLoading: kpiLoading } = useAnalyticsDashboard(undefined, { enabled: isAdmin });
+  const { data: hod, isLoading: hodLoading } = useHodDashboard(isHod ? deptId : undefined, { enabled: isAdmin || isHod });
+  const { data: audit, isLoading: auditLoading } = useAuditSummary({ enabled: isAdmin });
 
   const tabs: { k: DashTab; l: string; show: boolean }[] = [
     { k: 'overview', l: 'Institution Overview', show: isAdmin },
@@ -67,6 +68,10 @@ export default function AnalyticsPage() {
   ];
 
   const visibleTabs = tabs.filter((t) => t.show);
+
+  if (!isAdmin && !isHod) {
+    return <Card><CardHeader><CardTitle>Analytics access</CardTitle><CardDescription>Your current effective role does not include an analytics workspace. Contact an authorized administrator if you believe this is incorrect.</CardDescription></CardHeader></Card>;
+  }
 
   const totalStudents  = kpi?.students.total ?? 0;
   const activeStudents = kpi?.students.byStatus.find((s) => s.status === 'ACTIVE')?.count ?? 0;

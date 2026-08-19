@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
+import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
@@ -59,6 +60,7 @@ export function LoginForm() {
   const [setupQrCodeUri, setSetupQrCodeUri] = useState<string>('');
   const [error,    setError]    = useState<string>('');
   const [loading,  setLoading]  = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   // ── Credentials form ───────────────────────────────────────────────────────
   const credForm = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
@@ -150,6 +152,15 @@ export function LoginForm() {
     }
   });
 
+  const restartSignIn = () => {
+    setError('');
+    setMfaToken('');
+    setSetupToken('');
+    setSetupSecret('');
+    setSetupQrCodeUri('');
+    setStep('credentials');
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (step === 'mfa-setup') {
     return (
@@ -159,11 +170,16 @@ export function LoginForm() {
           <CardDescription>Your role requires multi-factor authentication before access can be granted.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl border border-blue-200/70 bg-blue-50/70 p-3 text-sm text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+            <p>Multi-factor authentication protects sensitive university records. Keep your authenticator and backup codes private.</p>
+          </div>
           {error && <div role="alert" className="rounded-md border border-[--color-danger]/30 bg-red-50 px-4 py-3 text-sm text-[--color-danger]">{error}</div>}
-          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+          <div className="rounded-xl border bg-muted/30 p-4 text-sm">
             <p className="font-medium">Add this account to your authenticator app.</p>
             <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{setupSecret}</p>
-            {setupQrCodeUri && <a className="mt-2 inline-block text-sm text-[--color-primary] underline" href={setupQrCodeUri}>Open authenticator app</a>}
+            {setupQrCodeUri && <a className="mt-2 inline-flex min-h-11 items-center rounded-lg text-sm font-medium text-[--color-primary] underline underline-offset-4" href={setupQrCodeUri}>Open authenticator app</a>}
+            <p className="mt-2 text-xs text-muted-foreground">If your device cannot open the link, enter the secret manually in any TOTP-compatible authenticator.</p>
           </div>
           <form onSubmit={handleMandatoryMfaSetup} noValidate className="space-y-4">
             <div className="space-y-1.5">
@@ -172,12 +188,15 @@ export function LoginForm() {
             </div>
             <Button type="submit" className="w-full" loading={loading}>Complete MFA setup</Button>
           </form>
+          <div className="mt-3 text-center">
+            <button type="button" onClick={restartSignIn} className="min-h-11 px-3 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">Start over</button>
+          </div>
         </CardContent>
-      </Card>
-    );
-  }
+        </Card>
+      );
+    }
 
-  if (step === 'mfa' || step === 'backup') {
+    if (step === 'mfa' || step === 'backup') {
     return (
       <Card className="glass-card">
         <CardHeader>
@@ -222,6 +241,7 @@ export function LoginForm() {
               >
                 Use a backup code instead
               </button>
+              <button type="button" onClick={restartSignIn} className="w-full min-h-11 text-center text-sm text-muted-foreground hover:text-foreground transition-colors">Start over</button>
             </form>
           ) : (
             <form onSubmit={handleBackup} noValidate className="space-y-4">
@@ -245,10 +265,11 @@ export function LoginForm() {
               <button
                 type="button"
                 onClick={() => setStep('mfa')}
-                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="w-full min-h-11 text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 ← Back to authenticator code
               </button>
+              <button type="button" onClick={restartSignIn} className="w-full min-h-11 text-center text-sm text-muted-foreground hover:text-foreground transition-colors">Start over</button>
             </form>
           )}
         </CardContent>
@@ -299,19 +320,26 @@ export function LoginForm() {
                 Forgot password?
               </Link>
             </div>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder="••••••••••••"
-              error={credForm.formState.errors.password?.message}
-              {...credForm.register('password')}
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={passwordVisible ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="••••••••••••"
+                className="pr-12"
+                error={credForm.formState.errors.password?.message}
+                {...credForm.register('password')}
+              />
+              <button type="button" onClick={() => setPasswordVisible((visible) => !visible)} className="absolute right-1 top-1 inline-flex min-h-10 min-w-10 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={passwordVisible ? 'Hide password' : 'Show password'} aria-pressed={passwordVisible}>
+                {passwordVisible ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+              </button>
+            </div>
           </div>
 
           <Button type="submit" className="w-full" size="lg" loading={loading}>
             Sign In
           </Button>
+          <p className="text-center text-xs leading-5 text-muted-foreground">Use your institutional account. If you need help, contact the authorized University support desk.</p>
         </form>
       </CardContent>
     </Card>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { usePayrollRuns, useCreatePayrollRun, usePayrollAction, useRunPayslips, useMyPayslips } from '@/hooks/use-payroll';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
 import { apiClient } from '@/lib/api-client';
 import type { PayrollRunV1 } from '@uniportal/types';
@@ -18,9 +19,9 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 export default function PayrollPage() {
   const user   = useAuthStore((s) => s.user);
-  const role   = user?.primaryRole ?? '';
+  const role = user?.effectiveRoles?.[0] ?? user?.primaryRole ?? '';
   const isStaff   = role === 'STAFF';
-  const canManage = ['BURSAR','HR_MANAGER','SUPER_ADMIN'].includes(role);
+  const canManage = hasEffectiveRole(user, 'BURSAR', 'HR_MANAGER', 'SUPER_ADMIN');
 
   const [tab,        setTab]    = useState<'runs'|'payslips'>(isStaff ? 'payslips' : 'runs');
   const [selectedRun, setSel]   = useState<PayrollRunV1 | null>(null);

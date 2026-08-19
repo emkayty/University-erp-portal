@@ -5,9 +5,12 @@ import type { SettingsV1, UpdateSettingsDto } from '@uniportal/types';
 import { apiClient, ApiClientError } from '@/lib/api-client';
 
 export const settingsKeys = {
-  root:  ['settings']              as const,
-  flags: ['settings', 'flags']     as const,
+  root: ['settings'] as const,
+  flags: ['settings', 'flags'] as const,
+  publicBranding: ['settings', 'public-branding'] as const,
 };
+
+export type PublicBrandingV1 = Pick<SettingsV1, 'institutionName' | 'institutionCode' | 'institutionType' | 'websiteUrl' | 'contactEmail' | 'contactPhone' | 'logoUrl' | 'faviconUrl' | 'primaryColor'>;
 
 // ── GET /settings ─────────────────────────────────────────────────────────────
 export function useSettings() {
@@ -15,6 +18,15 @@ export function useSettings() {
     queryKey: settingsKeys.root,
     queryFn:  () => apiClient.get<SettingsV1>('/settings'),
     staleTime: 5 * 60_000,
+  });
+}
+
+export function usePublicBranding() {
+  return useQuery({
+    queryKey: settingsKeys.publicBranding,
+    queryFn: () => apiClient.get<PublicBrandingV1>('/settings/public/branding'),
+    staleTime: 10 * 60_000,
+    retry: 1,
   });
 }
 

@@ -16,6 +16,7 @@ import {
   useCreateFaculty, useCreateDepartment, useCreateProgramme, useCreateCourse,
 } from '@/hooks/use-curriculum';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { cn } from '@/lib/utils';
 import type { FacultyV1, DepartmentV1, ProgrammeV1 } from '@uniportal/types';
 
@@ -51,7 +52,7 @@ export default function CurriculumPage() {
   const requestedPanel = searchParams.get('panel');
   const requestedCourseId = searchParams.get('courseId');
   const user      = useAuthStore((s) => s.user);
-  const canManage = ['SUPER_ADMIN','REGISTRAR','DEAN','HOD'].includes(user?.primaryRole ?? '');
+  const canManage = hasEffectiveRole(user, 'SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD');
 
   const [panel,         setPanel]         = useState<Panel>(requestedPanel === 'courses' ? 'courses' : 'faculties');
   const [selectedFacId, setSelectedFacId] = useState<string | null>(null);

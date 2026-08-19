@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Menu,
   X,
@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
+import { usePublicBranding } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn, getInitials } from "@/lib/utils";
 import type { RoleName, StaffScope } from "@uniportal/types";
@@ -306,6 +307,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const { data: branding } = usePublicBranding();
   const { isLoading, isError } = useCurrentUser();
   const { mutate: logout, isPending: loggingOut } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -366,7 +368,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground" style={branding?.primaryColor ? { '--color-primary': branding.primaryColor } as CSSProperties : undefined}>
       {mobileOpen && (
         <button
           aria-label="Close navigation"
@@ -376,6 +378,7 @@ export default function DashboardLayout({
       )}
 
       <aside
+        id="uniportal-navigation"
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-border bg-card transition-transform duration-200 lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
@@ -385,15 +388,15 @@ export default function DashboardLayout({
           <Link
             href="/dashboard"
             className="flex items-center gap-3"
-            aria-label="UniPortal ERP home"
+            aria-label={`${branding?.institutionName ?? 'UniPortal ERP'} home`}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[--color-primary] text-xs font-bold text-white shadow-sm">
-              UP
+            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[--color-primary] text-xs font-bold text-white shadow-sm">
+              {branding?.logoUrl ? <img src={branding.logoUrl} alt="" className="h-full w-full object-contain p-1" /> : 'UP'}
             </span>
             <span>
-              <span className="block text-sm font-bold">UniPortal ERP</span>
+              <span className="block max-w-[170px] truncate text-sm font-bold">{branding?.institutionName ?? 'UniPortal ERP'}</span>
               <span className="block text-[11px] text-muted-foreground">
-                University workspace
+                {branding?.institutionType?.replaceAll('_', ' ') ?? 'University workspace'}
               </span>
             </span>
           </Link>
@@ -423,6 +426,7 @@ export default function DashboardLayout({
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={() => setMobileOpen(false)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
@@ -456,7 +460,7 @@ export default function DashboardLayout({
                 {user?.email ?? "—"}
               </p>
               <p className="truncate text-[11px] text-muted-foreground">
-                {roleLabel(user?.primaryRole)}
+                {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
               </p>
             </div>
             <button
@@ -478,6 +482,8 @@ export default function DashboardLayout({
             className="rounded-lg p-2 hover:bg-muted lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
+            aria-expanded={mobileOpen}
+            aria-controls="uniportal-navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
@@ -500,21 +506,19 @@ export default function DashboardLayout({
               ⌘K
             </kbd>
           </button>
-          <button
+          <Link
+            href="/dashboard/notifications"
             className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
-            aria-label="Notifications"
+            aria-label="Open notifications"
           >
-            <Bell className="h-5 w-5" />
-          </button>
+            <Bell className="h-5 w-5" aria-hidden="true" />
+          </Link>
           <span className="hidden rounded-full bg-[--color-primary]/10 px-2.5 py-1 text-[11px] font-semibold text-[--color-primary] sm:inline-flex">
-            {roleLabel(user?.primaryRole)}
+            {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
           </span>
         </header>
 
-        <main
-          id="main-content"
-          className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8"
-        >
+        <main className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
           {children}
         </main>
       </div>
@@ -537,6 +541,7 @@ export default function DashboardLayout({
                 autoFocus
                 className="h-14 flex-1 bg-transparent text-sm outline-none"
                 placeholder="Go to a workspace…"
+                aria-label="Search workspaces"
                 onKeyDown={(e) => {
                   if (e.key === "Escape") setCommandOpen(false);
                 }}

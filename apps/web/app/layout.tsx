@@ -54,7 +54,7 @@ export default function RootLayout({
         </a>
 
         <Providers>
-          <div id="main-content">
+          <div id="main-content" tabIndex={-1}>
             {children}
           </div>
         </Providers>

@@ -54,6 +54,31 @@ export class SettingsService {
     return settings;
   }
 
+  async getPublicBranding() {
+    const settings = await this.getSettings() as {
+      institutionName: string;
+      institutionCode: string | null;
+      institutionType: string;
+      websiteUrl: string | null;
+      contactEmail: string | null;
+      contactPhone: string | null;
+      logoUrl: string | null;
+      faviconUrl: string | null;
+      primaryColor: string | null;
+    };
+    return {
+      institutionName: settings.institutionName,
+      institutionCode: settings.institutionCode,
+      institutionType: settings.institutionType,
+      websiteUrl: settings.websiteUrl,
+      contactEmail: settings.contactEmail,
+      contactPhone: settings.contactPhone,
+      logoUrl: settings.logoUrl,
+      faviconUrl: settings.faviconUrl,
+      primaryColor: settings.primaryColor,
+    };
+  }
+
   async getFeatureFlags(): Promise<Record<string, boolean>> {
     const cached =
       await this.cache.get<Record<string, boolean>>(FEATURE_FLAG_CACHE);

@@ -15,6 +15,7 @@ import {
 } from '@/hooks/use-calendar';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
+import { hasEffectiveRole } from '@/lib/authz';
 import type { CalendarV1 } from '@uniportal/types';
 
 // ── Status badge ──────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ const EVENT_TYPES = [
 
 export default function CalendarPage() {
   const user  = useAuthStore((s) => s.user);
-  const canManage = ['SUPER_ADMIN', 'REGISTRAR', 'VC'].includes(user?.primaryRole ?? '');
+  const canManage = hasEffectiveRole(user, 'SUPER_ADMIN', 'REGISTRAR', 'VC');
 
   const { data: calendars = [], isLoading } = useCalendars();
   const { mutate: createCalendar,  isPending: creating   } = useCreateCalendar();

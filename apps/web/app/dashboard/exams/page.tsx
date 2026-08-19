@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
+import { effectiveRolesOf } from '@/lib/authz';
 
 type TimetableEntry = {
   id: string;
@@ -37,7 +38,7 @@ type TimetableForm = {
 const emptyForm: TimetableForm = { courseOfferingId: '', venueId: '', examDate: '', startTime: '09:00', durationMinutes: '120', invigilatorNotes: '' };
 
 export default function ExamsPage() {
-  const role = useAuthStore((s) => s.user?.primaryRole);
+  const role = useAuthStore((s) => effectiveRolesOf(s.user)[0]);
   const [semesterId, setSemesterId] = useState('');
   const [activeSemester, setActiveSemester] = useState('');
   const [selectedExam, setSelectedExam] = useState('');

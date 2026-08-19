@@ -14,7 +14,8 @@ import { AuthController } from './modules/auth/auth.controller';
 import { NotificationsController } from './modules/notifications/notifications.controller';
 import { PrivacyController } from './modules/privacy/privacy.controller';
 import { SecurityController } from './modules/security/security.controller';
-import { SKIP_REQUEST_RLS_TRANSACTION_KEY } from './common/decorators';
+import { SettingsController } from './modules/settings/settings.controller';
+import { IS_PUBLIC_KEY, SKIP_REQUEST_RLS_TRANSACTION_KEY } from './common/decorators';
 
 /**
  * API route-contract regression suite.
@@ -40,6 +41,12 @@ describe('API route contracts', () => {
   it.each(versionedControllers)('%s uses a relative v1 controller declaration', (_name, controller, path) => {
     expect(Reflect.getMetadata(PATH_METADATA, controller)).toBe(path);
     expect(Reflect.getMetadata(VERSION_METADATA, controller)).toBe('1');
+  });
+
+  it('keeps public institution branding versioned and unauthenticated', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, SettingsController.prototype.getPublicBranding)).toBe('public/branding');
+    expect(Reflect.getMetadata(VERSION_METADATA, SettingsController.prototype.getPublicBranding)).toBeUndefined();
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, SettingsController.prototype.getPublicBranding)).toBe(true);
   });
 
   it('exposes the target user id in the administrative MFA recovery route', () => {

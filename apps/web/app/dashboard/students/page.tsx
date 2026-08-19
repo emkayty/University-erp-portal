@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { useMatriculate, useStudents, useStudent, useRegisteredCourses, useAcademicHistory, useUpdateStudentStatus } from '@/hooks/use-students';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
+import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
 import type { StudentV1 } from '@uniportal/types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -35,9 +36,9 @@ export default function StudentsPage() {
   const searchParams = useSearchParams();
   const requestedStudentId = searchParams.get('studentId');
   const user       = useAuthStore((s) => s.user);
-  const role       = user?.primaryRole ?? '';
-  const canManage  = ['SUPER_ADMIN','REGISTRAR'].includes(role);
-  const isStudent  = role === 'STUDENT';
+  const role = effectiveRolesOf(user)[0] ?? '';
+  const canManage = hasEffectiveRole(user, 'SUPER_ADMIN', 'REGISTRAR');
+  const isStudent = hasEffectiveRole(user, 'STUDENT');
 
   const [tab,           setTab]    = useState<'list'|'profile'|'matriculate'>('list');
   const [statusFilter,  setStatus] = useState('');

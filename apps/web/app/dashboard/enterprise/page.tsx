@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/auth.store';
+import { effectiveRolesOf } from '@/lib/authz';
 
 const domains = [
   { href: '/dashboard/hr', title: 'HR & Staff Lifecycle', description: 'Manage staff records, leave, employment status and salary structures.' },
@@ -15,7 +16,7 @@ const domains = [
 ];
 
 export default function EnterprisePage() {
-  const role = useAuthStore((s) => s.user?.primaryRole);
+  const role = useAuthStore((s) => effectiveRolesOf(s.user)[0]);
 
   return (
     <div className="space-y-6">

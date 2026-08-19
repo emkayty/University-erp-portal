@@ -99,17 +99,18 @@ export function useResultsStats(params?: Record<string, string>) {
 }
 
 // ── Dashboards ────────────────────────────────────────────────────────────────
-export function useAnalyticsDashboard(params?: Record<string, string>) {
+export function useAnalyticsDashboard(params?: Record<string, string>, options?: { enabled?: boolean }) {
   const qs = new URLSearchParams(params ?? {}).toString();
   return useQuery({
     queryKey: reportKeys.dashboard(params),
     queryFn:  () => apiClient.get<AnalyticsDashboardV1>(`/reports/analytics/dashboard${qs ? `?${qs}` : ''}`),
     staleTime: 2 * 60_000,
     refetchInterval: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useHodDashboard(departmentId?: string) {
+export function useHodDashboard(departmentId?: string, options?: { enabled?: boolean }) {
   const url = departmentId
     ? `/reports/analytics/hod/${departmentId}`
     : '/reports/analytics/hod';
@@ -117,6 +118,7 @@ export function useHodDashboard(departmentId?: string) {
     queryKey: reportKeys.hodDashboard(departmentId ?? 'self'),
     queryFn:  () => apiClient.get<HodDashboardV1>(url),
     staleTime: 2 * 60_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -151,10 +153,11 @@ export function useAuditLogs(params?: Record<string, string>) {
   });
 }
 
-export function useAuditSummary() {
+export function useAuditSummary(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: reportKeys.auditSummary,
     queryFn:  () => apiClient.get<AuditSummaryV1>('/audit-logs/summary'),
     staleTime: 60_000,
+    enabled: options?.enabled ?? true,
   });
 }

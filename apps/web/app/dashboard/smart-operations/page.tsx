@@ -4,20 +4,21 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { useAlertAction, useClaimTask, useIntelligenceAlerts, useIntelligenceTasks, useUpdateTaskStatus } from '@/hooks/use-intelligence';
 
 const SMART_ALERTS_ROUTE = '/intelligence/alerts';
 const SMART_TASKS_ROUTE = '/intelligence/tasks';
 
 export default function SmartOperationsPage() {
-  const role = useAuthStore((s) => s.user?.primaryRole);
+  const user = useAuthStore((s) => s.user);
   const [status, setStatus] = useState('');
   const { data: alerts = [], isLoading: alertsLoading, isError: alertsError } = useIntelligenceAlerts();
   const { data: tasks = [], isLoading: tasksLoading, isError: tasksError } = useIntelligenceTasks(status || undefined);
   const alertAction = useAlertAction();
   const claimTask = useClaimTask();
   const updateTask = useUpdateTaskStatus();
-  const privileged = ['SUPER_ADMIN', 'VC', 'REGISTRAR'].includes(role ?? '');
+  const privileged = hasEffectiveRole(user, 'SUPER_ADMIN', 'VC', 'REGISTRAR');
 
   return (
     <div className="space-y-6">

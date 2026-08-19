@@ -6,20 +6,21 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth.store';
+import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
 import { useClearanceAction, useStudentClearance } from '@/hooks/use-clearance';
 
 export default function ClearancePage() {
   const user = useAuthStore((s) => s.user);
-  const role = user?.primaryRole ?? '';
+  const role = effectiveRolesOf(user)[0] ?? '';
   const params = useSearchParams();
-  const isStudent = role === 'STUDENT';
+  const isStudent = hasEffectiveRole(user, 'STUDENT');
   const [inputId, setInputId] = useState(params.get('studentId') ?? (isStudent ? user?.studentId ?? '' : ''));
   const [studentId, setStudentId] = useState(isStudent ? user?.studentId ?? '' : params.get('studentId') ?? '');
   const [reason, setReason] = useState('');
   const { data: items = [], isLoading, isError } = useStudentClearance(studentId);
   const action = useClearanceAction();
-  const canClear = ['SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD', 'BURSAR', 'STAFF'].includes(role);
-  const canWaive = ['SUPER_ADMIN', 'VC'].includes(role);
+  const canClear = hasEffectiveRole(user, 'SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD', 'BURSAR', 'STAFF', 'SUPPORT_STAFF');
+  const canWaive = hasEffectiveRole(user, 'SUPER_ADMIN', 'VC');
 
   return <div className="space-y-6">
     <header><p className="text-sm text-muted-foreground">Graduation and operational readiness</p><h1 className="text-2xl font-semibold">Clearance Workspace</h1><p className="mt-1 text-sm text-muted-foreground">Track each clearance obligation and record decisions with an explicit reason.</p></header>

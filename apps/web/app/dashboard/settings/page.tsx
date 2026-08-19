@@ -21,6 +21,7 @@ import {
   useUpdateSettings,
 } from "@/hooks/use-settings";
 import { cn } from "@/lib/utils";
+import { hasEffectiveRole } from "@/lib/authz";
 import { useAuthStore } from "@/stores/auth.store";
 
 const roles = [
@@ -202,7 +203,7 @@ function CheckRow({
 
 export default function SettingsPage() {
   const user = useAuthStore((state) => state.user);
-  const isSuperAdmin = user?.primaryRole === "SUPER_ADMIN";
+  const isSuperAdmin = hasEffectiveRole(user, "SUPER_ADMIN");
   const { data: settings, isLoading } = useSettings();
   const {
     mutate: updateSettings,

@@ -8,6 +8,7 @@ import {
   useCampaign, useDonateToCampaign, useUpdateAlumniProfile,
 } from '@/hooks/use-alumni';
 import { useAuthStore } from '@/stores/auth.store';
+import { hasEffectiveRole } from '@/lib/authz';
 import { cn, formatDate } from '@/lib/utils';
 import type { CampaignV1 } from '@uniportal/types';
 
@@ -20,7 +21,7 @@ type Tab = 'campaigns' | 'profile' | 'directory';
 
 export default function AlumniPage() {
   const user    = useAuthStore((s) => s.user);
-  const isAdmin = user?.primaryRole === 'VC' || user?.primaryRole === 'SUPER_ADMIN';
+  const isAdmin = hasEffectiveRole(user, 'VC', 'SUPER_ADMIN');
   const isStaff = user?.staffScope?.scopes?.includes('alumni');
 
   const [tab, setTab]               = useState<Tab>('campaigns');
