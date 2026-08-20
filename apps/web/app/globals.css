@@ -33,10 +33,10 @@
     --color-warning:       #B86C00;
 
     /* ── Selective depth surfaces: solid data surfaces first; glass only for overlays ── */
-    --glass-bg:            rgba(255, 255, 255, 0.72);
-    --glass-border:        rgba(255, 255, 255, 0.35);
-    --glass-shadow:        0 4px 24px rgba(0, 86, 179, 0.12);
-    --glass-blur:          blur(16px);
+    --glass-bg:            rgba(255, 255, 255, 0.84);
+    --glass-border:        rgba(255, 255, 255, 0.42);
+    --glass-shadow:        0 4px 18px rgba(0, 86, 179, 0.08);
+    --glass-blur:          blur(10px);
 
     /* ── Typography ──────────────────────────────────────────────────────── */
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -59,9 +59,9 @@
     --border:            217 33% 17%;
     --input:             217 33% 17%;
 
-    --glass-bg:     rgba(15, 23, 42, 0.78);
-    --glass-border: rgba(255, 255, 255, 0.10);
-    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.40);
+    --glass-bg:     rgba(15, 23, 42, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
   }
 
   /* ── Base resets ─────────────────────────────────────────────────────── */
@@ -153,10 +153,20 @@
   .text-balance { text-wrap: balance; }
 
   .glass-accent {
-    background: color-mix(in srgb, hsl(var(--card)) 78%, transparent);
-    border: 1px solid color-mix(in srgb, hsl(var(--border)) 78%, white 22%);
-    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
-    backdrop-filter: blur(14px);
+    background: color-mix(in srgb, hsl(var(--card)) 90%, transparent);
+    border: 1px solid color-mix(in srgb, hsl(var(--border)) 88%, white 12%);
+    box-shadow: 0 6px 20px rgba(16, 24, 40, 0.06);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Attention should come from hierarchy and meaning, not decoration. */
+  .attention-card {
+    border-left: 3px solid var(--color-accent);
+    box-shadow: 0 8px 20px rgba(16, 24, 40, 0.07);
+  }
+
+  .attention-ring {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 16%, transparent), 0 8px 20px rgba(0, 86, 179, 0.10);
   }
 
   .enterprise-surface {
