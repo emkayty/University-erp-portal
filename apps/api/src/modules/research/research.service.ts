@@ -2,7 +2,7 @@ import {
   ConflictException, ForbiddenException, Injectable, Logger,
   NotFoundException, UnprocessableEntityException,
 } from '@nestjs/common';
-import { AuditAction, GrantStatus, Prisma, ResearchStatus } from '@prisma/client';
+import { AuditAction, EmploymentStatus, GrantStatus, Prisma, ResearchStatus } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../database/prisma.service';
 import type {
@@ -63,6 +63,15 @@ export class ResearchService {
     await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'research_projects', targetId: projectId, oldValues: { status: project.status }, newValues: { status: dto.status } }, actorId);
     this.logger.log(`Project ${projectId}: ${project.status} → ${dto.status}`);
     return updated;
+  }
+
+  async getResearchPeople() {
+    return this.prisma.staff.findMany({
+      where: { employmentStatus: { in: [EmploymentStatus.ACTIVE, EmploymentStatus.ON_LEAVE] } },
+      select: { userId: true, employeeNo: true, firstName: true, lastName: true, designation: true, departmentId: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      take: 500,
+    });
   }
 
   async getProjects(query: GetProjectsQueryDto) {

@@ -22,6 +22,13 @@ export class ResearchController {
     return this.research.createProject(dto, user.sub);
   }
 
+  @Roles('STAFF', 'SUPER_ADMIN')
+  @StaffScopes('research')
+  @Get('people')
+  getResearchPeople() {
+    return this.research.getResearchPeople();
+  }
+
   @Roles('STAFF', 'VC', 'REGISTRAR', 'SUPER_ADMIN')
   @Get('projects')
   getProjects(@Query() query: GetProjectsQueryDto) {

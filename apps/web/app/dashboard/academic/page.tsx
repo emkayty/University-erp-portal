@@ -1,10 +1,27 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { useProgrammes } from '@/hooks/use-curriculum';
+import { useRequestAcademicInterruption, useRequestProgrammeTransfer, useSubmitAcademicAppeal } from '@/hooks/use-academic';
 
 export default function AcademicJourneyPage() {
+  const [appealType, setAppealType] = useState('RESULT_REVIEW');
+  const [appealReason, setAppealReason] = useState('');
+  const [transferProgrammeId, setTransferProgrammeId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [interruptionType, setInterruptionType] = useState('DEFERMENT');
+  const [interruptionStart, setInterruptionStart] = useState('');
+  const [interruptionEnd, setInterruptionEnd] = useState('');
+  const [interruptionReason, setInterruptionReason] = useState('');
+  const { mutate: submitAppeal, isPending: submittingAppeal } = useSubmitAcademicAppeal();
+  const { mutate: requestTransfer, isPending: requestingTransfer } = useRequestProgrammeTransfer();
+  const { mutate: requestInterruption, isPending: requestingInterruption } = useRequestAcademicInterruption();
+  const { data: programmes = [] } = useProgrammes();
   const { data, isLoading, error } = useQuery({
     queryKey: ['academic', 'me', 'journey'],
     queryFn: () => apiClient.get<any>('/academic/me/journey'),
@@ -52,6 +69,31 @@ export default function AcademicJourneyPage() {
         <h2 className="font-semibold">Academic history</h2>
         <div className="mt-4 divide-y">
           {data.history.map((h: any) => <div key={h.id} className="flex items-center justify-between py-3 text-sm"><div><div className="font-medium">{h.academicYear} · Level {h.level}</div><div className="text-muted-foreground">{h.status}</div></div><div className="text-right"><div>GPA {h.gpa == null ? '—' : Number(h.gpa).toFixed(2)}</div><div className="text-muted-foreground">CGPA {h.cgpa == null ? '—' : Number(h.cgpa).toFixed(2)}</div></div></div>)}
+        </div>
+      </Card>
+      <Card className="p-5">
+        <h2 className="font-semibold">Academic requests</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Submit a structured request to the appropriate academic authority. Decisions and evidence requirements remain controlled by the Registrar, Dean, HOD, and Super Admin workflow.</p>
+        <div className="mt-5 grid gap-5 lg:grid-cols-3">
+          <form className="space-y-3 rounded-xl border p-4" onSubmit={(event) => { event.preventDefault(); if (!appealReason.trim()) return; submitAppeal({ appealType, reason: appealReason.trim() }, { onSuccess: () => setAppealReason('') }); }}>
+            <div><h3 className="font-medium">Academic appeal</h3><p className="mt-1 text-xs text-muted-foreground">For result review, grading concern, or another academic decision.</p></div>
+            <label className="block text-xs font-medium text-muted-foreground">Appeal type<select className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground" value={appealType} onChange={(event) => setAppealType(event.target.value)}><option value="RESULT_REVIEW">Result review</option><option value="COURSE_RESULT">Course result</option><option value="ACADEMIC_DECISION">Academic decision</option><option value="OTHER">Other</option></select></label>
+            <textarea className="min-h-28 w-full rounded-lg border border-input bg-background p-3 text-sm" placeholder="Explain the issue and the resolution you are requesting" value={appealReason} onChange={(event) => setAppealReason(event.target.value)} required />
+            <Button type="submit" loading={submittingAppeal} disabled={!appealReason.trim()}>Submit appeal</Button>
+          </form>
+          <form className="space-y-3 rounded-xl border p-4" onSubmit={(event) => { event.preventDefault(); if (!transferProgrammeId) return; requestTransfer({ toProgrammeId: transferProgrammeId, reason: transferReason.trim() || undefined }, { onSuccess: () => { setTransferProgrammeId(''); setTransferReason(''); } }); }}>
+            <div><h3 className="font-medium">Programme transfer</h3><p className="mt-1 text-xs text-muted-foreground">Choose the target programme and explain the academic reason.</p></div>
+            <label className="block text-xs font-medium text-muted-foreground">Target programme<select className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground" value={transferProgrammeId} onChange={(event) => setTransferProgrammeId(event.target.value)} required><option value="">Select programme</option>{programmes.map((programme) => <option key={programme.id} value={programme.id}>{programme.code} · {programme.name}</option>)}</select></label>
+            <textarea className="min-h-28 w-full rounded-lg border border-input bg-background p-3 text-sm" placeholder="Reason for transfer (optional)" value={transferReason} onChange={(event) => setTransferReason(event.target.value)} />
+            <Button type="submit" loading={requestingTransfer} disabled={!transferProgrammeId}>Request transfer</Button>
+          </form>
+          <form className="space-y-3 rounded-xl border p-4" onSubmit={(event) => { event.preventDefault(); if (!interruptionStart) return; requestInterruption({ type: interruptionType, startDate: interruptionStart, endDate: interruptionEnd || undefined, reason: interruptionReason.trim() || undefined }, { onSuccess: () => { setInterruptionStart(''); setInterruptionEnd(''); setInterruptionReason(''); } }); }}>
+            <div><h3 className="font-medium">Interruption or deferment</h3><p className="mt-1 text-xs text-muted-foreground">Request an approved pause to your academic programme.</p></div>
+            <label className="block text-xs font-medium text-muted-foreground">Request type<select className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground" value={interruptionType} onChange={(event) => setInterruptionType(event.target.value)}><option value="DEFERMENT">Deferment</option><option value="INTERRUPTION">Interruption</option><option value="MEDICAL">Medical interruption</option></select></label>
+            <div className="grid grid-cols-2 gap-2"><Input type="date" aria-label="Interruption start date" value={interruptionStart} onChange={(event) => setInterruptionStart(event.target.value)} required /><Input type="date" aria-label="Interruption end date" value={interruptionEnd} onChange={(event) => setInterruptionEnd(event.target.value)} /></div>
+            <textarea className="min-h-20 w-full rounded-lg border border-input bg-background p-3 text-sm" placeholder="Reason (optional)" value={interruptionReason} onChange={(event) => setInterruptionReason(event.target.value)} />
+            <Button type="submit" loading={requestingInterruption} disabled={!interruptionStart}>Request interruption</Button>
+          </form>
         </div>
       </Card>
     </main>

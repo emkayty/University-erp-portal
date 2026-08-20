@@ -1,17 +1,19 @@
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
   useResearchProjects, useResearchProject, useCreateProject,
   useUpdateProjectStatus, useAddGrant, useRecordExpenditure,
-  useAddResearchOutput, useResearchSummary,
+  useAddResearchOutput, useResearchSummary, useResearchPeople,
+  useAddResearchMember, useRemoveResearchMember,
 } from '@/hooks/use-research';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
 import { hasEffectiveRole } from '@/lib/authz';
-import type { ResearchStatus } from '@uniportal/types';
+import type { MemberRole, ResearchStatus } from '@uniportal/types';
 
 const STATUS_COLORS: Record<ResearchStatus, string> = {
   PENDING:      'badge-warning',
@@ -36,7 +38,6 @@ export default function ResearchPage() {
   const user       = useAuthStore((s) => s.user);
   const isResearch = user?.staffScope?.scopes?.includes('research');
   const isAdmin = hasEffectiveRole(user, 'REGISTRAR', 'VC', 'SUPER_ADMIN');
-
   const [tab, setTab]           = useState<Tab>('projects');
   const [selectedId, setSelected] = useState<string | null>(null);
   const [statusFilter, setStatus] = useState<string>('');
@@ -44,18 +45,24 @@ export default function ResearchPage() {
   const [grantForm, setGrantForm] = useState({ funder: '', amount: '', startDate: '', endDate: '' });
   const [exForm, setExForm]       = useState({ grantId: '', description: '', amount: '', expendedAt: '' });
   const [outForm, setOutForm]     = useState({ outputType: 'JOURNAL_ARTICLE', title: '', authors: '' });
+  const [memberForm, setMemberForm] = useState<{ userId: string; role: MemberRole }>({ userId: '', role: 'RESEARCH_ASSISTANT' });
+  const [pendingMemberRemoval, setPendingMemberRemoval] = useState<string | null>(null);
   const [err, setErr]             = useState('');
   const [msg, setMsg]             = useState('');
 
   const filters = statusFilter ? { status: statusFilter } : undefined;
   const { data: projects = [], isLoading } = useResearchProjects(filters);
   const { data: project }                  = useResearchProject(selectedId);
+  const canManageMembers = Boolean(isResearch && user?.id && project?.leadResearcherId === user.id);
   const { data: summary }                  = useResearchSummary();
+  const { data: researchPeople = [] }       = useResearchPeople(Boolean(isResearch));
 
   const { mutate: updateStatus, isPending: updatingStatus } = useUpdateProjectStatus();
   const { mutate: addGrant,     isPending: addingGrant }    = useAddGrant();
   const { mutate: recordEx,     isPending: recordingEx }    = useRecordExpenditure();
   const { mutate: addOutput,    isPending: addingOutput }   = useAddResearchOutput();
+  const { mutate: addMember,    isPending: addingMember }   = useAddResearchMember();
+  const { mutate: removeMember, isPending: removingMember } = useRemoveResearchMember();
 
   const handleStatusChange = (id: string, toStatus: string, needsEthics = false) => {
     setErr(''); setMsg('');
@@ -105,7 +112,25 @@ export default function ResearchPage() {
     );
   };
 
+  const handleAddMember = (projectId: string) => {
+    if (!memberForm.userId) { setErr('Select an active staff member before adding the project team member.'); return; }
+    setErr(''); setMsg('');
+    addMember({ projectId, ...memberForm }, {
+      onSuccess: () => { setMsg('✓ Research member added'); setMemberForm({ userId: '', role: 'RESEARCH_ASSISTANT' }); },
+      onError: (e) => setErr(e.message),
+    });
+  };
+
+  const handleRemoveMember = (projectId: string, userId: string) => {
+    setErr(''); setMsg('');
+    removeMember({ projectId, userId }, {
+      onSuccess: () => { setMsg('✓ Research member removed'); setPendingMemberRemoval(null); },
+      onError: (e) => { setErr(e.message); setPendingMemberRemoval(null); },
+    });
+  };
+
   return (
+    <>
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Research & Grants</h2>
@@ -271,6 +296,39 @@ export default function ResearchPage() {
                 </div>
               )}
 
+              {/* Research team section */}
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Research team ({project.members?.length ?? 0})</p>
+                  <p className="text-xs text-muted-foreground">Lead-controlled membership</p>
+                </div>
+                <div className="space-y-2">
+                  {project.members?.map((member) => {
+                    const person = researchPeople.find((candidate) => candidate.userId === member.userId);
+                    return <div key={member.userId} className="flex flex-col gap-2 rounded-md border border-border p-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <div><p className="font-medium">{person ? `${person.firstName} ${person.lastName}` : member.userId}</p><p className="text-muted-foreground">{person?.employeeNo ?? 'Institutional user'} · {member.role.replace('_', ' ')}</p></div>
+                      {canManageMembers && member.userId !== project.leadResearcherId && <Button size="sm" variant="destructive" onClick={() => setPendingMemberRemoval(member.userId)}>Remove</Button>}
+                    </div>;
+                  })}
+                </div>
+                {canManageMembers && (
+                  <div className="mt-2 space-y-2 rounded-md border border-dashed border-border p-3">
+                    <p className="text-xs font-semibold">Add team member</p>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_200px_auto]">
+                      <select aria-label="Research team member" value={memberForm.userId} onChange={(event) => setMemberForm({ ...memberForm, userId: event.target.value })} className="h-9 rounded border border-input bg-background px-2 text-xs">
+                        <option value="">Select active staff member</option>
+                        {researchPeople.filter((person) => !project.members?.some((member) => member.userId === person.userId)).map((person) => <option key={person.userId} value={person.userId}>{person.employeeNo} · {person.firstName} {person.lastName}</option>)}
+                      </select>
+                      <select aria-label="Research member role" value={memberForm.role} onChange={(event) => setMemberForm({ ...memberForm, role: event.target.value as MemberRole })} className="h-9 rounded border border-input bg-background px-2 text-xs">
+                        {(['CO_RESEARCHER', 'RESEARCH_ASSISTANT', 'CONSULTANT'] as MemberRole[]).map((role) => <option key={role} value={role}>{role.replace('_', ' ')}</option>)}
+                      </select>
+                      <Button size="sm" loading={addingMember} onClick={() => handleAddMember(selectedId)}>Add member</Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Only active or approved-leave staff are available. The project lead cannot be removed.</p>
+                  </div>
+                )}
+              </div>
+
               {/* Grants section */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">Grants ({project.grants?.length ?? 0})</p>
@@ -367,5 +425,7 @@ export default function ResearchPage() {
         </div>
       )}
     </div>
+    <ConfirmAction open={Boolean(pendingMemberRemoval)} title="Remove research team member?" description="This removes the member from the project team and records the change. The project lead cannot be removed." confirmLabel="Remove member" destructive onCancel={() => setPendingMemberRemoval(null)} onConfirm={() => { if (pendingMemberRemoval && selectedId) handleRemoveMember(selectedId, pendingMemberRemoval); }} />
+    </>
   );
 }
