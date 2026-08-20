@@ -55,8 +55,9 @@ model User {
   sessions         Session[]
   auditLogsAsActor AuditLog[]        @relation("AuditActor")
   notificationLogs NotificationLog[]
-  mfaBackupCodes   MfaBackupCode[] // FIX H7
-
+    mfaBackupCodes   MfaBackupCode[] // FIX H7
+  identityCardsIssued IdentityCard[] @relation("IdentityCardIssuedBy")
+  identityCardsRevoked IdentityCard[] @relation("IdentityCardRevokedBy")
   // Module relations — added per phase
   student                 Student? // CB-1 fix: Prisma 1:1 requires both sides
   waiverRequestsInitiated FeeWaiver[]        @relation("WaiverRequestedBy")
@@ -449,6 +450,52 @@ enum AcademicPolicyVersionStatus {
   ACTIVE
   REVOKED
   EXPIRED
+}
+
+enum IdentityCardHolderType {
+  STUDENT
+  STAFF
+}
+
+enum IdentityCardStatus {
+  ACTIVE
+  SUSPENDED
+  REVOKED
+  EXPIRED
+  REPLACED
+}
+
+model IdentityCard {
+  id                          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  holderType                  IdentityCardHolderType
+  studentId                   String?                @db.Uuid
+  staffId                     String?                @db.Uuid
+  cardNumber                  String                 @unique @db.VarChar(80)
+  serialNumber                String                 @unique @db.VarChar(80)
+  issueDate                   DateTime               @default(now()) @db.Date
+  expiryDate                  DateTime               @db.Date
+  status                      IdentityCardStatus     @default(ACTIVE)
+  photoUrl                    String?                @db.VarChar(500)
+  verificationTokenHash       String                 @unique @db.VarChar(64)
+  verificationTokenCiphertext String                 @db.VarChar(512)
+  verificationCount           Int                    @default(0)
+  lastVerifiedAt              DateTime?
+  lifecycleReason             String?                @db.VarChar(500)
+  issuedById                  String                 @db.Uuid
+  revokedById                 String?                @db.Uuid
+  createdAt                   DateTime               @default(now())
+  updatedAt                   DateTime               @updatedAt
+
+  student                     Student?               @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  staff                       Staff?                 @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  issuedBy                    User                   @relation("IdentityCardIssuedBy", fields: [issuedById], references: [id])
+  revokedBy                   User?                  @relation("IdentityCardRevokedBy", fields: [revokedById], references: [id])
+
+  @@index([holderType, status], map: "idx_identity_card_holder_status")
+  @@index([studentId, status], map: "idx_identity_card_student_status")
+  @@index([staffId, status], map: "idx_identity_card_staff_status")
+  @@index([expiryDate, status], map: "idx_identity_card_expiry_status")
+  @@map("identity_cards")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1712,6 +1759,7 @@ model Student {
    */
   bvn                    String?       @db.VarChar(150)
   passportPhotoUrl       String?       @db.VarChar(500)
+  identityCards          IdentityCard[]
   programmeId            String        @db.Uuid
   curriculumVersionId    String        @db.Uuid
   departmentId           String        @db.Uuid
@@ -2483,6 +2531,8 @@ model Staff {
   gender           String           @db.VarChar(20)
   phone            String           @db.VarChar(15)
   email            String           @unique @db.VarChar(255)
+  photoUrl         String?          @db.VarChar(500)
+  identityCards    IdentityCard[]
   nin              String?          @db.VarChar(150) // AES-256-GCM encrypted
   bvn              String?          @db.VarChar(150) // AES-256-GCM encrypted
   designation      String           @db.VarChar(150)

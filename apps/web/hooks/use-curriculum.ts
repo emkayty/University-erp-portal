@@ -1,7 +1,25 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CcmasComplianceV1, CourseV1, DepartmentV1, FacultyV1, ProgrammeV1 } from '@uniportal/types';
+import type { CcmasComplianceV1, CourseV1, DepartmentV1, FacultyV1, ProgrammeV1, StaffV1 } from '@uniportal/types';
+
+export interface CourseOfferingRecord {
+  id: string;
+  courseId: string;
+  academicCalendarId: string;
+  academicYear: string;
+  semester: 'FIRST' | 'SECOND' | 'SUMMER';
+  lecturerId: string | null;
+  curriculumVersionId?: string | null;
+  maxStudents: number | null;
+  lifecycleStatus: string;
+  sectionCode: string;
+  isActive: boolean;
+  course: CourseV1 & { department?: { name?: string; code?: string } };
+  semesterModel?: { id: string; semesterNumber: number; academicYear: string; status?: string };
+  lecturer?: Pick<StaffV1, 'id' | 'employeeNo' | 'firstName' | 'lastName'> | null;
+  registrations?: unknown[];
+}
 import { apiClient } from '@/lib/api-client';
 
 export const curriculumKeys = {
@@ -210,6 +228,35 @@ export function useRemovePrerequisite() {
       apiClient.delete(`/curriculum/courses/${courseId}/prerequisites/${prerequisiteId}`),
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: curriculumKeys.course(vars.courseId) }),
+  });
+}
+
+export function useCourseOfferings(filters?: { calendarId?: string; semester?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.calendarId) params.set('calendarId', filters.calendarId);
+  if (filters?.semester) params.set('semester', filters.semester);
+  return useQuery({
+    queryKey: curriculumKeys.offerings(filters?.calendarId, filters?.semester),
+    queryFn: () => apiClient.get<CourseOfferingRecord[]>(`/curriculum/offerings?${params.toString()}`),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateCourseOffering() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { courseId: string; academicCalendarId: string; semester: 'FIRST' | 'SECOND' | 'SUMMER'; lecturerId?: string; curriculumVersionId?: string; sectionCode?: string; maxStudents?: number }) =>
+      apiClient.post<CourseOfferingRecord>('/curriculum/offerings', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'offerings'] }),
+  });
+}
+
+export function useTransitionCourseOffering() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
+      apiClient.patch<CourseOfferingRecord>(`/curriculum/offerings/${id}/lifecycle`, { status, reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'offerings'] }),
   });
 }
 

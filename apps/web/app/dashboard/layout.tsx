@@ -32,6 +32,7 @@ import {
   FileText,
   Sparkles,
   Activity,
+  BadgeCheck,
 } from "lucide-react";
 
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
@@ -74,6 +75,18 @@ const ALL_NAV = [
     label: "Academic Life",
     icon: BookOpen,
     roles: "ALL",
+  },
+  {
+    href: "/dashboard/course-offerings",
+    label: "Course Offerings",
+    icon: ClipboardCheck,
+    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF"],
+  },
+  {
+    href: "/dashboard/identity-cards",
+    label: "Identity Cards",
+    icon: BadgeCheck,
+    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "HR_MANAGER", "STAFF", "STUDENT"],
   },
   {
     href: "/dashboard/assessment",

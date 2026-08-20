@@ -1,0 +1,16 @@
+'use client';
+
+import { useParams } from 'next/navigation';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useVerifyIdentityCard } from '@/hooks/use-identity-cards';
+
+const pretty = (value: string) => value.replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+const dateLabel = (value: string) => new Date(value).toLocaleDateString(undefined, { dateStyle: 'medium' });
+
+export default function VerifyIdentityCardPage() {
+  const params = useParams<{ token: string }>();
+  const token = typeof params.token === 'string' ? params.token : '';
+  const { data, isLoading, isError } = useVerifyIdentityCard(token);
+
+  return <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10"><Card className="w-full max-w-lg overflow-hidden border-white/10 bg-slate-900 text-white shadow-2xl"><CardHeader className="border-b border-white/10"><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200">UniPortal ERP</p><CardTitle className="mt-2 text-xl">Identity card verification</CardTitle><p className="text-sm text-slate-300">Public verification shows only the minimum information needed to confirm institutional validity.</p></CardHeader><CardContent className="p-6">{isLoading ? <div role="status" className="space-y-3"><div className="h-4 animate-pulse rounded bg-white/10" /><div className="h-20 animate-pulse rounded bg-white/10" /></div> : isError || !data ? <div role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">This identity card could not be verified. It may be invalid, revoked, or the link may be incomplete.</div> : <div className="space-y-5"><div className={`rounded-xl border p-4 ${data.valid ? 'border-emerald-400/30 bg-emerald-400/10' : 'border-amber-400/30 bg-amber-400/10'}`}><p className="text-xs font-semibold uppercase tracking-wider text-slate-200">Verification result</p><p className="mt-1 text-lg font-bold">{data.valid ? 'Valid institutional card' : `Card ${pretty(data.status)}`}</p><p className="mt-1 text-sm text-slate-200">{data.valid ? 'The credential is currently active.' : 'Do not rely on this card for access until the issuing office confirms its status.'}</p></div><dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-slate-400">Name</dt><dd className="font-semibold">{data.name}</dd></div><div><dt className="text-slate-400">Category</dt><dd className="font-semibold">{pretty(data.holderType)}</dd></div><div><dt className="text-slate-400">Identifier</dt><dd className="font-semibold">{data.identifier ?? '—'}</dd></div><div><dt className="text-slate-400">Card number</dt><dd className="font-semibold">{data.cardNumber}</dd></div><div><dt className="text-slate-400">Serial number</dt><dd className="font-semibold">{data.serialNumber}</dd></div><div><dt className="text-slate-400">Valid until</dt><dd className="font-semibold">{dateLabel(data.expiryDate)}</dd></div></dl><p className="border-t border-white/10 pt-4 text-xs text-slate-400">This verification page does not display date of birth, phone number, address, NIN, or other private records.</p></div>}</CardContent></Card></main>;
+}

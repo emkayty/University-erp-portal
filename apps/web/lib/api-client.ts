@@ -41,7 +41,7 @@ function actionResource(path: string): string {
     ['assessment', 'Assessment'], ['admissions', 'Admissions'], ['auth', 'Authentication'],
     ['fees', 'Fees'], ['payments', 'Payment'], ['results', 'Results'], ['students', 'Student records'],
     ['users', 'User management'], ['notifications', 'Notifications'], ['reports', 'Reports'],
-    ['reliability', 'Reliability operations'], ['settings', 'Settings'], ['calendar', 'Calendar'],
+    ['reliability', 'Reliability operations'], ['settings', 'Settings'], ['calendar', 'Calendar'], ['curriculum', 'Academic curriculum'], ['identity-cards', 'Identity cards'],
   ];
   return labels.find(([key]) => path.toLowerCase().includes(key))?.[1] ?? 'This action';
 }

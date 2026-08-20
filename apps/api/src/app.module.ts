@@ -55,6 +55,7 @@ import { PrivacyModule } from './modules/privacy/privacy.module';
 import { SecurityModule } from './modules/security/security.module';
 import { ClearanceModule } from './modules/clearance/clearance.module';
 import { UniversityPoliciesModule } from './modules/policies/university-policies.module';
+import { IdentityCardsModule } from './modules/identity-cards/identity-cards.module';
 
 // P0-6 FIX (this pass): QUEUE_NAMES moved to ./common/queue-names.ts to
 // break a genuine circular dependency — see that file's header comment for
@@ -141,7 +142,7 @@ import { UniversityPoliciesModule } from './modules/policies/university-policies
     // P9: Reports, Search, Audit Viewer
     ReportsModule, SearchModule, AuditViewerModule,
     // P10: NDPR compliance hardening
-    PrivacyModule, SecurityModule, UniversityPoliciesModule,
+    PrivacyModule, SecurityModule, UniversityPoliciesModule, IdentityCardsModule,
     // P10 (AUDIT-H3): Clearance — previously missing despite being assumed
     // by students.service.ts's matriculation seeding and the reports
     // module's CLEARANCE_STATUS case

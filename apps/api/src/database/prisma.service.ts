@@ -553,6 +553,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   get hostelBlock() {
     return this.client.hostelBlock;
   }
+  get identityCard() {
+    return this.client.identityCard;
+  }
   get institutionSettings() {
     return this.client.institutionSettings;
   }
