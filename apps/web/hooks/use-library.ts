@@ -24,12 +24,29 @@ export function useLibrarySearch(q?: string, category?: string, page = 1, option
   });
 }
 
+export function useOverdueLoans(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: libraryKeys.overdue,
+    queryFn: () => apiClient.get<LibraryLoanV1[]>('/library/loans/overdue'),
+    staleTime: 30_000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useMyLoans(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: libraryKeys.myLoans,
     queryFn:  () => apiClient.get<LibraryLoanV1[]>('/library/loans/my'),
     staleTime: 60_000,
     enabled: options?.enabled ?? true,
+  });
+}
+
+export function useCreateLibraryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { accessionNo: string; title: string; author?: string; isbn?: string; publisher?: string; publishYear?: number; category: string; totalCopies: number; shelfLocation?: string }) => apiClient.post<LibraryItemV1>('/library/items', data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['library', 'items'] }),
   });
 }
 
@@ -49,7 +66,10 @@ export function useReturnItem() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (loanId: string) => apiClient.patch<{ message: string; overdueDays: number; fineAmount: number }>(`/library/loans/${loanId}/return`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: libraryKeys.myLoans }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: libraryKeys.myLoans });
+      void qc.invalidateQueries({ queryKey: libraryKeys.overdue });
+    },
   });
 }
 

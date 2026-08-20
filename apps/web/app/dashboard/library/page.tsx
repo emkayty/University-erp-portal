@@ -3,16 +3,17 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { useLibrarySearch, useMyLoans, useBorrowItem, useReturnItem, useRenewLoan } from '@/hooks/use-library';
+import { useLibrarySearch, useMyLoans, useOverdueLoans, useBorrowItem, useReturnItem, useRenewLoan, useCreateLibraryItem } from '@/hooks/use-library';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
+import { hasEffectiveRole, hasEffectiveScope } from '@/lib/authz';
 
 const CATEGORIES = ['TEXTBOOK','REFERENCE','JOURNAL','THESIS','NOVEL','PERIODICAL','MULTIMEDIA','OTHER'];
 const LOAN_COLORS: Record<string,string> = { ACTIVE:'badge-success', RETURNED:'badge-neutral', OVERDUE:'badge-danger', LOST:'badge-warning' };
 
 export default function LibraryPage() {
   const user = useAuthStore((s) => s.user);
-  const [tab, setTab]       = useState<'search'|'loans'>('search');
+  const [tab, setTab]       = useState<'search'|'loans'|'overdue'>('search');
   const [q, setQ]           = useState('');
   const [cat, setCat]       = useState('');
   const [query, setQuery]   = useState('');
@@ -21,12 +22,16 @@ export default function LibraryPage() {
   const [err, setErr]       = useState('');
   const [msg, setMsg]       = useState('');
   const [returnResult, setReturn] = useState<{ overdueDays: number; fineAmount: number } | null>(null);
+  const [catalogForm, setCatalogForm] = useState({ accessionNo: '', title: '', author: '', isbn: '', publisher: '', publishYear: '', category: 'TEXTBOOK', totalCopies: '1', shelfLocation: '' });
 
   const { data: searchRes, isLoading } = useLibrarySearch(query || undefined, cat || undefined, 1, { enabled: Boolean(user) });
   const { data: loans = [] }           = useMyLoans({ enabled: Boolean(user) });
   const { mutate: borrow,  isPending: borrowing } = useBorrowItem();
   const { mutate: ret,     isPending: returning } = useReturnItem();
   const { mutate: renew,   isPending: renewing  } = useRenewLoan();
+  const { mutate: createItem, isPending: creatingItem } = useCreateLibraryItem();
+  const canManageLibrary = hasEffectiveRole(user, 'SUPER_ADMIN', 'HOD', 'REGISTRAR') || (hasEffectiveRole(user, 'STAFF') && hasEffectiveScope(user, 'library'));
+  const { data: overdueLoans = [] } = useOverdueLoans({ enabled: canManageLibrary });
 
   const items = searchRes?.items ?? [];
 
@@ -46,13 +51,23 @@ export default function LibraryPage() {
       onError:   (e) => setErr(e.message),
     });
   };
+  const handleCreateItem = () => {
+    if (catalogForm.accessionNo.trim().length < 3 || !catalogForm.title.trim()) { setErr('Accession number and title are required.'); return; }
+    const totalCopies = Number(catalogForm.totalCopies);
+    if (!Number.isInteger(totalCopies) || totalCopies < 1) { setErr('Total copies must be a whole number of at least 1.'); return; }
+    setErr(''); setMsg('');
+    createItem({ accessionNo: catalogForm.accessionNo.trim(), title: catalogForm.title.trim(), author: catalogForm.author.trim() || undefined, isbn: catalogForm.isbn.trim() || undefined, publisher: catalogForm.publisher.trim() || undefined, publishYear: catalogForm.publishYear ? Number(catalogForm.publishYear) : undefined, category: catalogForm.category, totalCopies, shelfLocation: catalogForm.shelfLocation.trim() || undefined }, {
+      onSuccess: () => { setMsg('✓ Library item added'); setCatalogForm({ accessionNo: '', title: '', author: '', isbn: '', publisher: '', publishYear: '', category: 'TEXTBOOK', totalCopies: '1', shelfLocation: '' }); },
+      onError: (e) => setErr(e.message),
+    });
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Library</h2>
         <div className="flex gap-2">
-          {[{k:'search',l:'Catalogue'},{k:'loans',l:`My Loans (${loans.length})`}].map((t) => (
+          {[{k:'search',l:'Catalogue'},{k:'loans',l:`My Loans (${loans.length})`}, ...(canManageLibrary ? [{ k: 'overdue', l: `Overdue (${overdueLoans.length})` }] : [])].map((t) => (
             <button key={t.k} onClick={() => setTab(t.k as typeof tab)}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab===t.k?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
@@ -73,6 +88,7 @@ export default function LibraryPage() {
       {/* ── Catalogue ──────────────────────────────────────────────────── */}
       {tab === 'search' && (
         <div className="space-y-4">
+          {canManageLibrary && <Card><CardHeader><CardTitle className="text-sm">Add catalogue item</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-xs text-muted-foreground">Use the accession number issued by the library and record one catalogue item per title record. The API validates ISBN, year, category, and copy counts again.</p><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{([{ key: 'accessionNo', label: 'Accession number', required: true }, { key: 'title', label: 'Title', required: true }, { key: 'author', label: 'Author' }, { key: 'isbn', label: 'ISBN' }, { key: 'publisher', label: 'Publisher' }, { key: 'publishYear', label: 'Publish year', type: 'number' }, { key: 'shelfLocation', label: 'Shelf location' }] as const).map((field) => <label key={field.key} className="text-xs text-muted-foreground">{field.label}<Input className="mt-1" type={'type' in field ? field.type : 'text'} required={'required' in field ? field.required : false} value={catalogForm[field.key]} onChange={(event) => setCatalogForm((current) => ({ ...current, [field.key]: event.target.value }))} /></label>)}<label className="text-xs text-muted-foreground">Category<select className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={catalogForm.category} onChange={(event) => setCatalogForm((current) => ({ ...current, category: event.target.value }))}>{CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label className="text-xs text-muted-foreground">Total copies<Input className="mt-1" type="number" min={1} step={1} value={catalogForm.totalCopies} onChange={(event) => setCatalogForm((current) => ({ ...current, totalCopies: event.target.value }))} /></label></div><Button size="sm" onClick={handleCreateItem} loading={creatingItem}>Add item</Button></CardContent></Card>}
           <div className="flex flex-wrap gap-2">
             <Input placeholder="Search title, author or ISBN…" value={q} onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && setQuery(q)} className="flex-1 min-w-[200px]" />
@@ -127,6 +143,8 @@ export default function LibraryPage() {
           )}
         </div>
       )}
+
+      {tab === 'overdue' && canManageLibrary && <div className="space-y-3"><div><h3 className="text-base font-semibold">Overdue loans</h3><p className="text-sm text-muted-foreground">Library staff view of overdue items. Returning a loan records the fine and removes it from this queue.</p></div>{overdueLoans.length === 0 ? <p className="text-sm text-muted-foreground">No overdue loans.</p> : overdueLoans.map((loan) => <Card key={loan.id} className="border-red-300"><CardContent className="pt-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{loan.libraryItem?.title ?? 'Library item'}</p><p className="text-xs text-muted-foreground">Due {formatDate(loan.dueDate)} · Borrowed {formatDate(loan.borrowedAt)}</p><p className="text-xs text-[--color-danger]">Current fine: {formatNgn(parseFloat(loan.fineAmount))}</p></div><Button size="sm" loading={returning} onClick={() => handleReturn(loan.id)}>Record return</Button></div></CardContent></Card>)}</div>}
 
       {/* ── My Loans ───────────────────────────────────────────────────── */}
       {tab === 'loans' && (

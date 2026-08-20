@@ -96,6 +96,7 @@ function UserRoleSummary({ user }: { user: AdminUser }) {
 export default function UsersAdminPage() {
   const user = useAuthStore((state) => state.user);
   const canManageUsers = hasEffectiveRole(user, 'SUPER_ADMIN');
+  const canManageDelegations = hasEffectiveRole(user, 'SUPER_ADMIN', 'VC', 'REGISTRAR', 'DEAN', 'HOD', 'BURSAR', 'HR_MANAGER');
   const [filter, setFilter] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [newRole, setNewRole] = useState<RoleName>('STAFF');
@@ -135,20 +136,28 @@ export default function UsersAdminPage() {
 
   if (!canManageUsers) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <header>
-          <p className="text-sm text-muted-foreground">Identity and access lifecycle administration</p>
+          <p className="text-sm text-muted-foreground">Delegated authority administration</p>
           <h1 className="text-2xl font-semibold">User Administration</h1>
         </header>
-        <Card>
-          <CardContent className="py-10 text-center">
-            <p className="font-medium">Access restricted</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              User administration is limited to Super Administrators. Contact your
-              authorised administrator if you need an access change.
-            </p>
-          </CardContent>
-        </Card>
+        {canManageDelegations ? (
+          <Card>
+            <CardHeader><CardTitle>Create time-bounded delegation</CardTitle></CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={submitDelegation}>
+                <p className="text-sm text-muted-foreground">You may create a time-bounded delegation within your authority. User enumeration, role grants, account lifecycle changes, and access reviews remain restricted to Super Administrators. Enter the target account UUID supplied through the approved institutional process.</p>
+                <label className="block text-xs text-muted-foreground">Delegatee account UUID<input aria-label="Delegatee account UUID" className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm" value={delegateeId} onChange={(event) => setDelegateeId(event.target.value.trim())} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required /></label>
+                <select aria-label="Delegated role" className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={delegationRole} onChange={(event) => setDelegationRole(event.target.value as RoleName)}>{ALL_ROLE_NAMES.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}</select>
+                <input className="h-10 w-full rounded-md border bg-background px-3 text-sm" minLength={8} value={delegationReason} onChange={(event) => setDelegationReason(event.target.value)} placeholder="Business reason (8+ chars)" required />
+                <div className="grid gap-3 md:grid-cols-2"><label className="text-xs text-muted-foreground">Starts<input className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground" type="datetime-local" value={delegationStartsAt} onChange={(event) => setDelegationStartsAt(event.target.value)} /></label><label className="text-xs text-muted-foreground">Ends<input className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm text-foreground" type="datetime-local" value={delegationEndsAt} onChange={(event) => setDelegationEndsAt(event.target.value)} required /></label></div>
+                {roleNeedsScope(delegationRole) && <ScopePicker value={delegationScopes} onChange={setDelegationScopes} />}
+                <Button type="submit" disabled={!delegateeId} loading={createDelegation.isPending}>Create delegation</Button>
+                <ErrorText message={createDelegation.error?.message} />
+              </form>
+            </CardContent>
+          </Card>
+        ) : <Card><CardContent className="py-10 text-center"><p className="font-medium">Access restricted</p><p className="mt-2 text-sm text-muted-foreground">This area is limited to Super Administrators and authorised authority holders.</p></CardContent></Card>}
       </div>
     );
   }
