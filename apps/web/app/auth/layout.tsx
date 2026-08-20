@@ -11,9 +11,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
     : branding?.institutionType?.replaceAll('_', ' ') ?? 'University Administration System';
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50 p-4 dark:from-slate-900 dark:to-blue-950" style={branding?.primaryColor ? { '--color-primary': branding.primaryColor } as CSSProperties : undefined}>
-      <main className="flex w-full flex-col items-center">
-        <div className="mb-8 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-4 sm:p-6" style={branding?.primaryColor ? { '--color-primary': branding.primaryColor } as CSSProperties : undefined}>
+      <main className="flex w-full max-w-2xl flex-col items-center">
+        <div className="mb-8 text-center sm:mb-10">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-[--color-primary] shadow-lg" aria-hidden={!branding?.logoUrl}>
             {branding?.logoUrl ? (
               <img src={branding.logoUrl} alt="" className="h-full w-full object-contain p-2" />

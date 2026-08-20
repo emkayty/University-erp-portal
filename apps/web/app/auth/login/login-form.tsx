@@ -164,7 +164,7 @@ export function LoginForm() {
   // ── Render ─────────────────────────────────────────────────────────────────
   if (step === 'mfa-setup') {
     return (
-      <Card className="glass-card">
+      <Card className="enterprise-surface rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle>Set Up Required MFA</CardTitle>
           <CardDescription>Your role requires multi-factor authentication before access can be granted.</CardDescription>
@@ -198,7 +198,7 @@ export function LoginForm() {
 
     if (step === 'mfa' || step === 'backup') {
     return (
-      <Card className="glass-card">
+      <Card className="enterprise-surface rounded-2xl shadow-sm">
         <CardHeader>
           <CardTitle>{step === 'mfa' ? 'Two-Factor Verification' : 'Backup Code'}</CardTitle>
           <CardDescription>
@@ -278,7 +278,7 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="glass-card">
+    <Card className="enterprise-surface rounded-2xl shadow-sm">
       <CardHeader>
         <CardTitle>Sign In</CardTitle>
         <CardDescription>Enter your institutional credentials to continue</CardDescription>

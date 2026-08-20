@@ -4,7 +4,8 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    UniPortal ERP — Design System Tokens
-   Liquid-Glass aesthetic with Nigerian institutional brand colours
+   Minimal enterprise system with Nigerian institutional brand colours.
+   Glass is a controlled accent for overlays and secondary surfaces only.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 @layer base {
@@ -31,7 +32,7 @@
     --color-danger:        #C43B2A;
     --color-warning:       #B86C00;
 
-    /* ── Liquid-Glass surfaces ───────────────────────────────────────────── */
+    /* ── Selective depth surfaces: solid data surfaces first; glass only for overlays ── */
     --glass-bg:            rgba(255, 255, 255, 0.72);
     --glass-border:        rgba(255, 255, 255, 0.35);
     --glass-shadow:        0 4px 24px rgba(0, 86, 179, 0.12);
@@ -98,8 +99,9 @@
 
 /* ── Utility classes ───────────────────────────────────────────────────────── */
 @layer utilities {
-  /* Liquid-glass card */
+  /* Selective glass accent: use only for overlays, command surfaces, and secondary panels. */
   .glass-card {
+    /* Do not use this class for dense forms, gradebooks, finance records, or tables. */
     background:    var(--glass-bg);
     border:        1px solid var(--glass-border);
     box-shadow:    var(--glass-shadow);
@@ -149,6 +151,21 @@
 @layer utilities {
   .touch-target { min-width: 44px; min-height: 44px; }
   .text-balance { text-wrap: balance; }
+
+  .enterprise-surface {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  }
+
+  .enterprise-eyebrow {
+    color: var(--color-primary);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+    text-transform: uppercase;
+  }
 }
 
 /* V19 ERP design tokens — consume these variables from all UI primitives. */
