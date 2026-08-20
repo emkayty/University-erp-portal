@@ -56,7 +56,10 @@ export const envSchema = z.object({
   API_PREFIX: z.string().default('api/v1'),
 
   // ─── Frontend ─────────────────────────────────────────────────────────────
-  FRONTEND_ORIGIN: z.string().url().default('http://localhost:3000'),
+  FRONTEND_ORIGIN: z.string().refine(
+    (value) => value.split(',').every((origin) => z.string().url().safeParse(origin.trim()).success),
+    'FRONTEND_ORIGIN must contain one or more comma-separated absolute URLs',
+  ).default('http://localhost:3000'),
   // AdmissionsService refuses public application/status operations unless this
   // secret is provisioned; optional here so admin/read-only processes can boot.
   ADMISSIONS_TRACKING_SECRET: z.string().min(32).optional(),

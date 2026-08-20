@@ -73,8 +73,9 @@ async function bootstrap(): Promise<void> {
     app.getHttpAdapter().getInstance().set('trust proxy', env.TRUST_PROXY_HOPS);
   }
 
+  const frontendOrigins = env.FRONTEND_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
   app.enableCors({
-    origin:         env.FRONTEND_ORIGIN,
+    origin:         frontendOrigins.length === 1 ? frontendOrigins[0] : frontendOrigins,
     credentials:    true,
     methods:        ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Idempotency-Key', 'X-Request-ID'],

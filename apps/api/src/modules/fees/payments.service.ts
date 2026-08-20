@@ -305,7 +305,7 @@ export class PaymentsService {
           email,
           amount: Math.round(amountNaira * 100), // kobo
           reference,
-          callback_url: process.env.FRONTEND_ORIGIN ? `${process.env.FRONTEND_ORIGIN}/dashboard/fees?ref=${reference}` : undefined,
+          callback_url: process.env.FRONTEND_ORIGIN?.split(',')[0]?.trim() ? `${process.env.FRONTEND_ORIGIN.split(',')[0].trim()}/dashboard/fees?ref=${reference}` : undefined,
           metadata: { studentFeeId: feeId },
         }),
       });
