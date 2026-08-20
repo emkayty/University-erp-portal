@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useStaff, usePendingLeaves, useDecideLeave, useCreateSalaryGrade, useSalaryGrades } from '@/hooks/use-hr';
+import { useStaff, usePendingLeaves, useDecideLeave, useCreateSalaryGrade, useSalaryGrades, useRetireStaff } from '@/hooks/use-hr';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
 import { hasEffectiveRole } from '@/lib/authz';
@@ -25,6 +25,7 @@ export default function HrPage() {
   const [msg, setMsg] = useState('');
   const [statusFilter, setStatus] = useState('');
   const [pendingLeaveDecision, setPendingLeaveDecision] = useState<{ leave: LeaveRequestV1; action: 'APPROVE'|'REJECT'; note: string } | null>(null);
+  const [pendingRetireId, setPendingRetireId] = useState<string | null>(null);
 
   const { data: staff = [], isLoading } = useStaff({ employmentStatus: statusFilter || undefined });
   const { data: grades = [] }           = useSalaryGrades();
@@ -32,6 +33,7 @@ export default function HrPage() {
 
   const { mutate: decide, isPending: deciding }       = useDecideLeave();
   const { mutate: createGrade, isPending: creating }  = useCreateSalaryGrade();
+  const { mutate: retireStaff, isPending: retiring }  = useRetireStaff();
 
   const [gradeForm, setGradeForm] = useState({ gradeLevel: '', basicSalary: 0, housingAllowancePct: 15, transportAllowancePct: 10, medicalAllowancePct: 5 });
 
@@ -53,6 +55,14 @@ export default function HrPage() {
     if (!gradeForm.gradeLevel || !gradeForm.basicSalary) { setErr('Grade level and basic salary required'); return; }
     setErr('');
     createGrade(gradeForm, { onSuccess: () => setMsg('✓ Salary grade created'), onError: (e) => setErr(e.message) });
+  };
+  const confirmRetirement = () => {
+    if (!pendingRetireId) return;
+    setErr(''); setMsg('');
+    retireStaff(pendingRetireId, {
+      onSuccess: () => { setMsg('✓ Staff member retired'); setPendingRetireId(null); },
+      onError: (e) => setErr(e.message),
+    });
   };
 
   return (
@@ -82,8 +92,16 @@ export default function HrPage() {
       >
         <label htmlFor="leave-decision-note" className="block text-sm font-medium text-foreground">Decision note {pendingLeaveDecision?.action === 'REJECT' ? '(recommended)' : '(optional)'}</label>
         <textarea id="leave-decision-note" value={pendingLeaveDecision?.note ?? ''} onChange={(e) => setPendingLeaveDecision((current) => current ? { ...current, note: e.target.value } : current)} rows={3} className="mt-1 w-full rounded-md border border-input bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--color-primary]" />
-      </ConfirmAction>
-
+            </ConfirmAction>
+      <ConfirmAction
+        open={!!pendingRetireId}
+        title="Retire staff member"
+        description="This will set the staff member's employment status to RETIRED and record the retirement date. Confirm only after HR has completed the required institutional process."
+        confirmLabel="Retire staff member"
+        destructive
+        onCancel={() => setPendingRetireId(null)}
+        onConfirm={confirmRetirement}
+      />
       {/* ── Staff tab ───────────────────────────────────────────────────── */}
       {tab === 'staff' && (
         <div className="space-y-3">
@@ -96,12 +114,12 @@ export default function HrPage() {
             <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-muted">
-                  <tr>{['Employee No','Name','Designation','Department','Grade','Status'].map((h) => (
+                  <tr>{['Employee No','Name','Designation','Department','Grade','Status', ...(canHr && !canHod ? ['Actions'] : [])].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase">{h}</th>
                   ))}</tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {staff.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">No staff records yet.</td></tr>}
+                  {staff.length === 0 && <tr><td colSpan={canHr && !canHod ? 7 : 6} className="px-4 py-8 text-center text-sm text-muted-foreground">No staff records yet.</td></tr>}
                   {staff.map((s) => (
                     <tr key={s.id} className={cn(requestedStaffId === s.id && 'bg-[--color-primary]/10 ring-1 ring-inset ring-[--color-primary]')}>
                       <td className="px-4 py-2.5 font-mono text-xs text-[--color-primary]">{s.employeeNo}</td>
@@ -110,6 +128,7 @@ export default function HrPage() {
                       <td className="px-4 py-2.5 text-muted-foreground">{s.departmentName ?? '—'}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{s.gradeLevel ?? '—'}</td>
                       <td className="px-4 py-2.5"><span className={cn('rounded-full px-2 py-0.5 text-xs',STATUS_COLORS[s.employmentStatus]??'')}>{s.employmentStatus.replace('_',' ')}</span></td>
+                      {canHr && !canHod && <td className="px-4 py-2.5">{s.employmentStatus !== 'RETIRED' && <Button size="sm" variant="destructive" onClick={() => setPendingRetireId(s.id)}>Retire</Button>}</td>}
                     </tr>
                   ))}
                 </tbody>

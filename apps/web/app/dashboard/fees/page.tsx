@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  useFeeSchedules, useCreateFeeSchedule, useGenerateInvoices,
+  useFeeSchedules, useCreateFeeSchedule, useUpdateFeeSchedule, useGenerateInvoices,
   useStudentFees, useInitiatePayment, usePaymentHistory,
   useRequestWaiver, usePendingWaivers, useApproveWaiver, useRejectWaiver,
 } from '@/hooks/use-fees';
@@ -55,6 +55,8 @@ export default function FeesPage() {
   const [selectedFeeId, setSelFeeId] = useState('');
   const [showWaiverForm, setShowWaiver] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null);
+  const [editingScheduleActive, setEditingScheduleActive] = useState(true);
   // Retained for the page lifetime so a retry after a slow/uncertain network
   // response addresses the same payment attempt rather than opening a second
   // provider session for the same fee.
@@ -65,9 +67,10 @@ export default function FeesPage() {
   const { data: schedules = [] } = useFeeSchedules();
   const { data: myFees    = [], isLoading: feesLoading } = useStudentFees(studentId);
   const { data: history   = [] } = usePaymentHistory(studentId);
-  const { data: pendingWaivers = [] } = usePendingWaivers();
+  const { data: pendingWaivers = [] } = usePendingWaivers({ enabled: canWaive });
 
   const { mutate: createSchedule,   isPending: creatingSchedule } = useCreateFeeSchedule();
+  const { mutate: updateSchedule,   isPending: updatingSchedule } = useUpdateFeeSchedule();
   const { mutate: generateInvoices, isPending: generating }       = useGenerateInvoices();
   const { mutate: initiatePayment,  isPending: initiating }       = useInitiatePayment();
   const { mutate: requestWaiver,    isPending: requestingWaiver } = useRequestWaiver();
@@ -78,9 +81,16 @@ export default function FeesPage() {
   const waiverForm   = useForm<WaiverForm>({ resolver: zodResolver(waiverSchema) });
 
   const handleCreateSchedule = scheduleForm.handleSubmit((data) => {
-    setError('');
+    setError(''); setMsg('');
+    if (editingScheduleId) {
+      updateSchedule({ id: editingScheduleId, amount: Number(data.amount), dueDate: data.dueDate || undefined, description: data.description || undefined, isActive: editingScheduleActive }, {
+        onSuccess: () => { setMsg('Fee schedule updated successfully.'); setShowScheduleForm(false); setEditingScheduleId(null); scheduleForm.reset(); },
+        onError: (e) => setError(e.message),
+      });
+      return;
+    }
     createSchedule(data, {
-      onSuccess: () => { setShowScheduleForm(false); scheduleForm.reset(); },
+      onSuccess: () => { setMsg('Fee schedule created successfully.'); setShowScheduleForm(false); scheduleForm.reset(); },
       onError:   (e) => setError(e.message),
     });
   });
@@ -229,7 +239,7 @@ export default function FeesPage() {
       {tab === 'schedules' && (
         <div className="space-y-4">
           {isBursar && (
-            <Button size="sm" onClick={() => setShowScheduleForm(!showScheduleForm)}>
+            <Button size="sm" onClick={() => { setShowScheduleForm((value) => !value); setEditingScheduleId(null); scheduleForm.reset(); }}>
               {showScheduleForm ? 'Cancel' : '+ New Fee Schedule'}
             </Button>
           )}
@@ -264,8 +274,9 @@ export default function FeesPage() {
                     <Label htmlFor="description">Description</Label>
                     <Input id="description" placeholder="Optional note" {...scheduleForm.register('description')} />
                   </div>
+                  {editingScheduleId && <div className="flex items-center gap-2 lg:col-span-3"><input id="schedule-active" type="checkbox" checked={editingScheduleActive} onChange={(event) => setEditingScheduleActive(event.target.checked)} /><Label htmlFor="schedule-active">Schedule is active</Label></div>}
                   <div className="sm:col-span-2 lg:col-span-3">
-                    <Button type="submit" size="sm" loading={creatingSchedule}>Create Schedule</Button>
+                    <Button type="submit" size="sm" loading={creatingSchedule || updatingSchedule}>{editingScheduleId ? 'Save Schedule' : 'Create Schedule'}</Button>
                   </div>
                 </form>
               </CardContent>
@@ -293,9 +304,10 @@ export default function FeesPage() {
                     <td className="px-4 py-2.5 text-muted-foreground">{s.dueDate ? formatDate(s.dueDate) : '—'}</td>
                     <td className="px-4 py-2.5"><span className={cn('rounded-full px-2 py-0.5 text-xs',s.isActive?'badge-success':'badge-neutral')}>{s.isActive?'Active':'Inactive'}</span></td>
                     {isBursar && (
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5"><div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => { setEditingScheduleId(s.id); setEditingScheduleActive(s.isActive); scheduleForm.reset({ academicYear: s.academicYear, feeType: s.feeType, amount: Number(s.amount), level: s.level ?? undefined, description: s.description ?? '', dueDate: s.dueDate ? s.dueDate.slice(0, 10) : '' }); setShowScheduleForm(true); }}>Edit</Button>
                         <Button size="sm" variant="outline" loading={generating} onClick={() => handleGenerate(s.id)}>Generate Invoices</Button>
-                      </td>
+                      </div></td>
                     )}
                   </tr>
                 ))}

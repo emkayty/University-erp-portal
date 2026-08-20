@@ -6,12 +6,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { Button }  from '@/components/ui/button';
+import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input }   from '@/components/ui/input';
 import { Label }   from '@/components/ui/label';
 import {
   useCalendars, useCreateCalendar, useActivateCalendar,
-  useSuspendCalendar, useResumeCalendar, useAddCalendarEvent,
+  useSuspendCalendar, useResumeCalendar, useCompleteCalendar, useAddCalendarEvent, useRemoveCalendarEvent,
 } from '@/hooks/use-calendar';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
@@ -64,12 +65,15 @@ export default function CalendarPage() {
   const { mutate: activateCalendar, isPending: activating } = useActivateCalendar();
   const { mutate: suspendCalendar,  isPending: suspending } = useSuspendCalendar();
   const { mutate: resumeCalendar,   isPending: resuming   } = useResumeCalendar();
+  const { mutate: completeCalendar, isPending: completing } = useCompleteCalendar();
   const { mutate: addEvent,         isPending: addingEvent } = useAddCalendarEvent();
+  const { mutate: removeEvent,      isPending: removingEvent } = useRemoveCalendarEvent();
 
   const [selected,       setSelected]       = useState<string | null>(null);
   const [showCreate,     setShowCreate]      = useState(false);
   const [showSuspend,    setShowSuspend]     = useState(false);
   const [showAddEvent,   setShowAddEvent]    = useState(false);
+  const [pendingRemoveEvent, setPendingRemoveEvent] = useState<{ id: string; name: string } | null>(null);
   const [actionError,    setActionError]     = useState('');
 
   const selectedCalendar = calendars.find((c) => c.id === selected) ?? null;
@@ -103,6 +107,11 @@ export default function CalendarPage() {
       onError:   (e)  => setActionError(e.message),
     });
   });
+
+  const confirmRemoveEvent = () => {
+    if (!selected || !pendingRemoveEvent) return;
+    removeEvent({ calendarId: selected, eventId: pendingRemoveEvent.id }, { onSuccess: () => setPendingRemoveEvent(null), onError: (e) => setActionError(e.message) });
+  };
 
   if (isLoading) return <div className="animate-pulse space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-lg bg-muted" />)}</div>;
 
@@ -214,6 +223,7 @@ export default function CalendarPage() {
                       ▶ Resume
                     </Button>
                   )}
+                  {selectedCalendar.status === 'ACTIVE' && <Button size="sm" variant="outline" loading={completing} onClick={() => { setActionError(''); completeCalendar(selectedCalendar.id, { onError: (e) => setActionError(e.message) }); }}>Mark complete</Button>}
                 </div>
               )}
             </div>
@@ -226,6 +236,10 @@ export default function CalendarPage() {
                 <p className="mt-0.5 text-xs text-amber-600">Suspended: {formatDate(selectedCalendar.suspendedAt!)}</p>
               </div>
             )}
+
+            <ConfirmAction open={!!pendingRemoveEvent} title="Remove calendar event" description="This removes the event from the academic calendar. Confirm only if the event was entered in error or formally cancelled." confirmLabel="Remove event" destructive onCancel={() => setPendingRemoveEvent(null)} onConfirm={confirmRemoveEvent}>
+              <p className="text-sm text-muted-foreground">Event: <strong>{pendingRemoveEvent?.name}</strong></p>
+            </ConfirmAction>
 
             {/* Error */}
             {actionError && (
@@ -311,9 +325,9 @@ export default function CalendarPage() {
                             {ev.endDate ? ` — ${formatDate(ev.endDate)}` : ''}
                           </p>
                         </div>
-                        <span className={cn('rounded-full px-2 py-0.5 text-xs', ev.isPublic ? 'badge-info' : 'badge-neutral')}>
+                        <div className="flex items-center gap-2"><span className={cn('rounded-full px-2 py-0.5 text-xs', ev.isPublic ? 'badge-info' : 'badge-neutral')}>
                           {ev.isPublic ? 'Public' : 'Internal'}
-                        </span>
+                        </span>{canManage && <Button size="sm" variant="ghost" loading={removingEvent} onClick={() => setPendingRemoveEvent({ id: ev.id, name: ev.name })}>Remove</Button>}</div>
                       </div>
                     ))}
                   </div>

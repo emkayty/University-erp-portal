@@ -11,7 +11,7 @@ import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useMatriculate, useStudents, useStudent, useRegisteredCourses, useAcademicHistory, useUpdateStudentStatus } from '@/hooks/use-students';
+import { useMatriculate, useStudents, useStudent, useRegisteredCourses, useAcademicHistory, useUpdateStudentProfile, useUpdateStudentStatus } from '@/hooks/use-students';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
 import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
@@ -47,6 +47,8 @@ export default function StudentsPage() {
   const [actionError,   setError]  = useState('');
   const [pendingStatusAction, setPendingStatusAction] = useState<{ id: string; action: string; reason: string } | null>(null);
   const [newMatricInfo, setNewMatric] = useState<{ matricNo: string; tempPwd: string } | null>(null);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [profilePhone, setProfilePhone] = useState('');
 
   useEffect(() => {
     if (!isStudent && requestedStudentId) {
@@ -62,6 +64,7 @@ export default function StudentsPage() {
   const { data: courses = [] }     = useRegisteredCourses(selectedId);
   const { data: history = [] }     = useAcademicHistory(selectedId);
   const { mutate: matriculate, isPending: matriculating } = useMatriculate();
+  const { mutate: updateProfile, isPending: updatingProfile } = useUpdateStudentProfile();
   const { mutate: updateStatus,  isPending: updatingStatus } = useUpdateStudentStatus();
 
   const matricForm  = useForm<MatricForm>({ resolver: zodResolver(matricSchema) });
@@ -103,6 +106,18 @@ export default function StudentsPage() {
       { id: pendingStatusAction.id, action: pendingStatusAction.action, reason },
       { onSuccess: () => setPendingStatusAction(null), onError: (e) => setError(e.message) },
     );
+  };
+
+  const beginProfileEdit = (target: StudentV1) => {
+    setProfilePhone(target.phone ?? '');
+    setShowProfileEdit(true);
+    setError('');
+  };
+
+  const saveProfile = () => {
+    if (!selectedId) return;
+    setError('');
+    updateProfile({ id: selectedId, phone: profilePhone || undefined }, { onSuccess: () => setShowProfileEdit(false), onError: (e) => setError(e.message) });
   };
 
   // Student self-view — show own profile immediately
@@ -253,6 +268,7 @@ export default function StudentsPage() {
             <>
               {canManage && (
                 <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={() => beginProfileEdit(student)}>Edit contact details</Button>
                   {student.status === 'ACTIVE' && <>
                     <Button size="sm" variant="outline" loading={updatingStatus} onClick={() => handleAction(student.id,'SUSPENDED')}>Suspend</Button>
                     <Button size="sm" variant="outline" loading={updatingStatus} onClick={() => handleAction(student.id,'DEFERRED')}>Defer</Button>
@@ -263,6 +279,7 @@ export default function StudentsPage() {
                   )}
                 </div>
               )}
+              {canManage && showProfileEdit && <Card className="border-[--color-primary]/30"><CardHeader><CardTitle className="text-sm">Edit contact details</CardTitle></CardHeader><CardContent className="space-y-3"><div className="space-y-1"><Label htmlFor="student-phone">Phone number</Label><Input id="student-phone" value={profilePhone} onChange={(event) => setProfilePhone(event.target.value)} maxLength={15} placeholder="Institutional contact number" /></div><div className="flex gap-2"><Button loading={updatingProfile} onClick={saveProfile}>Save changes</Button><Button variant="outline" onClick={() => setShowProfileEdit(false)}>Cancel</Button></div></CardContent></Card>}
               <StudentDetailCard student={student} courses={courses} history={history} />
             </>
           ) : (

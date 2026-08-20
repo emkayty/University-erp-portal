@@ -53,6 +53,15 @@ export function useCreateRoute() {
   });
 }
 
+export function useUpdateRoute() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; name?: string; fareAmount?: string; distanceKm?: string; estimatedMinutes?: number; stops?: string[] }) =>
+      apiClient.patch<TransportRouteV1>(`/transport/routes/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: transportKeys.routes }),
+  });
+}
+
 export function useTrips(filters?: Record<string, string>, options?: { enabled?: boolean }) {
   const p = new URLSearchParams({ pageSize: '30', ...filters });
   return useQuery({

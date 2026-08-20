@@ -37,6 +37,14 @@ export function useCreateStaff() {
   });
 }
 
+export function useRetireStaff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (staffId: string) => apiClient.patch<StaffV1>(`/hr/staff/${staffId}/retire`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: hrKeys.staff() }),
+  });
+}
+
 export function useCreateSalaryGrade() {
   const qc = useQueryClient();
   return useMutation({

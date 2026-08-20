@@ -1,10 +1,13 @@
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   useVehicles, useRoutes, useTrips, useMyBookings,
   useBookTrip, useCancelBooking, useUpdateTripStatus,
+  useCreateVehicle, useUpdateVehicleStatus, useCreateRoute, useUpdateRoute, useCreateTrip,
 } from '@/hooks/use-transport';
 import { useAuthStore } from '@/stores/auth.store';
 import { useModuleCapabilities } from '@/hooks/use-settings';
@@ -19,6 +22,8 @@ const VEHICLE_STATUS_COLORS: Record<string, string> = {
   AVAILABLE: 'badge-success', IN_USE: 'badge-warning',
   MAINTENANCE: 'badge-danger', DECOMMISSIONED: 'badge-neutral',
 };
+const VEHICLE_TYPES = ['BUS', 'SHUTTLE', 'CAR', 'VAN', 'MOTORCYCLE', 'OTHER'];
+const VEHICLE_STATUSES = ['AVAILABLE', 'IN_USE', 'MAINTENANCE', 'DECOMMISSIONED'];
 
 type Tab = 'trips' | 'fleet' | 'routes' | 'my-bookings';
 
@@ -35,6 +40,13 @@ export default function TransportPage() {
   const [dateFilter, setDate]   = useState('');
   const [err, setErr]           = useState('');
   const [msg, setMsg]           = useState('');
+  const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [showRouteForm, setShowRouteForm] = useState(false);
+  const [showTripForm, setShowTripForm] = useState(false);
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [vehicleForm, setVehicleForm] = useState({ registrationNo: '', make: '', model: '', year: String(new Date().getFullYear()), capacity: '40', vehicleType: 'BUS', lastServiceDate: '', nextServiceDate: '' });
+  const [routeForm, setRouteForm] = useState({ name: '', origin: '', destination: '', distanceKm: '', estimatedMinutes: '', fareAmount: '', stops: '' });
+  const [tripForm, setTripForm] = useState({ vehicleId: '', routeId: '', driverUserId: '', departureTime: '', notes: '' });
 
   const filters = {
     ...(routeFilter ? { routeId: routeFilter } : {}),
@@ -49,6 +61,11 @@ export default function TransportPage() {
   const { mutate: bookTrip,   isPending: booking }    = useBookTrip();
   const { mutate: cancelBk,   isPending: cancelling } = useCancelBooking();
   const { mutate: updateTrip, isPending: updatingTrip } = useUpdateTripStatus();
+  const { mutate: createVehicle, isPending: creatingVehicle } = useCreateVehicle();
+  const { mutate: updateVehicleStatus, isPending: updatingVehicle } = useUpdateVehicleStatus();
+  const { mutate: createRoute, isPending: creatingRoute } = useCreateRoute();
+  const { mutate: updateRoute, isPending: updatingRoute } = useUpdateRoute();
+  const { mutate: createTrip, isPending: creatingTrip } = useCreateTrip();
 
   const trips = tripData?.trips ?? [];
 
@@ -78,9 +95,35 @@ export default function TransportPage() {
   const handleTripStatus = (tripId: string, status: string) => {
     setErr(''); setMsg('');
     updateTrip({ id: tripId, status }, {
-      onSuccess: () => setMsg(`✓ Trip marked as ${status}`),
+      onSuccess: () => setMsg(`Trip marked as ${status}.`),
       onError:   (e) => setErr(e.message),
     });
+  };
+
+  const handleCreateVehicle = () => {
+    setErr(''); setMsg('');
+    if (!vehicleForm.registrationNo || !vehicleForm.make || !vehicleForm.model) { setErr('Registration number, make, and model are required.'); return; }
+    createVehicle({ ...vehicleForm, year: Number(vehicleForm.year), capacity: Number(vehicleForm.capacity), lastServiceDate: vehicleForm.lastServiceDate || undefined, nextServiceDate: vehicleForm.nextServiceDate || undefined }, {
+      onSuccess: () => { setMsg('Vehicle created successfully.'); setShowVehicleForm(false); setVehicleForm({ registrationNo: '', make: '', model: '', year: String(new Date().getFullYear()), capacity: '40', vehicleType: 'BUS', lastServiceDate: '', nextServiceDate: '' }); },
+      onError: (e) => setErr(e.message),
+    });
+  };
+
+  const handleCreateOrUpdateRoute = () => {
+    setErr(''); setMsg('');
+    if (!routeForm.name || !routeForm.origin || !routeForm.destination || !routeForm.fareAmount) { setErr('Route name, origin, destination, and fare are required.'); return; }
+    const data = { name: routeForm.name, origin: routeForm.origin, destination: routeForm.destination, fareAmount: routeForm.fareAmount, distanceKm: routeForm.distanceKm || undefined, estimatedMinutes: routeForm.estimatedMinutes ? Number(routeForm.estimatedMinutes) : undefined, stops: routeForm.stops.split(',').map((stop) => stop.trim()).filter(Boolean) };
+    if (editingRouteId) {
+      updateRoute({ id: editingRouteId, name: data.name, fareAmount: data.fareAmount, distanceKm: data.distanceKm, estimatedMinutes: data.estimatedMinutes, stops: data.stops }, { onSuccess: () => { setMsg('Route updated successfully.'); setEditingRouteId(null); setShowRouteForm(false); }, onError: (e) => setErr(e.message) });
+    } else {
+      createRoute(data, { onSuccess: () => { setMsg('Route created successfully.'); setShowRouteForm(false); setRouteForm({ name: '', origin: '', destination: '', distanceKm: '', estimatedMinutes: '', fareAmount: '', stops: '' }); }, onError: (e) => setErr(e.message) });
+    }
+  };
+
+  const handleCreateTrip = () => {
+    setErr(''); setMsg('');
+    if (!tripForm.vehicleId || !tripForm.routeId || !tripForm.driverUserId || !tripForm.departureTime) { setErr('Vehicle, route, driver user ID, and departure time are required.'); return; }
+    createTrip({ ...tripForm, departureTime: new Date(tripForm.departureTime).toISOString() }, { onSuccess: () => { setMsg('Trip created successfully.'); setShowTripForm(false); setTripForm({ vehicleId: '', routeId: '', driverUserId: '', departureTime: '', notes: '' }); }, onError: (e) => setErr(e.message) });
   };
 
   const tabs: { k: Tab; l: string }[] = [
@@ -108,6 +151,44 @@ export default function TransportPage() {
 
       {err && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-[--color-danger]">{err}</div>}
       {msg && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
+
+      {isTransportStaff && (
+        <div className="flex flex-wrap gap-2 rounded-xl border border-[--color-primary]/20 bg-[--color-primary]/5 p-3">
+          <p className="mr-auto self-center text-sm text-muted-foreground">Operations management</p>
+          <Button size="sm" variant={showVehicleForm ? 'default' : 'outline'} onClick={() => { setShowVehicleForm((value) => !value); setShowRouteForm(false); setShowTripForm(false); setEditingRouteId(null); }}>Add vehicle</Button>
+          <Button size="sm" variant={showRouteForm ? 'default' : 'outline'} onClick={() => { setShowRouteForm((value) => !value); setShowVehicleForm(false); setShowTripForm(false); }}>Add or edit route</Button>
+          <Button size="sm" variant={showTripForm ? 'default' : 'outline'} onClick={() => { setShowTripForm((value) => !value); setShowVehicleForm(false); setShowRouteForm(false); }}>Schedule trip</Button>
+        </div>
+      )}
+
+      {isTransportStaff && showVehicleForm && (
+        <Card><CardHeader><CardTitle className="text-base">Register vehicle</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {([['registrationNo','Registration number'],['make','Make'],['model','Model'],['year','Year'],['capacity','Capacity']] as const).map(([key, label]) => <div key={key} className="space-y-1"><Label htmlFor={`vehicle-${key}`}>{label}</Label><Input id={`vehicle-${key}`} type={key === 'year' || key === 'capacity' ? 'number' : 'text'} value={vehicleForm[key]} onChange={(event) => setVehicleForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+          <div className="space-y-1"><Label htmlFor="vehicle-type">Vehicle type</Label><select id="vehicle-type" value={vehicleForm.vehicleType} onChange={(event) => setVehicleForm((current) => ({ ...current, vehicleType: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">{VEHICLE_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></div>
+          <div className="space-y-1"><Label htmlFor="vehicle-last-service">Last service</Label><Input id="vehicle-last-service" type="date" value={vehicleForm.lastServiceDate} onChange={(event) => setVehicleForm((current) => ({ ...current, lastServiceDate: event.target.value }))} /></div>
+          <div className="space-y-1"><Label htmlFor="vehicle-next-service">Next service</Label><Input id="vehicle-next-service" type="date" value={vehicleForm.nextServiceDate} onChange={(event) => setVehicleForm((current) => ({ ...current, nextServiceDate: event.target.value }))} /></div>
+          <div className="flex items-end"><Button loading={creatingVehicle} onClick={handleCreateVehicle}>Register vehicle</Button></div>
+        </CardContent></Card>
+      )}
+
+      {isTransportStaff && showRouteForm && (
+        <Card><CardHeader><CardTitle className="text-base">{editingRouteId ? 'Edit route' : 'Create route'}</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {([['name','Route name'],['origin','Origin'],['destination','Destination'],['fareAmount','Fare (NGN)'],['distanceKm','Distance (km)'],['estimatedMinutes','Estimated minutes']] as const).map(([key, label]) => <div key={key} className="space-y-1"><Label htmlFor={`route-${key}`}>{label}</Label><Input id={`route-${key}`} type={['fareAmount','distanceKm','estimatedMinutes'].includes(key) ? 'number' : 'text'} value={routeForm[key]} onChange={(event) => setRouteForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+          <div className="space-y-1 sm:col-span-2 lg:col-span-3"><Label htmlFor="route-stops">Stops</Label><Input id="route-stops" placeholder="Comma-separated stop names" value={routeForm.stops} onChange={(event) => setRouteForm((current) => ({ ...current, stops: event.target.value }))} /></div>
+          <div className="flex gap-2 sm:col-span-2 lg:col-span-3"><Button loading={creatingRoute || updatingRoute} onClick={handleCreateOrUpdateRoute}>{editingRouteId ? 'Save route' : 'Create route'}</Button><Button type="button" variant="outline" onClick={() => { setShowRouteForm(false); setEditingRouteId(null); }}>Cancel</Button></div>
+        </CardContent></Card>
+      )}
+
+      {isTransportStaff && showTripForm && (
+        <Card><CardHeader><CardTitle className="text-base">Schedule trip</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1"><Label htmlFor="trip-vehicle">Vehicle</Label><select id="trip-vehicle" value={tripForm.vehicleId} onChange={(event) => setTripForm((current) => ({ ...current, vehicleId: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select vehicle</option>{vehicles.filter((vehicle) => vehicle.status === 'AVAILABLE').map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.registrationNo} — {vehicle.make} {vehicle.model}</option>)}</select></div>
+          <div className="space-y-1"><Label htmlFor="trip-route">Route</Label><select id="trip-route" value={tripForm.routeId} onChange={(event) => setTripForm((current) => ({ ...current, routeId: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select route</option>{routes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}</select></div>
+          <div className="space-y-1"><Label htmlFor="trip-driver">Driver user ID</Label><Input id="trip-driver" placeholder="UUID of assigned driver" value={tripForm.driverUserId} onChange={(event) => setTripForm((current) => ({ ...current, driverUserId: event.target.value }))} /></div>
+          <div className="space-y-1"><Label htmlFor="trip-departure">Departure</Label><Input id="trip-departure" type="datetime-local" value={tripForm.departureTime} onChange={(event) => setTripForm((current) => ({ ...current, departureTime: event.target.value }))} /></div>
+          <div className="space-y-1 sm:col-span-2"><Label htmlFor="trip-notes">Notes</Label><Input id="trip-notes" value={tripForm.notes} onChange={(event) => setTripForm((current) => ({ ...current, notes: event.target.value }))} /></div>
+          <div className="sm:col-span-2"><Button loading={creatingTrip} onClick={handleCreateTrip}>Schedule trip</Button></div>
+        </CardContent></Card>
+      )}
 
       {/* ── Scheduled Trips ─────────────────────────────────────────────── */}
       {tab === 'trips' && (
@@ -239,8 +320,8 @@ export default function TransportPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  {['Reg No', 'Vehicle', 'Year', 'Capacity', 'Type', 'Status'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">{h}</th>
+                    {['Reg No', 'Vehicle', 'Year', 'Capacity', 'Type', 'Status', 'Actions'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -257,6 +338,7 @@ export default function TransportPage() {
                         {v.status}
                       </span>
                     </td>
+                    <td className="px-3 py-2"><select aria-label={`Update status for ${v.registrationNo}`} value={v.status} disabled={updatingVehicle} onChange={(event) => { setErr(''); setMsg(''); updateVehicleStatus({ id: v.id, status: event.target.value }, { onSuccess: () => setMsg(`Vehicle ${v.registrationNo} status updated.`), onError: (e) => setErr(e.message) }); }} className="h-8 rounded border border-input bg-background px-2 text-xs">{VEHICLE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select></td>
                   </tr>
                 ))}
               </tbody>
@@ -285,6 +367,7 @@ export default function TransportPage() {
                   <td className="px-3 py-2 text-muted-foreground">{r.distanceKm ? `${r.distanceKm} km` : '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{r.estimatedMinutes ? `${r.estimatedMinutes} min` : '—'}</td>
                   <td className="px-3 py-2 font-semibold">₦{parseFloat(r.fareAmount).toLocaleString()}</td>
+                  <td className="px-3 py-2"><Button size="sm" variant="outline" onClick={() => { setEditingRouteId(r.id); setRouteForm({ name: r.name, origin: r.origin, destination: r.destination, distanceKm: r.distanceKm ?? '', estimatedMinutes: r.estimatedMinutes ? String(r.estimatedMinutes) : '', fareAmount: r.fareAmount, stops: (r.stops ?? []).join(', ') }); setShowRouteForm(true); setErr(''); setMsg(''); }}>Edit</Button></td>
                 </tr>
               ))}
             </tbody>

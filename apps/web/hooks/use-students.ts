@@ -89,12 +89,26 @@ export function useAcademicHistory(studentId: string) {
   });
 }
 
+export function useUpdateStudentProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; phone?: string; currentAddress?: string; permanentAddress?: string; modeOfStudy?: string }) =>
+      apiClient.patch<StudentV1>(`/students/${id}`, data),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: studentKeys.one(vars.id) });
+      void qc.invalidateQueries({ queryKey: studentKeys.all() });
+    },
+  });
+}
+
 export function useUpdateStudentStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, action, reason }: { id: string; action: string; reason?: string }) =>
       apiClient.patch<StudentV1>(`/students/${id}/status`, { action, reason }),
-    onSuccess: (_data, vars) =>
-      qc.invalidateQueries({ queryKey: studentKeys.one(vars.id) }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: studentKeys.one(vars.id) });
+      void qc.invalidateQueries({ queryKey: studentKeys.all() });
+    },
   });
 }

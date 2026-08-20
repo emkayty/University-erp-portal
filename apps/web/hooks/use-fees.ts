@@ -37,6 +37,15 @@ export function useCreateFeeSchedule() {
   });
 }
 
+export function useUpdateFeeSchedule() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; amount?: number; isActive?: boolean; dueDate?: string; description?: string }) =>
+      apiClient.patch<FeeScheduleV1>(`/fees/schedules/${id}`, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: feesKeys.schedules() }),
+  });
+}
+
 export function useGenerateInvoices() {
   return useMutation({
     mutationFn: (scheduleId: string) =>
@@ -107,11 +116,12 @@ export function useRequestWaiver() {
   });
 }
 
-export function usePendingWaivers() {
+export function usePendingWaivers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: feesKeys.pendingWaivers,
     queryFn:  () => apiClient.get<FeeWaiverV1[]>('/fees/waivers/pending'),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 

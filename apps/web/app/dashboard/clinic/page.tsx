@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import {
   useAppointments, useUpdateAppointmentStatus, useCreateMedicalRecord,
   useDrugs, useLowStockDrugs, useAdjustStock,
+  useRegisterPatient, useBookAppointment, useCreateDrug, useCreatePrescription,
 } from '@/hooks/use-clinic';
 import { useAuthStore } from '@/stores/auth.store';
 import { hasEffectiveRole } from '@/lib/authz';
@@ -19,6 +20,7 @@ const DRUG_FORM_LABELS: Record<string, string> = {
   TABLET: '💊', CAPSULE: '💊', SYRUP: '🍶', INJECTION: '💉',
   CREAM: '🧴', INHALER: '🫁', DROPS: '💧', OTHER: '📦',
 };
+const DRUG_FORMS = ['TABLET','CAPSULE','SYRUP','INJECTION','CREAM','INHALER','DROPS','OTHER'];
 
 type Tab = 'appointments' | 'drugs' | 'low-stock';
 
@@ -37,6 +39,14 @@ export default function ClinicPage() {
   const [stockOp, setStockOp]      = useState<'ADD' | 'SUBTRACT'>('ADD');
   const [err, setErr]              = useState('');
   const [msg, setMsg]              = useState('');
+  const [showPatientForm, setShowPatientForm] = useState(false);
+  const [showAppointmentForm, setShowAppointmentForm] = useState(false);
+  const [showDrugForm, setShowDrugForm] = useState(false);
+  const [showPrescriptionForm, setShowPrescriptionForm] = useState(false);
+  const [patientForm, setPatientForm] = useState({ userId: '', bloodGroup: '', genotype: '', allergies: '', chronicConditions: '', emergencyContactName: '', emergencyContactPhone: '' });
+  const [appointmentForm, setAppointmentForm] = useState({ patientId: '', doctorUserId: '', appointmentDate: '', reason: '' });
+  const [drugForm, setDrugForm] = useState({ name: '', genericName: '', form: 'TABLET', unit: 'packs', stockQuantity: '0', reorderLevel: '10', unitCost: '' });
+  const [prescriptionForm, setPrescriptionForm] = useState({ medicalRecordId: '', patientId: '', drugId: '', dosageInstructions: '', quantity: '1' });
 
   const filters = statusFilter ? { status: statusFilter } : undefined;
   const { data: apptData, isLoading: apptLoading }  = useAppointments(filters, Boolean(isStudent || canManageClinic));
@@ -46,6 +56,10 @@ export default function ClinicPage() {
   const { mutate: updateStatus, isPending: updatingStatus } = useUpdateAppointmentStatus();
   const { mutate: createRecord, isPending: recording }      = useCreateMedicalRecord();
   const { mutate: adjustStock,  isPending: adjusting }      = useAdjustStock();
+  const { mutate: registerPatient, isPending: registeringPatient } = useRegisterPatient();
+  const { mutate: bookAppointment, isPending: bookingAppointment } = useBookAppointment();
+  const { mutate: createDrug, isPending: creatingDrug } = useCreateDrug();
+  const { mutate: createPrescription, isPending: creatingPrescription } = useCreatePrescription();
 
   const appointments = apptData?.appointments ?? [];
   const drugs        = drugsData?.drugs        ?? [];
@@ -76,10 +90,34 @@ export default function ClinicPage() {
     adjustStock(
       { id: stockDrugId, quantity: parseInt(stockQty, 10), operation: stockOp },
       {
-        onSuccess: () => { setMsg(`✓ Stock ${stockOp === 'ADD' ? 'added' : 'reduced'}`); setStockId(null); setStockQty(''); },
+        onSuccess: () => { setMsg(`Stock ${stockOp === 'ADD' ? 'added' : 'reduced'}.`); setStockId(null); setStockQty(''); },
         onError:   (e) => setErr(e.message),
       },
     );
+  };
+
+  const handleRegisterPatient = () => {
+    setErr(''); setMsg('');
+    if (!patientForm.userId) { setErr('The patient account UUID is required.'); return; }
+    registerPatient({ ...patientForm, bloodGroup: patientForm.bloodGroup || undefined, genotype: patientForm.genotype || undefined, allergies: patientForm.allergies || undefined, chronicConditions: patientForm.chronicConditions || undefined, emergencyContactName: patientForm.emergencyContactName || undefined, emergencyContactPhone: patientForm.emergencyContactPhone || undefined }, { onSuccess: () => { setMsg('Patient profile registered.'); setShowPatientForm(false); }, onError: (e) => setErr(e.message) });
+  };
+
+  const handleBookAppointment = () => {
+    setErr(''); setMsg('');
+    if (!appointmentForm.patientId || !appointmentForm.doctorUserId || !appointmentForm.appointmentDate) { setErr('Patient, doctor, and appointment date are required.'); return; }
+    bookAppointment({ ...appointmentForm, appointmentDate: new Date(appointmentForm.appointmentDate).toISOString(), reason: appointmentForm.reason || undefined }, { onSuccess: () => { setMsg('Appointment booked.'); setShowAppointmentForm(false); }, onError: (e) => setErr(e.message) });
+  };
+
+  const handleCreateDrug = () => {
+    setErr(''); setMsg('');
+    if (!drugForm.name || !drugForm.unit || !drugForm.unitCost) { setErr('Drug name, unit, and unit cost are required.'); return; }
+    createDrug({ ...drugForm, stockQuantity: Number(drugForm.stockQuantity), reorderLevel: Number(drugForm.reorderLevel), unitCost: drugForm.unitCost }, { onSuccess: () => { setMsg('Drug added to inventory.'); setShowDrugForm(false); }, onError: (e) => setErr(e.message) });
+  };
+
+  const handleCreatePrescription = () => {
+    setErr(''); setMsg('');
+    if (!prescriptionForm.medicalRecordId || !prescriptionForm.patientId || !prescriptionForm.drugId || !prescriptionForm.dosageInstructions) { setErr('Medical record, patient, drug, and dosage instructions are required.'); return; }
+    createPrescription({ ...prescriptionForm, quantity: Number(prescriptionForm.quantity) }, { onSuccess: () => { setMsg('Prescription dispensed and stock updated.'); setShowPrescriptionForm(false); }, onError: (e) => setErr(e.message) });
   };
 
   const tabs: { k: Tab; l: string }[] = canManageClinic
@@ -119,6 +157,42 @@ export default function ClinicPage() {
 
       {err && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-[--color-danger]">{err}</div>}
       {msg && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">{msg}</div>}
+
+      {canManageClinic && <div className="flex flex-wrap gap-2 rounded-xl border border-[--color-primary]/20 bg-[--color-primary]/5 p-3">
+        <p className="mr-auto self-center text-sm text-muted-foreground">Clinic operations</p>
+        <Button size="sm" variant={showPatientForm ? 'default' : 'outline'} onClick={() => { setShowPatientForm((value) => !value); setShowAppointmentForm(false); setShowDrugForm(false); setShowPrescriptionForm(false); }}>Register patient</Button>
+        <Button size="sm" variant={showAppointmentForm ? 'default' : 'outline'} onClick={() => { setShowAppointmentForm((value) => !value); setShowPatientForm(false); setShowDrugForm(false); setShowPrescriptionForm(false); }}>Book appointment</Button>
+        <Button size="sm" variant={showDrugForm ? 'default' : 'outline'} onClick={() => { setShowDrugForm((value) => !value); setShowPatientForm(false); setShowAppointmentForm(false); setShowPrescriptionForm(false); }}>Add drug</Button>
+        <Button size="sm" variant={showPrescriptionForm ? 'default' : 'outline'} onClick={() => { setShowPrescriptionForm((value) => !value); setShowPatientForm(false); setShowAppointmentForm(false); setShowDrugForm(false); }}>Dispense prescription</Button>
+      </div>}
+
+      {canManageClinic && showPatientForm && <Card><CardHeader><CardTitle className="text-base">Register patient profile</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1 sm:col-span-2"><label className="text-sm font-medium" htmlFor="patient-user-id">Patient account UUID</label><Input id="patient-user-id" value={patientForm.userId} onChange={(event) => setPatientForm((current) => ({ ...current, userId: event.target.value }))} placeholder="UUID of the institutional user account" /></div>
+        {([['bloodGroup','Blood group'],['genotype','Genotype'],['emergencyContactName','Emergency contact name'],['emergencyContactPhone','Emergency contact phone']] as const).map(([key, label]) => <div key={key} className="space-y-1"><label className="text-sm font-medium" htmlFor={`patient-${key}`}>{label}</label><Input id={`patient-${key}`} value={patientForm[key]} onChange={(event) => setPatientForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="patient-allergies">Allergies</label><textarea id="patient-allergies" rows={2} value={patientForm.allergies} onChange={(event) => setPatientForm((current) => ({ ...current, allergies: event.target.value }))} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="patient-chronic">Chronic conditions</label><textarea id="patient-chronic" rows={2} value={patientForm.chronicConditions} onChange={(event) => setPatientForm((current) => ({ ...current, chronicConditions: event.target.value }))} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+        <div className="sm:col-span-2"><Button loading={registeringPatient} onClick={handleRegisterPatient}>Save patient profile</Button></div>
+      </CardContent></Card>}
+
+      {canManageClinic && showAppointmentForm && <Card><CardHeader><CardTitle className="text-base">Book clinic appointment</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
+        {([['patientId','Patient UUID'],['doctorUserId','Doctor user UUID']] as const).map(([key, label]) => <div key={key} className="space-y-1"><label className="text-sm font-medium" htmlFor={`appointment-${key}`}>{label}</label><Input id={`appointment-${key}`} value={appointmentForm[key]} onChange={(event) => setAppointmentForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="appointment-date">Appointment date</label><Input id="appointment-date" type="datetime-local" value={appointmentForm.appointmentDate} onChange={(event) => setAppointmentForm((current) => ({ ...current, appointmentDate: event.target.value }))} /></div>
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="appointment-reason">Reason</label><Input id="appointment-reason" value={appointmentForm.reason} onChange={(event) => setAppointmentForm((current) => ({ ...current, reason: event.target.value }))} /></div>
+        <div className="sm:col-span-2"><Button loading={bookingAppointment} onClick={handleBookAppointment}>Book appointment</Button></div>
+      </CardContent></Card>}
+
+      {canManageClinic && showDrugForm && <Card><CardHeader><CardTitle className="text-base">Add drug to inventory</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {([['name','Drug name'],['genericName','Generic name'],['unit','Unit'],['stockQuantity','Opening stock'],['reorderLevel','Reorder level'],['unitCost','Unit cost (NGN)']] as const).map(([key, label]) => <div key={key} className="space-y-1"><label className="text-sm font-medium" htmlFor={`drug-${key}`}>{label}</label><Input id={`drug-${key}`} type={['stockQuantity','reorderLevel'].includes(key) ? 'number' : 'text'} value={drugForm[key]} onChange={(event) => setDrugForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="drug-form">Form</label><select id="drug-form" value={drugForm.form} onChange={(event) => setDrugForm((current) => ({ ...current, form: event.target.value }))} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">{DRUG_FORMS.map((form) => <option key={form} value={form}>{form}</option>)}</select></div>
+        <div className="flex items-end"><Button loading={creatingDrug} onClick={handleCreateDrug}>Add drug</Button></div>
+      </CardContent></Card>}
+
+      {canManageClinic && showPrescriptionForm && <Card><CardHeader><CardTitle className="text-base">Dispense prescription</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
+        {([['medicalRecordId','Medical record UUID'],['patientId','Patient UUID'],['drugId','Drug UUID']] as const).map(([key, label]) => <div key={key} className="space-y-1"><label className="text-sm font-medium" htmlFor={`prescription-${key}`}>{label}</label><Input id={`prescription-${key}`} value={prescriptionForm[key]} onChange={(event) => setPrescriptionForm((current) => ({ ...current, [key]: event.target.value }))} /></div>)}
+        <div className="space-y-1"><label className="text-sm font-medium" htmlFor="prescription-quantity">Quantity</label><Input id="prescription-quantity" type="number" min={1} value={prescriptionForm.quantity} onChange={(event) => setPrescriptionForm((current) => ({ ...current, quantity: event.target.value }))} /></div>
+        <div className="space-y-1 sm:col-span-2"><label className="text-sm font-medium" htmlFor="prescription-dosage">Dosage instructions</label><textarea id="prescription-dosage" rows={3} value={prescriptionForm.dosageInstructions} onChange={(event) => setPrescriptionForm((current) => ({ ...current, dosageInstructions: event.target.value }))} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+        <div className="sm:col-span-2"><Button loading={creatingPrescription} onClick={handleCreatePrescription}>Dispense prescription</Button></div>
+      </CardContent></Card>}
 
       {/* ── Appointments ───────────────────────────────────────────────── */}
       {tab === 'appointments' && (
