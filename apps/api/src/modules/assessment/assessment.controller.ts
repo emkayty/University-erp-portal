@@ -8,6 +8,8 @@ import { ComponentDto, CreateSchemeDto, CsvUploadDto, MarkDto, SaveComponentsDto
 
 @ApiTags('Assessment & Gradebook') @Controller({path:'assessment',version:'1'}) @UseGuards(RolesGuard) @ApiBearerAuth('access-token')
 export class AssessmentController { constructor(private readonly svc:AssessmentService){}
+  @Get('offerings') @Roles('STAFF','HOD','DEAN','REGISTRAR','VC','SUPER_ADMIN')
+  offerings(@CurrentUser()u:JwtPayload){return { success: true, data: this.svc.findAccessibleOfferings(u.sub,u.role) };}
   @Post('schemes') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') create(@Body() d:CreateSchemeDto,@CurrentUser()u:JwtPayload){return this.svc.createScheme(d,u.sub,u.role);}
   @Post('schemes/:id/components') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') components(@Param('id',ParseUUIDPipe)id:string,@Body()d:SaveComponentsDto,@CurrentUser()u:JwtPayload){return this.svc.setComponents(id,d.components,u.sub,u.role);}
   @Post('offerings/:id/finalize') @Roles('HOD','DEAN','REGISTRAR','SUPER_ADMIN') finalize(@Param('id',ParseUUIDPipe)id:string,@CurrentUser()u:JwtPayload){return this.svc.finalizeScheme(id,u.sub,u.role);}

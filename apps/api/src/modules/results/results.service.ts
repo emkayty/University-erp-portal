@@ -173,11 +173,32 @@ export class ResultsService {
   }
 
   async bulkSubmit(dto: BulkSubmitResultsDto, submittedById: string, actorRole: string) {
-    const results = [];
+    const results: unknown[] = [];
     const errors: string[] = [];
-    for (const r of dto.results) {
-      try { results.push(await this.submitResult(r, submittedById, actorRole)); }
-      catch (err) { errors.push(`${r.studentId}: ${err instanceof Error ? err.message : String(err)}`); }
+    const seen = new Set<string>();
+    const uniqueResults: SubmitResultDto[] = [];
+    for (const result of dto.results) {
+      const key = `${result.studentId}:${result.courseOfferingId}:${result.semesterId}`;
+      if (seen.has(key)) {
+        errors.push(`${result.studentId}: duplicate student/course/semester row in the same upload`);
+      } else {
+        seen.add(key);
+        uniqueResults.push(result);
+      }
+    }
+    for (let offset = 0; offset < uniqueResults.length; offset += 10) {
+      const chunk = uniqueResults.slice(offset, offset + 10);
+      const settled = await Promise.all(chunk.map(async (result) => {
+        try {
+          return { result: await this.submitResult(result, submittedById, actorRole) };
+        } catch (error) {
+          return { error: `${result.studentId}: ${error instanceof Error ? error.message : String(error)}` };
+        }
+      }));
+      for (const outcome of settled) {
+        if (outcome.result) results.push(outcome.result);
+        if (outcome.error) errors.push(outcome.error);
+      }
     }
     return { mode: dto.mode ?? 'BEST_EFFORT', submitted: results.length, failed: errors.length, errors };
   }

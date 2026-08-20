@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { AuditAction, Prisma } from '@prisma/client';
 import { computeGradeForSystem } from '@uniportal/utils';
@@ -5,7 +6,44 @@ import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { AcademicOfferingAuthorizationService, AcademicActorRole } from '../../common/authorization/academic-offering-authorization.service';
 import { AuthorizationService } from '../../common/authorization/authorization.service';
+import { GradeUploadMode } from './dto';
 import type { ComponentDto, CreateSchemeDto, MarkDto, CsvUploadDto } from './dto';
+
+
+function parseCsvRecords(csv: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let index = 0; index < csv.length; index += 1) {
+    const character = csv[index]!;
+    if (quoted) {
+      if (character === '"' && csv[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+    } else if (character === '"' && field.length === 0) {
+      quoted = true;
+    } else if (character === ',') {
+      row.push(field.trim());
+      field = '';
+    } else if (character === '\n') {
+      row.push(field.trim());
+      if (row.some((value) => value.length > 0)) rows.push(row);
+      row = [];
+      field = '';
+    } else if (character !== '\r') {
+      field += character;
+    }
+  }
+  row.push(field.trim());
+  if (row.some((value) => value.length > 0)) rows.push(row);
+  return rows;
+}
 
 @Injectable()
 export class AssessmentService {
@@ -15,6 +53,26 @@ export class AssessmentService {
     private readonly offeringAuthorization: AcademicOfferingAuthorizationService,
     private readonly authorization: AuthorizationService,
   ) {}
+
+  async findAccessibleOfferings(actorId: string, actorRole: AcademicActorRole = 'STAFF') {
+    const where: Prisma.CourseOfferingWhereInput = { isActive: true };
+    if (actorRole === 'STAFF') where.lecturer = { userId: actorId };
+    else if (actorRole === 'HOD') where.course = { department: { hod: { userId: actorId } } };
+    else if (actorRole === 'DEAN') where.course = { department: { faculty: { dean: { userId: actorId } } } };
+    else if (!['REGISTRAR', 'SUPER_ADMIN', 'VC'].includes(actorRole)) return [];
+    return this.prisma.courseOffering.findMany({
+      where,
+      select: {
+        id: true,
+        sectionCode: true,
+        semesterId: true,
+        course: { select: { code: true, title: true } },
+        semesterModel: { select: { name: true, academicYear: true, semesterNumber: true } },
+        lecturer: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ semesterModel: { academicYear: 'desc' } }, { course: { code: 'asc' } }, { sectionCode: 'asc' }],
+    });
+  }
 
   async createScheme(dto: CreateSchemeDto, actorId: string, actorRole: AcademicActorRole = 'STAFF') {
     await this.offeringAuthorization.assertOfferingAccess(dto.courseOfferingId, actorId, actorRole);
@@ -68,13 +126,56 @@ export class AssessmentService {
 
   async getGradebook(courseOfferingId: string, actorId?: string, actorRole: AcademicActorRole = 'STAFF') {
     if (actorId) await this.offeringAuthorization.assertOfferingAccess(courseOfferingId, actorId, actorRole);
-    const scheme = await this.prisma.assessmentScheme.findFirst({ where: { courseOfferingId, status: 'ACTIVE' }, orderBy: { version: 'desc' }, include: { components: { orderBy: { sequence: 'asc' } } } });
+    const offering = await this.prisma.courseOffering.findUnique({
+      where: { id: courseOfferingId },
+      select: { id: true, semesterId: true, course: { select: { code: true, title: true } }, semesterModel: { select: { name: true } } },
+    });
+    if (!offering) throw new BadRequestException('Course offering was not found');
+    const scheme = await this.prisma.assessmentScheme.findFirst({
+      where: { courseOfferingId, status: 'ACTIVE' },
+      orderBy: { version: 'desc' },
+      include: { components: { orderBy: { sequence: 'asc' } } },
+    });
     if (!scheme) throw new BadRequestException('No active assessment scheme');
-    const registrations = await this.prisma.courseRegistration.findMany({ where: { courseOfferingId, status: { in: ['REGISTERED','COMPLETED'] } }, include: { student: { select: { id:true, matricNo:true, firstName:true, lastName:true } } }, orderBy: { student: { matricNo: 'asc' } } });
-    const marks = await this.prisma.assessmentMark.findMany({ where: { courseOfferingId }, select: { studentId:true, componentId:true, score:true, status:true, version:true, examTimetableId:true, enteredById:true } });
-    const byStudent = new Map<string, any[]>(); for (const m of marks) { if (!byStudent.has(m.studentId)) byStudent.set(m.studentId,[]); byStudent.get(m.studentId)!.push(m); }
-    const rows = registrations.map(r => { const ms = byStudent.get(r.student.id) ?? []; let final=0; for (const c of scheme.components) { const m=ms.find(x=>x.componentId===c.id); if(m) final += (Number(m.score)/Number(c.maxScore))*Number(c.weight); } const required = scheme.components.filter(c => c.isRequired); const complete=required.every(c=>ms.some(m=>m.componentId===c.id)); const finalized = complete && required.every(c=>ms.some(m=>m.componentId===c.id && m.status === 'FINALIZED')); return { student:r.student, marks:ms, finalScore:Math.round(final*100)/100, complete, finalized }; });
-    return { scheme, rows, summary: { total: rows.length, complete: rows.filter(r=>r.complete).length, incomplete: rows.filter(r=>!r.complete).length, finalized: rows.filter(r=>r.finalized).length, unfinalized: rows.filter(r=>!r.finalized).length } };
+    const registrations = await this.prisma.courseRegistration.findMany({
+      where: { courseOfferingId, status: { in: ['REGISTERED', 'COMPLETED'] } },
+      include: { student: { select: { id: true, matricNo: true, firstName: true, lastName: true } } },
+      orderBy: { student: { matricNo: 'asc' } },
+    });
+    const marks = await this.prisma.assessmentMark.findMany({
+      where: { courseOfferingId },
+      select: { studentId: true, componentId: true, score: true, status: true, version: true, examTimetableId: true, enteredById: true },
+    });
+    const byStudent = new Map<string, Map<string, (typeof marks)[number]>>();
+    for (const mark of marks) {
+      if (!byStudent.has(mark.studentId)) byStudent.set(mark.studentId, new Map());
+      byStudent.get(mark.studentId)!.set(mark.componentId, mark);
+    }
+    const rows = registrations.map((registration) => {
+      const markMap = byStudent.get(registration.student.id) ?? new Map();
+      const studentMarks = [...markMap.values()];
+      let finalScore = 0;
+      for (const component of scheme.components) {
+        const mark = markMap.get(component.id);
+        if (mark) finalScore += (Number(mark.score) / Number(component.maxScore)) * Number(component.weight);
+      }
+      const required = scheme.components.filter((component) => component.isRequired);
+      const complete = required.every((component) => markMap.has(component.id));
+      const finalized = complete && required.every((component) => markMap.get(component.id)?.status === 'FINALIZED');
+      return { student: registration.student, marks: studentMarks, finalScore: Math.round(finalScore * 100) / 100, complete, finalized };
+    });
+    return {
+      offering,
+      scheme,
+      rows,
+      summary: {
+        total: rows.length,
+        complete: rows.filter((row) => row.complete).length,
+        incomplete: rows.filter((row) => !row.complete).length,
+        finalized: rows.filter((row) => row.finalized).length,
+        unfinalized: rows.filter((row) => !row.finalized).length,
+      },
+    };
   }
 
   async exportGradebook(courseOfferingId: string, actorId?: string, actorRole: AcademicActorRole = 'STAFF') {
@@ -142,12 +243,119 @@ export class AssessmentService {
 
   async uploadCsv(dto: CsvUploadDto, actorId: string, actorRole: AcademicActorRole = 'STAFF') {
     await this.offeringAuthorization.assertOfferingAccess(dto.courseOfferingId, actorId, actorRole);
-    const lines=dto.csv.split(/\r?\n/).map(x=>x.trim()).filter(Boolean); if(lines.length<2) throw new BadRequestException('CSV must contain a header and at least one data row');
-    const headers=lines[0]!.split(',').map(x=>x.trim().replace(/^"|"$/g,'')); const idx=(name:string)=>headers.findIndex(h=>h.toLowerCase()===name.toLowerCase()); const studentIdx=idx('Student ID'); if(studentIdx<0) throw new BadRequestException('CSV must contain Student ID');
-    const scheme=await this.prisma.assessmentScheme.findFirst({where:{courseOfferingId:dto.courseOfferingId,status:'ACTIVE'},orderBy:{version:'desc'},include:{components:true}}); if(!scheme) throw new BadRequestException('No active assessment scheme');
-    const errors:any[]=[]; let valid=0; for(let i=1;i<lines.length;i++){ const cols=lines[i]!.split(',').map(x=>x.trim().replace(/^"|"$/g,'')); const studentId=cols[studentIdx]; if(!studentId){errors.push({row:i+1,error:'Missing Student ID'});continue;} for(const c of scheme.components){ const ci=idx(c.code); if(ci<0) continue; const raw=cols[ci]; if(raw==='') { if(c.isRequired) errors.push({row:i+1,studentId,error:`Missing ${c.code}`}); continue; } const score=Number(raw); if(!Number.isFinite(score)||score<0||score>Number(c.maxScore)){errors.push({row:i+1,studentId,error:`${c.code} must be between 0 and ${c.maxScore}`}); continue;} valid++; } }
-    const batch=await this.prisma.gradeUploadBatch.create({data:{courseOfferingId:dto.courseOfferingId,semesterId:dto.semesterId,uploadedById:actorId,fileName:dto.fileName??'grade-upload.csv',templateVersion:'v1',mode:'VALIDATE_ONLY',status:errors.length?'REJECTED':'VALIDATED',totalRows:lines.length-1,validRows:valid,errorRows:errors.length,errorReport:errors}});
-    return { batchId:batch.id,status:batch.status,totalRows:batch.totalRows,validRows:valid,errorRows:errors.length,errors };
+    const mode = dto.mode ?? GradeUploadMode.VALIDATE_ONLY;
+    const offering = await this.prisma.courseOffering.findUnique({ where: { id: dto.courseOfferingId }, select: { id: true, semesterId: true } });
+    if (!offering) throw new BadRequestException('Course offering was not found');
+    if (!offering.semesterId || offering.semesterId !== dto.semesterId) throw new BadRequestException('Semester does not match the course offering');
+    const scheme = await this.prisma.assessmentScheme.findFirst({
+      where: { courseOfferingId: dto.courseOfferingId, status: 'ACTIVE' },
+      orderBy: { version: 'desc' },
+      include: { components: { orderBy: { sequence: 'asc' } } },
+    });
+    if (!scheme) throw new BadRequestException('No active assessment scheme');
+    const records = parseCsvRecords(dto.csv);
+    if (records.length < 2) throw new BadRequestException('CSV must contain a header and at least one data row');
+    const headers = records[0]!.map((header) => header.replace(/^\uFEFF/, '').trim());
+    const headerIndexes = new Map(headers.map((header, index) => [header.toLowerCase(), index]));
+    const studentIdIndex = headerIndexes.get('student id');
+    const matricNoIndex = headerIndexes.get('matric no');
+    if (studentIdIndex === undefined && matricNoIndex === undefined) throw new BadRequestException('CSV must contain Student ID or Matric No');
+    const componentIndexes = new Map<string, number>();
+    const missingComponents: string[] = [];
+    for (const component of scheme.components) {
+      const index = headerIndexes.get(component.code.toLowerCase());
+      if (index === undefined) missingComponents.push(component.code);
+      else componentIndexes.set(component.id, index);
+    }
+    if (missingComponents.length) throw new BadRequestException(`CSV is missing component columns: ${missingComponents.join(', ')}`);
+    const registrations = await this.prisma.courseRegistration.findMany({
+      where: { courseOfferingId: dto.courseOfferingId, status: { in: ['REGISTERED', 'COMPLETED'] } },
+      select: { studentId: true, student: { select: { id: true, matricNo: true } } },
+    });
+    const byStudentId = new Map(registrations.map((registration) => [registration.student.id, registration.student.id]));
+    const byMatricNo = new Map(registrations.map((registration) => [registration.student.matricNo.toLowerCase(), registration.student.id]));
+    const errors: Array<{ row: number; studentId?: string; matricNo?: string; error: string }> = [];
+    const parsedMarks: Array<{ row: number; studentId: string; componentId: string; score: number }> = [];
+    const seenStudents = new Set<string>();
+    for (let rowIndex = 1; rowIndex < records.length; rowIndex += 1) {
+      const values = records[rowIndex]!;
+      const suppliedStudentId = studentIdIndex === undefined ? '' : values[studentIdIndex]?.trim() ?? '';
+      const suppliedMatricNo = matricNoIndex === undefined ? '' : values[matricNoIndex]?.trim() ?? '';
+      const studentId = suppliedStudentId ? byStudentId.get(suppliedStudentId) : byMatricNo.get(suppliedMatricNo.toLowerCase());
+      const matricStudentId = suppliedMatricNo ? byMatricNo.get(suppliedMatricNo.toLowerCase()) : undefined;
+      const rowErrors: string[] = [];
+      if (!studentId) rowErrors.push('Student is not registered for this course offering');
+      if (studentId && suppliedMatricNo && matricStudentId !== studentId) rowErrors.push('Student ID and Matric No do not match');
+      if (studentId && seenStudents.has(studentId)) rowErrors.push('Duplicate student row');
+      if (studentId) seenStudents.add(studentId);
+      for (const component of scheme.components) {
+        const raw = values[componentIndexes.get(component.id)!]?.trim() ?? '';
+        if (!raw) {
+          if (component.isRequired) rowErrors.push(`Missing ${component.code}`);
+          continue;
+        }
+        const score = Number(raw);
+        if (!Number.isFinite(score) || score < 0 || score > Number(component.maxScore)) rowErrors.push(`${component.code} must be between 0 and ${component.maxScore}`);
+        else if (studentId) parsedMarks.push({ row: rowIndex + 1, studentId, componentId: component.id, score });
+      }
+      if (rowErrors.length) errors.push({ row: rowIndex + 1, studentId, matricNo: suppliedMatricNo || undefined, error: rowErrors.join('; ') });
+    }
+    const totalRows = records.length - 1;
+    const errorRowNumbers = new Set(errors.map((error) => error.row));
+    const validStudentRows = totalRows - errorRowNumbers.size;
+    const checksum = createHash('sha256').update(dto.csv, 'utf8').digest('hex');
+    const batch = await this.prisma.gradeUploadBatch.create({
+      data: {
+        courseOfferingId: dto.courseOfferingId,
+        semesterId: dto.semesterId,
+        uploadedById: actorId,
+        fileName: dto.fileName ?? 'grade-upload.csv',
+        templateVersion: 'v2',
+        mode,
+        status: errors.length ? 'REJECTED' : 'VALIDATED',
+        totalRows,
+        validRows: Math.max(0, validStudentRows),
+        errorRows: errors.length,
+        checksum,
+        errorReport: errors,
+      },
+    });
+    if (errors.length || mode === GradeUploadMode.VALIDATE_ONLY) {
+      return { batchId: batch.id, status: batch.status, mode, checksum, totalRows, validRows: Math.max(0, validStudentRows), errorRows: errors.length, appliedMarks: 0, errors };
+    }
+    const existingMarks = await this.prisma.assessmentMark.findMany({
+      where: { courseOfferingId: dto.courseOfferingId, studentId: { in: [...seenStudents] }, componentId: { in: scheme.components.map((component) => component.id) } },
+      select: { studentId: true, componentId: true, status: true },
+    });
+    const finalizedKeys = new Set(existingMarks.filter((mark) => mark.status === 'FINALIZED').map((mark) => `${mark.studentId}:${mark.componentId}`));
+    const finalizedErrors = parsedMarks.filter((mark) => finalizedKeys.has(`${mark.studentId}:${mark.componentId}`)).map((mark) => ({ row: mark.row, studentId: mark.studentId, error: 'Finalized marks require a controlled amendment workflow' }));
+    if (finalizedErrors.length) {
+      await this.prisma.gradeUploadBatch.update({ where: { id: batch.id }, data: { status: 'REJECTED', errorRows: finalizedErrors.length, errorReport: finalizedErrors } });
+      return { batchId: batch.id, status: 'REJECTED', mode, checksum, totalRows, validRows: 0, errorRows: finalizedErrors.length, appliedMarks: 0, errors: finalizedErrors };
+    }
+    await this.prisma.gradeUploadBatch.update({ where: { id: batch.id }, data: { status: 'APPLYING' } });
+    try {
+      let appliedMarks = 0;
+      await this.prisma.$transaction(async (tx) => {
+        for (let offset = 0; offset < parsedMarks.length; offset += 50) {
+          const chunk = parsedMarks.slice(offset, offset + 50);
+          for (const mark of chunk) {
+            await tx.assessmentMark.upsert({
+              where: { uq_assessment_mark_student_component: { studentId: mark.studentId, componentId: mark.componentId } },
+              create: { studentId: mark.studentId, courseOfferingId: dto.courseOfferingId, componentId: mark.componentId, score: mark.score, enteredById: actorId },
+              update: { score: mark.score, enteredById: actorId, status: 'DRAFT', finalizedById: null, finalizedAt: null, version: { increment: 1 } },
+            });
+            appliedMarks += 1;
+          }
+        }
+        await tx.gradeUploadBatch.update({ where: { id: batch.id }, data: { status: 'APPLIED', validRows: validStudentRows, errorRows: 0 } });
+        await tx.auditLog.create({ data: { action: AuditAction.UPDATE, targetTable: 'grade_upload_batches', targetId: batch.id, actorId, newValues: { courseOfferingId: dto.courseOfferingId, checksum, appliedMarks, totalRows } } });
+      });
+      return { batchId: batch.id, status: 'APPLIED', mode, checksum, totalRows, validRows: validStudentRows, errorRows: 0, appliedMarks, errors: [] };
+    } catch (error) {
+      await this.prisma.gradeUploadBatch.update({ where: { id: batch.id }, data: { status: 'FAILED', errorReport: [{ error: error instanceof Error ? error.message : 'Bulk mark application failed' }] } }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async finalizeMarks(courseOfferingId: string, actorId: string, actorRole: AcademicActorRole = 'STAFF') {
