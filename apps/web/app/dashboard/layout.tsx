@@ -416,7 +416,7 @@ export default function DashboardLayout({
             </span>
           </Link>
           <button
-            className="rounded-lg p-2 text-muted-foreground hover:bg-muted lg:hidden"
+            className="touch-target inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted lg:hidden"
             onClick={() => setMobileOpen(false)}
             aria-label="Close menu"
           >
@@ -444,7 +444,7 @@ export default function DashboardLayout({
                     onClick={() => setMobileOpen(false)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+                      "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
                       active
                         ? "bg-[--color-primary] font-semibold text-white shadow-sm"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -492,9 +492,9 @@ export default function DashboardLayout({
       </aside>
 
       <div className="min-h-screen lg:pl-[280px]">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/90 px-4 backdrop-blur-md sm:px-6">
+        <header className="glass-accent sticky top-0 z-30 flex h-16 items-center gap-3 border-x-0 border-t-0 px-4 sm:px-6">
           <button
-            className="rounded-lg p-2 hover:bg-muted lg:hidden"
+            className="touch-target inline-flex items-center justify-center rounded-lg hover:bg-muted lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
             aria-expanded={mobileOpen}
@@ -512,7 +512,7 @@ export default function DashboardLayout({
           </div>
           <button
             onClick={() => setCommandOpen(true)}
-            className="hidden items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground hover:text-foreground sm:flex"
+            className="hidden min-h-11 items-center gap-2 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground hover:text-foreground sm:flex"
             aria-label="Open quick search"
           >
             <Search className="h-4 w-4" />
@@ -523,7 +523,7 @@ export default function DashboardLayout({
           </button>
           <Link
             href="/dashboard/notifications"
-            className="rounded-lg p-2 text-muted-foreground hover:bg-muted"
+            className="touch-target inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
             aria-label="Open notifications"
           >
             <Bell className="h-5 w-5" aria-hidden="true" />

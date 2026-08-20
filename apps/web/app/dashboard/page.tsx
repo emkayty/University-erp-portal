@@ -187,7 +187,7 @@ export default function DashboardPage() {
   const toggle = (key: string) => setHidden((current) => ({ ...current, [key]: !current[key] }));
 
   return <div className="mx-auto w-full max-w-[1440px] space-y-5 pb-10">
-    <header className="rounded-3xl border border-border bg-card p-5 shadow-sm sm:p-7">
+    <header className="glass-accent rounded-3xl p-5 sm:p-7">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl"><div className="flex flex-wrap items-center gap-2"><span className="enterprise-eyebrow">{salutation}, {displayName}</span><span className="rounded-full bg-[--color-primary]/10 px-2 py-1 text-xs font-semibold">{ROLE_LABELS[role]}</span></div><h1 className="text-balance mt-2 text-2xl font-bold tracking-tight sm:text-4xl">{copy.title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{copy.description}</p></div>
         <div className="flex flex-wrap gap-2"><DashboardCommandPalette role={role} /><button type="button" onClick={() => setCustomizeOpen(true)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-border bg-background px-4 text-sm font-semibold hover:bg-muted" aria-label="Customize dashboard"><Settings2 className="h-4 w-4" />Customize</button><Link href={copy.primary.href} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[--color-primary] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[--color-primary-dark]">{copy.primary.label}<ArrowRight className="h-4 w-4" /></Link></div>

@@ -152,6 +152,13 @@
   .touch-target { min-width: 44px; min-height: 44px; }
   .text-balance { text-wrap: balance; }
 
+  .glass-accent {
+    background: color-mix(in srgb, hsl(var(--card)) 78%, transparent);
+    border: 1px solid color-mix(in srgb, hsl(var(--border)) 78%, white 22%);
+    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+    backdrop-filter: blur(14px);
+  }
+
   .enterprise-surface {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));

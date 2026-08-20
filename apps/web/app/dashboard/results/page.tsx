@@ -9,7 +9,7 @@ import {
   useCurrentSemester, useSemesters,
 } from '@/hooks/use-results';
 import { cn } from '@/lib/utils';
-import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
+import { hasEffectiveRole } from '@/lib/authz';
 import type { StudentResultV1 } from '@uniportal/types';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -23,10 +23,9 @@ const GRADE_COLORS: Record<string, string> = {
 
 export default function ResultsPage() {
   const user = useAuthStore((s) => s.user);
-  const role = effectiveRolesOf(user)[0] ?? '';
   const isStudent = hasEffectiveRole(user, 'STUDENT');
-  const isLecturer = ['STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN'].includes(role);
-  const canApprove = ['HOD','DEAN','REGISTRAR','VC','SUPER_ADMIN'].includes(role);
+  const isLecturer = hasEffectiveRole(user, 'STAFF', 'HOD', 'DEAN', 'REGISTRAR', 'SUPER_ADMIN');
+  const canApprove = hasEffectiveRole(user, 'HOD', 'DEAN', 'REGISTRAR', 'VC', 'SUPER_ADMIN');
 
   const [tab, setTab]         = useState<'my'|'transcript'|'entry'|'approve'>('my');
   const [selSemId, setSelSem] = useState('');

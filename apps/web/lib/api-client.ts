@@ -6,6 +6,8 @@
  * cannot recursively trigger another refresh.
  */
 
+import { publishFeedback } from '@/lib/feedback';
+
 const API_BASE = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001';
 
 let _accessToken: string | null = null;
@@ -31,6 +33,44 @@ interface ApiErrorBody { code: string; message: string; details?: Array<{ field:
 interface ApiSuccess<T> { success: true; data: T }
 interface ApiFailure { success: false; error: ApiErrorBody }
 type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function actionResource(path: string): string {
+  const labels: Array<[string, string]> = [
+    ['assessment', 'Assessment'], ['admissions', 'Admissions'], ['auth', 'Authentication'],
+    ['fees', 'Fees'], ['payments', 'Payment'], ['results', 'Results'], ['students', 'Student records'],
+    ['users', 'User management'], ['notifications', 'Notifications'], ['reports', 'Reports'],
+    ['reliability', 'Reliability operations'], ['settings', 'Settings'], ['calendar', 'Calendar'],
+  ];
+  return labels.find(([key]) => path.toLowerCase().includes(key))?.[1] ?? 'This action';
+}
+
+function publishActionSuccess(method: string, path: string): void {
+  if (typeof window === 'undefined' || !WRITE_METHODS.has(method)) return;
+  publishFeedback({ tone: 'success', title: 'Action completed', message: `${actionResource(path)} action completed successfully.` });
+}
+
+function publishActionFailure(method: string, path: string, error: unknown): void {
+  if (typeof window === 'undefined' || !WRITE_METHODS.has(method)) return;
+  const message = error instanceof ApiClientError
+    ? error.message
+    : 'We could not complete that action. Check your connection and try again.';
+  publishFeedback({ tone: 'error', title: 'Action not completed', message });
+}
+
+function publishDownloadSuccess(path: string): void {
+  if (typeof window === 'undefined') return;
+  publishFeedback({ tone: 'success', title: 'Download ready', message: `${actionResource(path)} file prepared successfully.` });
+}
+
+function publishDownloadFailure(error: unknown): void {
+  if (typeof window === 'undefined') return;
+  const message = error instanceof ApiClientError
+    ? error.message
+    : 'The file could not be prepared. Check your connection and try again.';
+  publishFeedback({ tone: 'error', title: 'Download failed', message });
+}
 
 async function silentRefresh(baseUrl: string = API_BASE): Promise<string | null> {
   if (_isRefreshing) return new Promise((resolve) => { _refreshQueue.push(resolve); });
@@ -71,11 +111,13 @@ async function request<T>(
     headers?: Record<string, string>;
     idempotencyKey?: string;
     skipRefresh?: boolean;
+    suppressFeedback?: boolean;
     signal?: AbortSignal;
   } = {},
   baseUrl: string = API_BASE,
 ): Promise<T> {
   const url = `${baseUrl}/api/v1${path}`;
+  const shouldNotify = WRITE_METHODS.has(method) && !options.suppressFeedback;
   const requestId = crypto.randomUUID();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -85,13 +127,19 @@ async function request<T>(
   if (_accessToken) headers.Authorization = `Bearer ${_accessToken}`;
   if (options.idempotencyKey) headers['X-Idempotency-Key'] = options.idempotencyKey;
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    credentials: 'include',
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    signal: options.signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      credentials: 'include',
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (shouldNotify) publishActionFailure(method, path, error);
+    throw error;
+  }
 
   if (res.status === 401 && !options.skipRefresh) {
     const newToken = await silentRefresh(baseUrl);
@@ -100,21 +148,38 @@ async function request<T>(
         ...options,
         headers: { ...options.headers, Authorization: `Bearer ${newToken}` },
         skipRefresh: true,
-      }, baseUrl);
+        suppressFeedback: true,
+      }, baseUrl).then((result) => {
+        if (shouldNotify) publishActionSuccess(method, path);
+        return result;
+      }).catch((error: unknown) => {
+        if (shouldNotify) publishActionFailure(method, path, error);
+        throw error;
+      });
     }
     if (typeof window !== 'undefined') window.location.href = '/auth/login?reason=session_expired';
     throw new ApiClientError('AUTH_TOKEN_EXPIRED', 'Session expired. Please log in again.', 401);
   }
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) {
+    if (shouldNotify) publishActionSuccess(method, path);
+    return undefined as T;
+  }
 
   let data: ApiResponse<T>;
   try {
     data = (await res.json()) as ApiResponse<T>;
   } catch {
-    throw new ApiClientError('INTERNAL_ERROR', `Server returned non-JSON response (status ${res.status})`, res.status);
+    const error = new ApiClientError('INTERNAL_ERROR', `Server returned non-JSON response (status ${res.status})`, res.status);
+    if (shouldNotify) publishActionFailure(method, path, error);
+    throw error;
   }
-  if (!data.success) throw new ApiClientError(data.error.code, data.error.message, res.status, data.error.details);
+  if (!data.success) {
+    const error = new ApiClientError(data.error.code, data.error.message, res.status, data.error.details);
+    if (shouldNotify) publishActionFailure(method, path, error);
+    throw error;
+  }
+  if (shouldNotify) publishActionSuccess(method, path);
   return data.data;
 }
 
@@ -127,14 +192,27 @@ async function downloadFile(path: string, baseUrl: string = API_BASE): Promise<{
     credentials: 'include',
   });
 
-  let res = await perform(_accessToken);
+  let res: Response;
+  try {
+    res = await perform(_accessToken);
+  } catch (error) {
+    publishDownloadFailure(error);
+    throw error;
+  }
   if (res.status === 401) {
     const newToken = await silentRefresh(baseUrl);
     if (!newToken) {
+      const error = new ApiClientError('AUTH_TOKEN_EXPIRED', 'Session expired. Please log in again.', 401);
+      publishDownloadFailure(error);
       if (typeof window !== 'undefined') window.location.href = '/auth/login?reason=session_expired';
-      throw new ApiClientError('AUTH_TOKEN_EXPIRED', 'Session expired. Please log in again.', 401);
+      throw error;
     }
-    res = await perform(newToken);
+    try {
+      res = await perform(newToken);
+    } catch (error) {
+      publishDownloadFailure(error);
+      throw error;
+    }
   }
 
   if (!res.ok) {
@@ -144,12 +222,16 @@ async function downloadFile(path: string, baseUrl: string = API_BASE): Promise<{
       const data = (await res.json()) as ApiResponse<unknown>;
       if (!data.success) { code = data.error.code; message = data.error.message; }
     } catch { /* Preserve status-based error for non-JSON responses. */ }
-    throw new ApiClientError(code, message, res.status);
+    const error = new ApiClientError(code, message, res.status);
+    publishDownloadFailure(error);
+    throw error;
   }
 
   const disposition = res.headers.get('Content-Disposition') ?? '';
   const match = /filename="?([^";]+)"?/i.exec(disposition);
-  return { blob: await res.blob(), filename: match?.[1] };
+  const result = { blob: await res.blob(), filename: match?.[1] };
+  publishDownloadSuccess(path);
+  return result;
 }
 
 export const createApiClient = (baseUrl: string = API_BASE) => ({

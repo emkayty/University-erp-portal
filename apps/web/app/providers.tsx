@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ThemeProvider } from 'next-themes';
 import React, { useState } from 'react';
+import { FeedbackToaster } from '@/components/ui/feedback-toaster';
 
 /**
  * Application-wide providers — wraps the entire tree.
@@ -54,6 +55,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
       >
         {children}
       </ThemeProvider>
+
+      <FeedbackToaster />
 
       {/* React Query Devtools — only in development */}
       {process.env['NODE_ENV'] === 'development' && (

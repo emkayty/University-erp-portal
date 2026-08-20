@@ -16,7 +16,7 @@ import {
 } from '@/hooks/use-fees';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate, formatNgn } from '@/lib/utils';
-import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
+import { hasEffectiveRole } from '@/lib/authz';
 import type { StudentFeeV1 } from '@uniportal/types';
 
 const FEE_TYPES = ['TUITION','ACCEPTANCE','ACCOMMODATION','LIBRARY','MEDICAL','SPORTS','ICT','EXAM_FEE','LATE_REG','OTHER'];
@@ -44,10 +44,9 @@ type WaiverForm = z.infer<typeof waiverSchema>;
 
 export default function FeesPage() {
   const user = useAuthStore((s) => s.user);
-  const role = effectiveRolesOf(user)[0] ?? '';
   const isStudent = hasEffectiveRole(user, 'STUDENT');
-  const isBursar  = ['BURSAR','SUPER_ADMIN'].includes(role);
-  const isHod     = role === 'HOD';
+  const isBursar  = hasEffectiveRole(user, 'BURSAR', 'SUPER_ADMIN');
+  const isHod     = hasEffectiveRole(user, 'HOD');
   const canWaive  = isHod || isBursar;
 
   const [tab, setTab] = useState<'my'|'schedules'|'waivers'>(isStudent ? 'my' : 'schedules');
