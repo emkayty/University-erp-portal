@@ -1,8 +1,9 @@
 import {
-  BadRequestException, ConflictException,
+  BadRequestException, ConflictException, ForbiddenException,
   Injectable, Logger, UnprocessableEntityException,
 } from '@nestjs/common';
 import { AuditAction, CourseOfferingLifecycle } from '@prisma/client';
+import type { RoleName } from '@uniportal/types';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../database/prisma.service';
@@ -35,6 +36,53 @@ export class CurriculumService {
     private readonly prisma: PrismaService,
     private readonly audit:  AuditService,
   ) {}
+
+  private async assertOwnedWrite(
+    entity: 'department' | 'programme' | 'course',
+    id: string,
+    actorId: string,
+    roles: RoleName[] = [],
+  ): Promise<void> {
+    if (roles.includes('SUPER_ADMIN') || roles.includes('REGISTRAR')) return;
+
+    const requiresDean = roles.includes('DEAN');
+    const requiresHod = roles.includes('HOD');
+    if (!requiresDean && !requiresHod) {
+      throw new ForbiddenException('You are not authorized to modify this academic structure.');
+    }
+
+    type DepartmentOwnership = {
+      hod: { userId: string } | null;
+      faculty: { dean: { userId: string } | null };
+    };
+    let department: DepartmentOwnership | null = null;
+
+    if (entity === 'department') {
+      department = await this.prisma.department.findUnique({
+        where: { id },
+        select: { hod: { select: { userId: true } }, faculty: { select: { dean: { select: { userId: true } } } } },
+      });
+    } else if (entity === 'programme') {
+      const programme = await this.prisma.programme.findUnique({
+        where: { id },
+        select: { department: { select: { hod: { select: { userId: true } }, faculty: { select: { dean: { select: { userId: true } } } } } } },
+      });
+      department = programme?.department ?? null;
+    } else {
+      const course = await this.prisma.course.findUnique({
+        where: { id },
+        select: { department: { select: { hod: { select: { userId: true } }, faculty: { select: { dean: { select: { userId: true } } } } } } },
+      });
+      department = course?.department ?? null;
+    }
+
+    if (!department) throw new BadRequestException('Academic structure record was not found.');
+    const deanOwns = requiresDean && department.faculty.dean?.userId === actorId;
+    const hodOwns = requiresHod && department.hod?.userId === actorId;
+    if (!deanOwns && !hodOwns) {
+      throw new ForbiddenException('You may only modify academic structures within your assigned faculty or department.');
+    }
+  }
 
   // ═══════════════ FACULTY ══════════════════════════════════════════════════
 
@@ -79,7 +127,8 @@ export class CurriculumService {
     return dept;
   }
 
-  async updateDepartment(id: string, dto: UpdateDepartmentDto, actorId: string) {
+  async updateDepartment(id: string, dto: UpdateDepartmentDto, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('department', id, actorId, roles);
     const updated = await this.prisma.department.update({ where: { id }, data: dto });
     await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'departments', targetId: id, newValues: dto as Record<string, unknown> }, actorId);
     return updated;
@@ -127,7 +176,8 @@ export class CurriculumService {
     return programme;
   }
 
-  async updateProgramme(id: string, dto: UpdateProgrammeDto, actorId: string) {
+  async updateProgramme(id: string, dto: UpdateProgrammeDto, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('programme', id, actorId, roles);
     if (dto.minCreditUnits !== undefined && dto.maxCreditUnits !== undefined &&
         dto.minCreditUnits >= dto.maxCreditUnits) {
       throw new BadRequestException('minCreditUnits must be less than maxCreditUnits');
@@ -163,8 +213,11 @@ export class CurriculumService {
 
   // ═══════════════ COURSE ═══════════════════════════════════════════════════
 
-  async createCourse(dto: CreateCourseDto, actorId: string) {
-    await this.prisma.department.findUniqueOrThrow({ where: { id: dto.departmentId } });
+  async createCourse(dto: CreateCourseDto, actorId: string, roles: RoleName[] = []) {
+    const department = await this.prisma.department.findUniqueOrThrow({ where: { id: dto.departmentId } });
+    if (!roles.includes('SUPER_ADMIN') && !roles.includes('REGISTRAR')) {
+      await this.assertOwnedWrite('department', department.id, actorId, roles);
+    }
     const course = await this.prisma.course.create({
       data: {
         code:          dto.code.toUpperCase(),
@@ -179,7 +232,8 @@ export class CurriculumService {
     return course;
   }
 
-  async updateCourse(id: string, dto: UpdateCourseDto, actorId: string) {
+  async updateCourse(id: string, dto: UpdateCourseDto, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('course', id, actorId, roles);
     const course = await this.prisma.course.findUniqueOrThrow({ where: { id } });
 
     // UpdateCourseDto deliberately excludes creditUnits. Defend this domain
@@ -217,7 +271,8 @@ export class CurriculumService {
   }
 
   // ── Prerequisites with DAG cycle detection ────────────────────────────────
-  async addPrerequisite(courseId: string, dto: AddPrerequisiteDto, actorId: string) {
+  async addPrerequisite(courseId: string, dto: AddPrerequisiteDto, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('course', courseId, actorId, roles);
     if (courseId === dto.prerequisiteId) {
       throw new BadRequestException('A course cannot be its own prerequisite');
     }
@@ -255,7 +310,8 @@ export class CurriculumService {
     return prereq;
   }
 
-  async removePrerequisite(courseId: string, prerequisiteId: string, actorId: string) {
+  async removePrerequisite(courseId: string, prerequisiteId: string, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('course', courseId, actorId, roles);
     const existing = await this.prisma.coursePrerequisite.findUnique({
       where: { uq_course_prereq: { courseId, prerequisiteId } },
     });
@@ -287,7 +343,8 @@ export class CurriculumService {
   }
 
   // ── Programme Course mapping ───────────────────────────────────────────────
-  async addProgrammeCourse(programmeId: string, dto: AddProgrammeCourseDto, actorId: string) {
+  async addProgrammeCourse(programmeId: string, dto: AddProgrammeCourseDto, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('programme', programmeId, actorId, roles);
     const programme = await this.prisma.programme.findUniqueOrThrow({ where: { id: programmeId } });
     const course = await this.prisma.course.findUniqueOrThrow({ where: { id: dto.courseId } });
 
@@ -325,7 +382,8 @@ export class CurriculumService {
     return pc;
   }
 
-  async removeProgrammeCourse(programmeId: string, courseId: string, level: number, semester: string, actorId: string) {
+  async removeProgrammeCourse(programmeId: string, courseId: string, level: number, semester: string, actorId: string, roles: RoleName[] = []) {
+    await this.assertOwnedWrite('programme', programmeId, actorId, roles);
     const pc = await this.prisma.programmeCourse.findFirst({
       where: { programmeId, courseId, level, semester: semester as never, curriculumVersion: { status: 'ACTIVE' } },
     });

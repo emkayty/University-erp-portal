@@ -1,4 +1,4 @@
-import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AuditService } from '../../common/audit/audit.service';
@@ -31,10 +31,10 @@ describe('CurriculumService', () => {
   beforeEach(async () => {
     prisma = {
       faculty:            { create: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
-      department:         { create: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
-      programme:          { create: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      department:         { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      programme:          { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       programmeCourse:    { create: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
-      course:             { create: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      course:             { create: jest.fn(), update: jest.fn(), findUnique: jest.fn(), findUniqueOrThrow: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       coursePrerequisite: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn(), delete: jest.fn(), findUnique: jest.fn() },
       courseOffering:     { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       academicCalendar:   { findUniqueOrThrow: jest.fn() },
@@ -76,11 +76,11 @@ describe('CurriculumService', () => {
       prisma.coursePrerequisite.create.mockResolvedValue({ id: 'pr1', courseId: 'C', prerequisiteId: 'B', minGrade: 'E' });
 
       // Adding: C requires B (C → B) — no cycle: A ← B ← C
-      await expect(svc.addPrerequisite('C', { prerequisiteId: 'B' }, 'actor')).resolves.not.toThrow();
+      await expect(svc.addPrerequisite('C', { prerequisiteId: 'B' }, 'actor', ['REGISTRAR'])).resolves.not.toThrow();
     });
 
     it('rejects direct self-reference (course requires itself)', async () => {
-      await expect(svc.addPrerequisite('A', { prerequisiteId: 'A' }, 'actor'))
+      await expect(svc.addPrerequisite('A', { prerequisiteId: 'A' }, 'actor', ['REGISTRAR']))
         .rejects.toThrow(BadRequestException);
       expect(prisma.coursePrerequisite.create).not.toHaveBeenCalled();
     });
@@ -93,7 +93,7 @@ describe('CurriculumService', () => {
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('B', 'CSC302'));
 
       // Adding: B requires A would create cycle A → B → A
-      await expect(svc.addPrerequisite('B', { prerequisiteId: 'A' }, 'actor'))
+      await expect(svc.addPrerequisite('B', { prerequisiteId: 'A' }, 'actor', ['REGISTRAR']))
         .rejects.toThrow(UnprocessableEntityException);
       expect(prisma.coursePrerequisite.create).not.toHaveBeenCalled();
     });
@@ -107,7 +107,7 @@ describe('CurriculumService', () => {
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('C', 'CSC303'));
 
       // Adding C→A would create A→B→C→A
-      await expect(svc.addPrerequisite('C', { prerequisiteId: 'A' }, 'actor'))
+      await expect(svc.addPrerequisite('C', { prerequisiteId: 'A' }, 'actor', ['REGISTRAR']))
         .rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -119,7 +119,7 @@ describe('CurriculumService', () => {
       ]);
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('D', 'CSC304'));
 
-      await expect(svc.addPrerequisite('D', { prerequisiteId: 'A' }, 'actor'))
+      await expect(svc.addPrerequisite('D', { prerequisiteId: 'A' }, 'actor', ['REGISTRAR']))
         .rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -134,14 +134,14 @@ describe('CurriculumService', () => {
       prisma.coursePrerequisite.create.mockResolvedValue({ id: 'pr1', courseId: 'D', prerequisiteId: 'C', minGrade: 'E' });
 
       // Adding D→C: D now requires both B and C — valid diamond
-      await expect(svc.addPrerequisite('D', { prerequisiteId: 'C' }, 'actor')).resolves.not.toThrow();
+      await expect(svc.addPrerequisite('D', { prerequisiteId: 'C' }, 'actor', ['REGISTRAR'])).resolves.not.toThrow();
     });
 
     it('does not create DB entry if cycle detected', async () => {
       prisma.coursePrerequisite.findMany.mockResolvedValue([makePrereqEdge('A', 'B')]);
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('B', 'CSC302'));
 
-      await expect(svc.addPrerequisite('B', { prerequisiteId: 'A' }, 'actor')).rejects.toThrow();
+      await expect(svc.addPrerequisite('B', { prerequisiteId: 'A' }, 'actor', ['REGISTRAR'])).rejects.toThrow();
       expect(prisma.coursePrerequisite.create).not.toHaveBeenCalled();
     });
   });
@@ -151,7 +151,7 @@ describe('CurriculumService', () => {
     it('rejects credit unit change on existing course', async () => {
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('c1', 'CSC301', 3));
 
-      await expect(svc.updateCourse('c1', { creditUnits: 4 } as never, 'actor'))
+      await expect(svc.updateCourse('c1', { creditUnits: 4 } as never, 'actor', ['REGISTRAR']))
         .rejects.toThrow(BadRequestException);
       expect(prisma.course.update).not.toHaveBeenCalled();
     });
@@ -160,8 +160,41 @@ describe('CurriculumService', () => {
       prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('c1', 'CSC301', 3));
       prisma.course.update.mockResolvedValue(makeCourse('c1', 'CSC301', 3));
 
-      await expect(svc.updateCourse('c1', { title: 'Advanced Algorithms' }, 'actor')).resolves.not.toThrow();
+      await expect(svc.updateCourse('c1', { title: 'Advanced Algorithms' }, 'actor', ['REGISTRAR'])).resolves.not.toThrow();
       expect(prisma.course.update).toHaveBeenCalled();
+    });
+  });
+
+  // ── ownership authorization ────────────────────────────────────────────────
+  describe('ownership authorization', () => {
+    it('rejects a HOD updating a course outside the HOD department', async () => {
+      prisma.course.findUnique.mockResolvedValue({
+        department: { hod: { userId: 'other-hod' }, faculty: { dean: null } },
+      });
+
+      await expect(svc.updateCourse('c1', { title: 'Updated' }, 'hod-a', ['HOD']))
+        .rejects.toThrow(ForbiddenException);
+      expect(prisma.course.update).not.toHaveBeenCalled();
+    });
+
+    it('allows a HOD to update a course owned by the HOD department', async () => {
+      prisma.course.findUnique.mockResolvedValue({
+        department: { hod: { userId: 'hod-a' }, faculty: { dean: null } },
+      });
+      prisma.course.findUniqueOrThrow.mockResolvedValue(makeCourse('c1', 'CSC301', 3));
+      prisma.course.update.mockResolvedValue(makeCourse('c1', 'CSC301', 3));
+
+      await expect(svc.updateCourse('c1', { title: 'Updated' }, 'hod-a', ['HOD']))
+        .resolves.not.toThrow();
+      expect(prisma.course.update).toHaveBeenCalled();
+    });
+
+    it('allows Registrar institutional override without an ownership lookup', async () => {
+      prisma.programme.update.mockResolvedValue({ id: 'p1', name: 'Updated Programme' });
+
+      await expect(svc.updateProgramme('p1', { name: 'Updated Programme' }, 'registrar', ['REGISTRAR']))
+        .resolves.not.toThrow();
+      expect(prisma.programme.findUnique).not.toHaveBeenCalled();
     });
   });
 

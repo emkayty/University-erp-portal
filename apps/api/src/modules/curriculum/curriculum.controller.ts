@@ -64,7 +64,7 @@ export class CurriculumController {
   @Patch('departments/:id')
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN')
   async updateDept(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDepartmentDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.updateDepartment(id, dto, u.sub) };
+    return { success: true, data: await this.svc.updateDepartment(id, dto, u.sub, u.roles ?? [u.role]) };
   }
 
   // ── Programmes ─────────────────────────────────────────────────────────────
@@ -90,14 +90,14 @@ export class CurriculumController {
   @Patch('programmes/:id')
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN')
   async updateProgramme(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateProgrammeDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.updateProgramme(id, dto, u.sub) };
+    return { success: true, data: await this.svc.updateProgramme(id, dto, u.sub, u.roles ?? [u.role]) };
   }
 
   @Post('programmes/:id/courses')
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN','HOD')
   @ApiOperation({ summary: 'Add course to programme curriculum' })
   async addProgrammeCourse(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddProgrammeCourseDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.addProgrammeCourse(id, dto, u.sub) };
+    return { success: true, data: await this.svc.addProgrammeCourse(id, dto, u.sub, u.roles ?? [u.role]) };
   }
 
   @Delete('programmes/:id/courses/:courseId')
@@ -111,7 +111,7 @@ export class CurriculumController {
     @Query('semester') semester: string,
     @CurrentUser() u: JwtPayload,
   ) {
-    await this.svc.removeProgrammeCourse(id, courseId, parseInt(level), semester, u.sub);
+    await this.svc.removeProgrammeCourse(id, courseId, parseInt(level), semester, u.sub, u.roles ?? [u.role]);
     return { success: true, data: { message: 'Course removed from programme' } };
   }
 
@@ -133,20 +133,20 @@ export class CurriculumController {
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN','HOD')
   @ApiOperation({ summary: '[HOD+] Create course' })
   async createCourse(@Body() dto: CreateCourseDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.createCourse(dto, u.sub) };
+    return { success: true, data: await this.svc.createCourse(dto, u.sub, u.roles ?? [u.role]) };
   }
 
   @Patch('courses/:id')
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN','HOD')
   async updateCourse(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCourseDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.updateCourse(id, dto, u.sub) };
+    return { success: true, data: await this.svc.updateCourse(id, dto, u.sub, u.roles ?? [u.role]) };
   }
 
   @Post('courses/:id/prerequisites')
   @Roles('SUPER_ADMIN','REGISTRAR','DEAN','HOD')
   @ApiOperation({ summary: 'Add prerequisite (cycle detection applied)' })
   async addPrereq(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddPrerequisiteDto, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.addPrerequisite(id, dto, u.sub) };
+    return { success: true, data: await this.svc.addPrerequisite(id, dto, u.sub, u.roles ?? [u.role]) };
   }
 
   @Delete('courses/:id/prerequisites/:prereqId')
@@ -156,7 +156,7 @@ export class CurriculumController {
     @Param('prereqId', ParseUUIDPipe) prereqId: string,
     @CurrentUser() u: JwtPayload,
   ) {
-    await this.svc.removePrerequisite(id, prereqId, u.sub);
+    await this.svc.removePrerequisite(id, prereqId, u.sub, u.roles ?? [u.role]);
     return { success: true, data: { message: 'Prerequisite removed' } };
   }
 

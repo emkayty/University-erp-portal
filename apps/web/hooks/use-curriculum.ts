@@ -30,7 +30,19 @@ export function useCreateFaculty() {
   return useMutation({
     mutationFn: (data: { name: string; code: string }) =>
       apiClient.post<FacultyV1>('/curriculum/faculties', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: curriculumKeys.faculties }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'faculties'] }),
+  });
+}
+
+export function useUpdateFaculty() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean } }) =>
+      apiClient.patch<FacultyV1>(`/curriculum/faculties/${id}`, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'faculties'] });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] });
+    },
   });
 }
 
@@ -50,9 +62,19 @@ export function useCreateDepartment() {
   return useMutation({
     mutationFn: (data: { name: string; code: string; facultyId: string }) =>
       apiClient.post<DepartmentV1>('/curriculum/departments', data),
-    onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: curriculumKeys.departments(vars.facultyId) });
-      void qc.invalidateQueries({ queryKey: curriculumKeys.departments() });
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] }),
+  });
+}
+
+export function useUpdateDepartment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean } }) =>
+      apiClient.patch<DepartmentV1>(`/curriculum/departments/${id}`, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] });
     },
   });
 }
@@ -84,7 +106,19 @@ export function useCreateProgramme() {
       degreeType: string; durationYears: number;
       minCreditUnits?: number; maxCreditUnits?: number;
     }) => apiClient.post<ProgrammeV1>('/curriculum/programmes', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: curriculumKeys.programmes() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] }),
+  });
+}
+
+export function useUpdateProgramme() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean; minCreditUnits?: number; maxCreditUnits?: number } }) =>
+      apiClient.patch<ProgrammeV1>(`/curriculum/programmes/${id}`, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
+    },
   });
 }
 
@@ -114,7 +148,48 @@ export function useCreateCourse() {
       code: string; title: string; creditUnits: number;
       departmentId: string; ccmasCategory: string; description?: string;
     }) => apiClient.post<CourseV1>('/curriculum/courses', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: curriculumKeys.courses() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] }),
+  });
+}
+
+export function useUpdateCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { title?: string; ccmasCategory?: string; description?: string; isActive?: boolean } }) =>
+      apiClient.patch<CourseV1>(`/curriculum/courses/${id}`, data),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
+    },
+  });
+}
+
+export function useAddProgrammeCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ programmeId, courseId, level, semester, isCompulsory = true, ccmasCategory }: {
+      programmeId: string; courseId: string; level: number; semester: string;
+      isCompulsory?: boolean; ccmasCategory?: string;
+    }) => apiClient.post(`/curriculum/programmes/${programmeId}/courses`, { courseId, level, semester, isCompulsory, ccmasCategory }),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: curriculumKeys.programme(vars.programmeId) });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
+    },
+  });
+}
+
+export function useRemoveProgrammeCourse() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ programmeId, courseId, level, semester }: { programmeId: string; courseId: string; level: number; semester: string }) =>
+      apiClient.delete(`/curriculum/programmes/${programmeId}/courses/${courseId}?level=${level}&semester=${semester}`),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: curriculumKeys.programme(vars.programmeId) });
+      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
+    },
   });
 }
 
@@ -123,6 +198,16 @@ export function useAddPrerequisite() {
   return useMutation({
     mutationFn: ({ courseId, prerequisiteId, minGrade = 'E' }: { courseId: string; prerequisiteId: string; minGrade?: string }) =>
       apiClient.post(`/curriculum/courses/${courseId}/prerequisites`, { prerequisiteId, minGrade }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: curriculumKeys.course(vars.courseId) }),
+  });
+}
+
+export function useRemovePrerequisite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ courseId, prerequisiteId }: { courseId: string; prerequisiteId: string }) =>
+      apiClient.delete(`/curriculum/courses/${courseId}/prerequisites/${prerequisiteId}`),
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: curriculumKeys.course(vars.courseId) }),
   });
