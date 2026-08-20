@@ -22,6 +22,7 @@ describe('AssessmentService academic-integrity controls', () => {
     institutionSettings: { findFirst: jest.fn() },
     examAttendance: { findMany: jest.fn() },
     studentResult: { findUnique: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
+    $executeRaw: jest.fn().mockResolvedValue(2),
     $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
   };
 
@@ -165,7 +166,8 @@ describe('AssessmentService academic-integrity controls', () => {
     }, 'staff-1', 'STAFF');
 
     expect(response).toMatchObject({ batchId: 'batch-3', status: 'APPLIED', appliedMarks: 2, validRows: 1 });
-    expect(prisma.assessmentMark.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.assessmentMark.upsert).not.toHaveBeenCalled();
     expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ targetTable: 'grade_upload_batches', targetId: 'batch-3' }) }));
   });
 

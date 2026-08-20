@@ -24,6 +24,7 @@ import { useAuthStore } from '@/stores/auth.store';
 const scopedRoles: RoleName[] = ['STAFF', 'SUPPORT_STAFF'];
 const staffScopeLabels: Record<StaffScope, string> = {
   admissions: 'Admissions',
+  admissions_corrections: 'Admissions corrections',
   finance_clerk: 'Finance clerk',
   hr_clerk: 'HR clerk',
   lecturer: 'Lecturer / teaching',

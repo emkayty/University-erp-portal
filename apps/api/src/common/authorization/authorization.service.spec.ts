@@ -121,6 +121,16 @@ describe('AuthorizationService', () => {
     expect(() => h.service.validateRoleAssignment(RoleName.STAFF, { scopes: ['dpo'] })).not.toThrow();
   });
 
+  it('accepts the admissions-corrections staff scope', () => {
+    const h = makeHarness();
+    expect(() => h.service.validateRoleAssignment(RoleName.STAFF, { scopes: ['admissions_corrections'] })).not.toThrow();
+  });
+
+  it('rejects unknown staff scopes', () => {
+    const h = makeHarness();
+    expect(() => h.service.validateRoleAssignment(RoleName.STAFF, { scopes: ['not-a-real-scope'] })).toThrow(ConflictException);
+  });
+
   it('rejects delegations longer than 31 days', async () => {
     const h = makeHarness();
     await expect(h.service.createDelegation({

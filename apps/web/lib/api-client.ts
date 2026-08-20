@@ -42,6 +42,10 @@ function actionResource(path: string): string {
     ['fees', 'Fees'], ['payments', 'Payment'], ['results', 'Results'], ['students', 'Student records'],
     ['users', 'User management'], ['notifications', 'Notifications'], ['reports', 'Reports'],
     ['reliability', 'Reliability operations'], ['settings', 'Settings'], ['calendar', 'Calendar'], ['curriculum', 'Academic curriculum'], ['identity-cards', 'Identity cards'],
+    ['academic', 'Academic progression'], ['exams', 'Examinations'], ['hr', 'Human resources'], ['transport', 'Transport'],
+    ['clinic', 'Health clinic'], ['library', 'Library'], ['research', 'Research and grants'], ['hostel', 'Hostel'],
+    ['lms', 'Learning management'], ['payroll', 'Payroll'], ['privacy', 'Privacy operations'], ['clearance', 'Clearance'],
+    ['policies', 'University policies'], ['security', 'Security operations'],
   ];
   return labels.find(([key]) => path.toLowerCase().includes(key))?.[1] ?? 'This action';
 }

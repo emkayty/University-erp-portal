@@ -17,7 +17,7 @@ export function useSalaryGrades() {
   });
 }
 
-export function useStaff(filters?: { departmentId?: string; employmentStatus?: string; page?: number }) {
+export function useStaff(filters?: { departmentId?: string; employmentStatus?: string; page?: number; enabled?: boolean }) {
   const p = new URLSearchParams();
   if (filters?.departmentId)     p.set('departmentId',     filters.departmentId);
   if (filters?.employmentStatus) p.set('employmentStatus', filters.employmentStatus);
@@ -25,6 +25,7 @@ export function useStaff(filters?: { departmentId?: string; employmentStatus?: s
   return useQuery({
     queryKey: hrKeys.staff(filters),
     queryFn:  () => apiClient.get<StaffV1[]>(`/hr/staff?${p.toString()}`),
+    enabled: filters?.enabled ?? true,
     staleTime: 60_000,
   });
 }

@@ -272,7 +272,7 @@ export class AuthorizationService {
       throw new ConflictException({ code: 'AUTHZ_SCOPE_REQUIRED', message: 'STAFF and SUPPORT_STAFF assignments require at least one scope.' });
     }
     const validScopes = new Set<StaffScope>([
-      'admissions', 'finance_clerk', 'hr_clerk', 'lecturer', 'library', 'hostel',
+      'admissions', 'admissions_corrections', 'finance_clerk', 'hr_clerk', 'lecturer', 'library', 'hostel',
       'health', 'transport', 'research', 'alumni', 'timetable', 'records', 'dpo',
     ]);
     if ((value.scopes as unknown[]).some((scope) => typeof scope !== 'string' || !validScopes.has(scope as StaffScope))) {

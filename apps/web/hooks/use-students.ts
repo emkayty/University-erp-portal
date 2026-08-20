@@ -13,7 +13,7 @@ export const studentKeys = {
 
 export function useStudents(filters?: {
   status?: string; programmeId?: string; departmentId?: string;
-  level?: number; page?: number; pageSize?: number;
+  level?: number; page?: number; pageSize?: number; enabled?: boolean;
 }) {
   const p = new URLSearchParams();
   if (filters?.status)       p.set('status',       filters.status);
@@ -26,6 +26,7 @@ export function useStudents(filters?: {
   return useQuery({
     queryKey: studentKeys.all(filters),
     queryFn:  () => apiClient.get<StudentV1[]>(`/students?${p.toString()}`),
+    enabled: filters?.enabled ?? true,
     staleTime: 60_000,
   });
 }

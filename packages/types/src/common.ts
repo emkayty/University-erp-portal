@@ -86,6 +86,7 @@ export type RoleName =
 
 export type StaffScope =
   | 'admissions'
+  | 'admissions_corrections'
   | 'finance_clerk'
   | 'hr_clerk'
   | 'lecturer'

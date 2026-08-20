@@ -58,6 +58,7 @@ export default function AdmissionsPage() {
   const [pendingRejection, setPendingRejection] = useState<ApplicantV1 | null>(null);
   const [supportOfficerId, setSupportOfficerId] = useState('');
   const [changeNote, setChangeNote] = useState<Record<string, string>>({});
+  const [pendingScreenCycleId, setPendingScreenCycleId] = useState<string | null>(null);
 
   const { data: cycles     = [] } = useCycles();
   const { data: apps       = [], isLoading } = useApplications({
@@ -131,6 +132,18 @@ export default function AdmissionsPage() {
       </div>
 
       {actionError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-[--color-danger]">{actionError}</div>}
+      <ConfirmAction
+        open={!!pendingScreenCycleId}
+        title="Screen pending applicants"
+        description="Screen all pending applicants in this UTME cycle against the configured cut-off? This will update applicant screening outcomes and record the operation."
+        confirmLabel="Screen applicants"
+        onCancel={() => setPendingScreenCycleId(null)}
+        onConfirm={() => {
+          if (!pendingScreenCycleId) return;
+          handleScreenBulk(pendingScreenCycleId, false);
+          setPendingScreenCycleId(null);
+        }}
+      />
       <ConfirmAction
         open={!!pendingRejection}
         title="Reject admission application"
@@ -213,7 +226,7 @@ export default function AdmissionsPage() {
                       </Button>
                       {c.admissionType === 'UTME' && (
                         <Button size="sm" loading={screening}
-                          onClick={() => { if (confirm('Screen all PENDING applicants against UTME cut-off?')) handleScreenBulk(c.id, false); }}>
+                          onClick={() => setPendingScreenCycleId(c.id)}>
                           Screen Applicants
                         </Button>
                       )}

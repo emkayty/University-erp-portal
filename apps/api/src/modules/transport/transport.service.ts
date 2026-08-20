@@ -72,6 +72,7 @@ export class TransportService {
     return this.prisma.vehicle.findMany({
       where: { isActive: true },
       orderBy: { registrationNo: 'asc' },
+      take: 500,
       include: { _count: { select: { trips: { where: { status: TripStatus.SCHEDULED } } } } },
     });
   }
@@ -130,6 +131,7 @@ export class TransportService {
     return this.prisma.transportRoute.findMany({
       where:   { isActive: true },
       orderBy: { name: 'asc' },
+      take: 500,
     });
   }
 
@@ -388,6 +390,7 @@ export class TransportService {
     return this.prisma.tripBooking.findMany({
       where:   { userId },
       orderBy: { bookedAt: 'desc' },
+      take: 200,
       include: {
         trip: {
           include: {
@@ -403,6 +406,7 @@ export class TransportService {
     return this.prisma.tripBooking.findMany({
       where:   { tripId, status: BookingStatus.CONFIRMED },
       orderBy: { bookedAt: 'asc' },
+      take: 500,
     });
   }
 }

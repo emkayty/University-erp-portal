@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { JwtPayload } from '@uniportal/types';
-import { CurrentUser, FeatureFlag, Roles } from '../../common/decorators';
+import { CurrentUser, FeatureFlag, Roles, SkipRequestRlsTransaction } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { CreateAnnouncementDto, CreateAttachmentPresignDto, CreateContentDto, CreateDiscussionPostDto, CreateLtiConfigDto, CreateQuizQuestionDto, CreateSubmissionDto, GradeQuizAttemptDto, GradeSubmissionDto, SubmitQuizAttemptDto, UpdateProgressDto } from './dto/lms.dto';
 import { LmsService } from './lms.service';
@@ -30,9 +30,9 @@ export class LmsController {
   @Get('quizzes/attempts/my') @Roles('STUDENT') async myQuizAttempts(@CurrentUser() u: JwtPayload, @Query('courseOfferingId') courseOfferingId?: string) { return { success: true, data: await this.svc.getMyQuizAttempts(u.sub, courseOfferingId) }; }
   @Get('quizzes/attempts/content/:contentId') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async quizAttemptsForMarking(@Param('contentId', ParseUUIDPipe) contentId: string, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.getQuizAttemptsForMarking(contentId, u.sub, u.role) }; }
   @Patch('quizzes/attempts/:id/grade') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async gradeQuizAttempt(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GradeQuizAttemptDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.gradeQuizAttempt(id, dto, u.sub, u.role) }; }
-  @Post('submissions/attachments/presign') @Roles('STUDENT') async presignAttachment(@Body() dto: CreateAttachmentPresignDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.presignSubmissionAttachment(dto, u.sub) }; }
-  @Get('submissions/:id/attachment') @Roles('STUDENT','STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async getAttachment(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.getSubmissionAttachment(id, u.sub, u.role) }; }
-  @Post('submissions') @Roles('STUDENT') async submit(@Body() dto: CreateSubmissionDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.submitAssignment(dto, u.sub) }; }
+  @Post('submissions/attachments/presign') @SkipRequestRlsTransaction() @Roles('STUDENT') async presignAttachment(@Body() dto: CreateAttachmentPresignDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.presignSubmissionAttachment(dto, u.sub) }; }
+  @Get('submissions/:id/attachment') @SkipRequestRlsTransaction() @Roles('STUDENT','STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async getAttachment(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.getSubmissionAttachment(id, u.sub, u.role) }; }
+  @Post('submissions') @SkipRequestRlsTransaction() @Roles('STUDENT') async submit(@Body() dto: CreateSubmissionDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.submitAssignment(dto, u.sub) }; }
   @Get('submissions/my') @Roles('STUDENT') async mySubmissions(@CurrentUser() u: JwtPayload, @Query('courseOfferingId') courseOfferingId?: string) { return { success: true, data: await this.svc.getMySubmissions(u.sub, courseOfferingId) }; }
   @Get('submissions/content/:contentId') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async submissionsForMarking(@Param('contentId', ParseUUIDPipe) contentId: string, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.getSubmissionsForMarking(contentId, u.sub, u.role) }; }
   @Patch('submissions/:id/grade') @Roles('STAFF','HOD','DEAN','REGISTRAR','SUPER_ADMIN') async grade(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GradeSubmissionDto, @CurrentUser() u: JwtPayload) { return { success: true, data: await this.svc.gradeSubmission(id, dto, u.sub, u.role) }; }

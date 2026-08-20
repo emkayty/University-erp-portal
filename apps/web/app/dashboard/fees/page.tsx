@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -61,6 +62,7 @@ export default function FeesPage() {
   // response addresses the same payment attempt rather than opening a second
   // provider session for the same fee.
   const [paymentAttemptKeys, setPaymentAttemptKeys] = useState<Record<string, string>>({});
+  const [pendingWaiverRejection, setPendingWaiverRejection] = useState<{ id: string; invoiceNo?: string } | null>(null);
 
   const studentId = isStudent ? (user?.studentId ?? '') : '';
 
@@ -168,6 +170,19 @@ export default function FeesPage() {
 
       {actionError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-[--color-danger]">{actionError}</div>}
       {actionMsg    && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-950/20">{actionMsg}</div>}
+      <ConfirmAction
+        open={!!pendingWaiverRejection}
+        title="Reject fee waiver request"
+        description={`Reject the waiver request for invoice ${pendingWaiverRejection?.invoiceNo ?? 'this invoice'}? The rejection will be recorded for audit.`}
+        confirmLabel="Reject waiver"
+        destructive
+        onCancel={() => setPendingWaiverRejection(null)}
+        onConfirm={() => {
+          if (!pendingWaiverRejection) return;
+          rejectWaiver({ id: pendingWaiverRejection.id }, { onError: (e) => setError(e.message) });
+          setPendingWaiverRejection(null);
+        }}
+      />
 
       {/* ── My Fees (Student) ────────────────────────────────────────────── */}
       {tab === 'my' && (
@@ -382,7 +397,7 @@ export default function FeesPage() {
                           <div className="flex gap-2 flex-shrink-0">
                             <Button size="sm" loading={approving} onClick={() => approveWaiver(w.id, { onError: (e) => setError(e.message) })}>Approve</Button>
                             <Button size="sm" variant="destructive" loading={rejecting}
-                              onClick={() => { if (window.confirm(`Reject the waiver request for invoice ${w.studentFee?.invoiceNo ?? 'this invoice'}?`)) rejectWaiver({ id: w.id }, { onError: (e) => setError(e.message) }); }}>
+                              onClick={() => setPendingWaiverRejection({ id: w.id, invoiceNo: w.studentFee?.invoiceNo })}>
                               Reject
                             </Button>
                           </div>

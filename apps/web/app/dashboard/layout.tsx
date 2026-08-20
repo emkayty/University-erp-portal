@@ -217,7 +217,7 @@ const ALL_NAV = [
     href: "/dashboard/research",
     label: "Research",
     icon: FlaskConical,
-    roles: ["SUPER_ADMIN", "VC", "STAFF"],
+    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "STAFF"],
     scope: "research",
     moduleFlag: "module_research",
   },
@@ -264,7 +264,7 @@ const ALL_NAV = [
     href: "/dashboard/users",
     label: "User Administration",
     icon: UserCog,
-    roles: ["SUPER_ADMIN"],
+    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "BURSAR", "HR_MANAGER"],
   },
   {
     href: "/dashboard/audit-logs",
@@ -304,7 +304,8 @@ function canSee(
   const itemScope = (item as { scope?: StaffScope }).scope;
   const requiredScope = (item as { requiredScope?: StaffScope }).requiredScope;
   const roleAllowed = roles.some((role) => (item.roles as readonly RoleName[]).includes(role));
-  const scopeAllowed = itemScope ? scopes.includes(itemScope) : false;
+  const scopedStaffRole = roles.includes("STAFF") || roles.includes("SUPPORT_STAFF");
+  const scopeAllowed = scopedStaffRole && itemScope ? scopes.includes(itemScope) : false;
   if (!roleAllowed && !scopeAllowed) return false;
   if (requiredScope && (roles.includes("STAFF") || roles.includes("SUPPORT_STAFF")) && !roles.includes("SUPER_ADMIN")) {
     return scopes.includes(requiredScope);

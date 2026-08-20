@@ -17,7 +17,7 @@ export class IdentityCardsService {
       orderBy: { createdAt: 'desc' },
     });
     if (!card) return null;
-    return this.toAuthenticated(card);
+    return this.toAuthenticated(card, { includeVerificationUrl: true });
   }
 
   async list(filters: { holderType?: IdentityCardHolderType; status?: IdentityCardStatus; search?: string }) {
@@ -135,11 +135,14 @@ export class IdentityCardsService {
     } as const;
   }
 
-  private toAuthenticated(card: any) {
+  private toAuthenticated(card: any, options: { includeVerificationUrl?: boolean } = {}) {
     const holder = card.student
       ? { type: 'STUDENT', id: card.student.id, userId: card.student.userId, identifier: card.student.matricNo, name: `${card.student.firstName} ${card.student.middleName ? `${card.student.middleName} ` : ''}${card.student.lastName}`, programme: card.student.programme, department: card.student.department, photoUrl: card.photoUrl || card.student.passportPhotoUrl }
       : { type: 'STAFF', id: card.staff?.id, userId: card.staff?.userId, identifier: card.staff?.employeeNo, name: `${card.staff?.firstName ?? ''} ${card.staff?.middleName ? `${card.staff.middleName} ` : ''}${card.staff?.lastName ?? ''}`.trim(), designation: card.staff?.designation, department: card.staff?.department, photoUrl: card.photoUrl || card.staff?.photoUrl };
-    return { id: card.id, holderType: card.holderType, cardNumber: card.cardNumber, serialNumber: card.serialNumber, issueDate: card.issueDate, expiryDate: card.expiryDate, status: card.status, photoUrl: holder.photoUrl, verificationToken: decryptPii(card.verificationTokenCiphertext), holder, lifecycleReason: card.lifecycleReason, verificationCount: card.verificationCount, lastVerifiedAt: card.lastVerifiedAt };
+    const authenticated = { id: card.id, holderType: card.holderType, cardNumber: card.cardNumber, serialNumber: card.serialNumber, issueDate: card.issueDate, expiryDate: card.expiryDate, status: card.status, photoUrl: holder.photoUrl, holder, lifecycleReason: card.lifecycleReason, verificationCount: card.verificationCount, lastVerifiedAt: card.lastVerifiedAt };
+    if (!options.includeVerificationUrl) return authenticated;
+    const verificationToken = decryptPii(card.verificationTokenCiphertext);
+    return { ...authenticated, verificationUrl: `/verify/card/${verificationToken}` };
   }
 
   private hashToken(token: string) {

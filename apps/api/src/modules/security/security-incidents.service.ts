@@ -142,6 +142,7 @@ export class SecurityIncidentsService {
   async list() {
     const incidents = await this.prisma.securityIncident.findMany({
       orderBy: { detectedAt: 'desc' },
+      take: 500,
     });
     const now = Date.now();
     return incidents.map((i) => ({
@@ -157,6 +158,7 @@ export class SecurityIncidentsService {
     const candidates = await this.prisma.user.findMany({
       where: { roles: { some: { OR: [{ roleName: 'VC' }, { roleName: 'STAFF' }, { roleName: 'SUPPORT_STAFF' }] } } },
       include: { roles: true },
+      take: 1000,
     });
     return candidates
       .filter((u) => u.roles.some((r) =>

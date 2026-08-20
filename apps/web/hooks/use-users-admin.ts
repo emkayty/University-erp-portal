@@ -180,6 +180,6 @@ export const ALL_ROLE_NAMES: RoleName[] = [
 ];
 
 export const ALL_STAFF_SCOPES: StaffScope[] = [
-  'admissions', 'finance_clerk', 'hr_clerk', 'lecturer', 'library', 'hostel',
+  'admissions', 'admissions_corrections', 'finance_clerk', 'hr_clerk', 'lecturer', 'library', 'hostel',
   'health', 'transport', 'research', 'alumni', 'timetable', 'records', 'dpo',
 ];

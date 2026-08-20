@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDeadLetters, useReplayDeadLetter } from '@/hooks/use-reliability';
 import { useAuthStore } from '@/stores/auth.store';
@@ -15,6 +16,7 @@ export default function ReliabilityPage() {
   const replay = useReplayDeadLetter();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [pendingReplayId, setPendingReplayId] = useState<string | null>(null);
 
   if (!isSuperAdmin) {
     return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900" role="alert"><p className="font-semibold">Reliability operations are restricted</p><p className="mt-1">Only a Super Administrator can inspect or replay dead-lettered domain events.</p></div>;
@@ -22,7 +24,6 @@ export default function ReliabilityPage() {
 
   const events = data?.events ?? [];
   const replayEvent = (id: string) => {
-    if (!window.confirm('Replay this event through the normal worker dispatcher?')) return;
     setMessage('');
     setError('');
     replay.mutate(id, {
@@ -33,6 +34,19 @@ export default function ReliabilityPage() {
 
   return (
     <div className="space-y-6">
+      <ConfirmAction
+        open={!!pendingReplayId}
+        title="Replay dead-lettered event"
+        description="Replay this event through the normal worker dispatcher? The operation is durable and may cause the original domain action to be attempted again."
+        confirmLabel="Replay event"
+        destructive
+        onCancel={() => setPendingReplayId(null)}
+        onConfirm={() => {
+          if (!pendingReplayId) return;
+          replayEvent(pendingReplayId);
+          setPendingReplayId(null);
+        }}
+      />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">BullMQ and transactional outbox operations</p>
@@ -61,7 +75,7 @@ export default function ReliabilityPage() {
                       {event.lastError && <p className="mt-2 text-xs text-red-700">Last error: {event.lastError}</p>}
                       <p className="mt-2 text-xs text-muted-foreground">Payload is intentionally not rendered here because domain events may contain personal or financial data.</p>
                     </div>
-                    <Button size="sm" loading={replay.isPending} onClick={() => replayEvent(event.id)}>Replay through worker</Button>
+                    <Button size="sm" loading={replay.isPending} onClick={() => setPendingReplayId(event.id)}>Replay through worker</Button>
                   </div>
                 </article>
               ))}

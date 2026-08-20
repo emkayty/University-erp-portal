@@ -207,15 +207,33 @@ export class AssessmentService {
       select: { studentId: true },
     });
     const absentStudentIds = new Set(absentAttendance.map(record => record.studentId));
-    return this.prisma.$transaction(async tx=>{
-      const out=[] as any[];
-      for(const row of gb.rows){
+    return this.prisma.$transaction(async tx => {
+      const studentIds = gb.rows.map((row) => row.student.id);
+      const [existingResults, priorResults] = await Promise.all([
+        tx.studentResult.findMany({
+          where: { courseOfferingId, semesterId: offering.semesterId, studentId: { in: studentIds } },
+          select: { id: true, studentId: true, status: true, attemptNumber: true },
+        }),
+        tx.studentResult.findMany({
+          where: { studentId: { in: studentIds }, courseOffering: { courseId: offering.courseId } },
+          select: { studentId: true, attemptNumber: true },
+          orderBy: { attemptNumber: 'desc' },
+        }),
+      ]);
+      const existingByStudent = new Map(existingResults.map((result) => [result.studentId, result]));
+      const priorAttemptByStudent = new Map<string, number>();
+      for (const result of priorResults) {
+        if (!priorAttemptByStudent.has(result.studentId)) priorAttemptByStudent.set(result.studentId, result.attemptNumber);
+      }
+
+      const writes: Array<{ existingId?: string; data: any }> = [];
+      for (const row of gb.rows) {
         const absentFromExam = absentStudentIds.has(row.student.id);
         const effectiveFinalScore = absentFromExam ? 0 : row.finalScore;
-        const calc=computeGradeForSystem(effectiveFinalScore,system,absentFromExam);
-        const existing=await tx.studentResult.findUnique({where:{uq_student_result:{studentId:row.student.id,courseOfferingId,semesterId:offering.semesterId}}});
-        if(existing && !['DRAFT','REJECTED'].includes(existing.status)) continue;
-        const prior = existing ? existing.attemptNumber : ((await tx.studentResult.findMany({where:{studentId:row.student.id,courseOffering:{courseId:offering.courseId}},select:{attemptNumber:true},orderBy:{attemptNumber:'desc'},take:1}))[0]?.attemptNumber ?? 0) + 1;
+        const calc = computeGradeForSystem(effectiveFinalScore, system, absentFromExam);
+        const existing = existingByStudent.get(row.student.id);
+        if (existing && !['DRAFT', 'REJECTED'].includes(existing.status)) continue;
+        const prior = existing?.attemptNumber ?? ((priorAttemptByStudent.get(row.student.id) ?? 0) + 1);
         const assessmentEvidence = {
           capturedAt: new Date().toISOString(),
           schemeId: gb.scheme.id,
@@ -228,10 +246,21 @@ export class AssessmentService {
           finalScore: effectiveFinalScore,
           absentFromExam,
         } satisfies Prisma.InputJsonValue;
-        const data={studentId:row.student.id,courseOfferingId,semesterId:offering.semesterId,score:effectiveFinalScore,finalScore:effectiveFinalScore,grade:calc.grade,gradePoint:calc.gradePoint,creditUnits:offering.course.creditUnits,gradingSystemSnapshot:system,gradingPolicyVersion:settings?.gradePolicyVersion??1,assessmentEvidence,attemptNumber:prior,absentFromExam,status:'DRAFT' as const,submittedById:actorId,approvedByHodId:null,hodApprovedAt:null,approvedByDeanId:null,deanApprovedAt:null,senatePendingAt:null,senatePublishedAt:null,rejectionReason:null};
-        const r=existing?await tx.studentResult.update({where:{id:existing.id},data}):await tx.studentResult.create({data}); out.push(r);
+        writes.push({
+          existingId: existing?.id,
+          data: { studentId: row.student.id, courseOfferingId, semesterId: offering.semesterId, score: effectiveFinalScore, finalScore: effectiveFinalScore, grade: calc.grade, gradePoint: calc.gradePoint, creditUnits: offering.course.creditUnits, gradingSystemSnapshot: system, gradingPolicyVersion: settings?.gradePolicyVersion ?? 1, assessmentEvidence, attemptNumber: prior, absentFromExam, status: 'DRAFT' as const, submittedById: actorId, approvedByHodId: null, hodApprovedAt: null, approvedByDeanId: null, deanApprovedAt: null, senatePendingAt: null, senatePublishedAt: null, rejectionReason: null },
+        });
       }
-      return {generated:out.length,skipped:gb.rows.length-out.length,gradingSystem:system};
+
+      const out: any[] = [];
+      for (let offset = 0; offset < writes.length; offset += 100) {
+        const chunk = writes.slice(offset, offset + 100);
+        const results = await Promise.all(chunk.map((write) => write.existingId
+          ? tx.studentResult.update({ where: { id: write.existingId }, data: write.data })
+          : tx.studentResult.create({ data: write.data })));
+        out.push(...results);
+      }
+      return { generated: out.length, skipped: gb.rows.length - out.length, gradingSystem: system };
     });
   }
 
@@ -337,19 +366,42 @@ export class AssessmentService {
     try {
       let appliedMarks = 0;
       await this.prisma.$transaction(async (tx) => {
-        for (let offset = 0; offset < parsedMarks.length; offset += 50) {
-          const chunk = parsedMarks.slice(offset, offset + 50);
-          for (const mark of chunk) {
-            await tx.assessmentMark.upsert({
-              where: { uq_assessment_mark_student_component: { studentId: mark.studentId, componentId: mark.componentId } },
-              create: { studentId: mark.studentId, courseOfferingId: dto.courseOfferingId, componentId: mark.componentId, score: mark.score, enteredById: actorId },
-              update: { score: mark.score, enteredById: actorId, status: 'DRAFT', finalizedById: null, finalizedAt: null, version: { increment: 1 } },
-            });
-            appliedMarks += 1;
-          }
+        for (let offset = 0; offset < parsedMarks.length; offset += 100) {
+          const chunk = parsedMarks.slice(offset, offset + 100);
+          const values = chunk.map((mark) => Prisma.sql`(
+            ${mark.studentId}::uuid,
+            ${dto.courseOfferingId}::uuid,
+            ${mark.componentId}::uuid,
+            ${mark.score},
+            'DRAFT',
+            ${actorId}::uuid,
+            NULL,
+            NULL,
+            1,
+            NOW(),
+            NOW()
+          )`);
+          const affected = await tx.$executeRaw(Prisma.sql`
+            INSERT INTO assessment_marks (
+              student_id, course_offering_id, component_id, score, status,
+              entered_by_id, finalized_by_id, finalized_at, version, created_at, updated_at
+            ) VALUES ${Prisma.join(values)}
+            ON CONFLICT (student_id, component_id)
+            DO UPDATE SET
+              score = EXCLUDED.score,
+              entered_by_id = EXCLUDED.entered_by_id,
+              status = 'DRAFT',
+              finalized_by_id = NULL,
+              finalized_at = NULL,
+              version = assessment_marks.version + 1,
+              updated_at = NOW()
+            WHERE assessment_marks.status <> 'FINALIZED'
+          `);
+          if (Number(affected) !== chunk.length) throw new ConflictException('A finalized mark changed while this upload was applying. Validate the file again before retrying.');
+          appliedMarks += Number(affected);
         }
         await tx.gradeUploadBatch.update({ where: { id: batch.id }, data: { status: 'APPLIED', validRows: validStudentRows, errorRows: 0 } });
-        await tx.auditLog.create({ data: { action: AuditAction.UPDATE, targetTable: 'grade_upload_batches', targetId: batch.id, actorId, newValues: { courseOfferingId: dto.courseOfferingId, checksum, appliedMarks, totalRows } } });
+        await tx.auditLog.create({ data: { action: AuditAction.UPDATE, targetTable: 'grade_upload_batches', targetId: batch.id, newValues: { courseOfferingId: dto.courseOfferingId, checksum, appliedMarks, totalRows } } });
       });
       return { batchId: batch.id, status: 'APPLIED', mode, checksum, totalRows, validRows: validStudentRows, errorRows: 0, appliedMarks, errors: [] };
     } catch (error) {

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { ConfirmAction } from '@/components/erp/confirm-action';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { effectiveRolesOf } from '@/lib/authz';
 import { useCurrentUser } from '@/stores/auth.store';
@@ -30,6 +31,7 @@ export default function AssessmentPage() {
   const [page, setPage] = useState(1);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [finalizeConfirmationOpen, setFinalizeConfirmationOpen] = useState(false);
 
   const user = useCurrentUser();
   const effectiveRoles = effectiveRolesOf(user);
@@ -136,6 +138,21 @@ export default function AssessmentPage() {
   const canFinalize = Boolean(data && canFinalizeMarks && data.summary.incomplete === 0 && (data.summary.unfinalized ?? 0) > 0);
 
   return <div className="space-y-6">
+    <ConfirmAction
+      open={finalizeConfirmationOpen}
+      title="Finalize complete marks"
+      description="Finalize all complete draft marks for this course offering? Finalized component marks require a controlled amendment workflow."
+      confirmLabel="Finalize marks"
+      destructive
+      onCancel={() => setFinalizeConfirmationOpen(false)}
+      onConfirm={() => {
+        setFinalizeConfirmationOpen(false);
+        finalizeMarks.mutate(activeOffering, {
+          onSuccess: async (result) => { setSuccessMessage(`${result.finalized} component mark(s) finalized.`); await gradebook.refetch(); },
+          onError: (error) => setErrorMessage(error instanceof Error ? error.message : 'Mark finalization failed.'),
+        });
+      }}
+    />
     <header>
       <p className="text-sm text-muted-foreground">Assessment and gradebook control</p>
       <h1 className="text-2xl font-semibold">Assessment Workspace</h1>
@@ -189,7 +206,7 @@ export default function AssessmentPage() {
       <div className="grid gap-4 sm:grid-cols-5"><Metric label="Students" value={data.summary.total} /><Metric label="Complete" value={data.summary.complete} /><Metric label="Incomplete" value={data.summary.incomplete} /><Metric label="Finalized" value={data.summary.finalized ?? 0} /><Metric label="Unfinalized" value={data.summary.unfinalized ?? 0} /></div>
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{data.scheme.name}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{data.scheme.components.length} components · {data.scheme.status} · showing {Math.min(PAGE_SIZE, visibleRows.length)} of {filteredRows.length.toLocaleString()} filtered rows</p></div><div className="flex flex-wrap gap-2">{canFinalize && <Button size="sm" variant="outline" loading={finalizeMarks.isPending} onClick={() => { if (window.confirm('Finalize all complete draft marks for this course offering? Finalized component marks require a controlled amendment workflow.')) finalizeMarks.mutate(activeOffering, { onSuccess: async (result) => { setSuccessMessage(`${result.finalized} component mark(s) finalized.`); await gradebook.refetch(); }, onError: (error) => setErrorMessage(error instanceof Error ? error.message : 'Mark finalization failed.') }); }}>Finalize complete marks</Button>}<Button size="sm" onClick={() => generate.mutate(activeOffering, { onSuccess: (result) => setSuccessMessage(`${result.generated} draft result(s) generated.`), onError: (error) => setErrorMessage(error instanceof Error ? error.message : 'Draft result generation failed.') })} loading={generate.isPending} disabled={!canGenerate}>{canGenerate ? 'Generate draft results' : 'Finalize marks before generating'}</Button></div></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle>{data.scheme.name}</CardTitle><p className="mt-1 text-sm text-muted-foreground">{data.scheme.components.length} components · {data.scheme.status} · showing {Math.min(PAGE_SIZE, visibleRows.length)} of {filteredRows.length.toLocaleString()} filtered rows</p></div><div className="flex flex-wrap gap-2">{canFinalize && <Button size="sm" variant="outline" loading={finalizeMarks.isPending} onClick={() => setFinalizeConfirmationOpen(true)}>Finalize complete marks</Button>}<Button size="sm" onClick={() => generate.mutate(activeOffering, { onSuccess: (result) => setSuccessMessage(`${result.generated} draft result(s) generated.`), onError: (error) => setErrorMessage(error instanceof Error ? error.message : 'Draft result generation failed.') })} loading={generate.isPending} disabled={!canGenerate}>{canGenerate ? 'Generate draft results' : 'Finalize marks before generating'}</Button></div></div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><label className="sr-only" htmlFor="gradebook-search">Search roster</label><input id="gradebook-search" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search name or Matric No" className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm sm:max-w-sm" /><p className="text-xs text-muted-foreground">Page {page} of {pageCount}</p></div>
         </CardHeader>
         <CardContent>

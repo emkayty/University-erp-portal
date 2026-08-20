@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/erp/confirm-action";
 import {
   Card,
   CardContent,
@@ -214,6 +215,7 @@ export default function SettingsPage() {
     useToggleFeatureFlag();
   const [saved, setSaved] = useState(false);
   const [flagNote, setFlagNote] = useState("");
+  const [pendingFlagToggle, setPendingFlagToggle] = useState<{ key: string; current: boolean } | null>(null);
   const form = useForm<SettingsForm>({
     resolver: zodResolver(settingsSchema),
     defaultValues: { primaryColor: "#0056B3", mfaMandatoryRoles: ["SUPER_ADMIN", "BURSAR", "VC"] },
@@ -310,16 +312,8 @@ export default function SettingsPage() {
     );
   };
 
-  const handleToggleFlag = (key: string, current: boolean) => {
+  const applyToggleFlag = (key: string, current: boolean) => {
     const meta = FLAG_LABELS[key];
-    if (
-      meta?.caution &&
-      !current &&
-      !confirm(
-        `Enable “${meta.label}”? This changes an institution-wide workflow and should be approved first.`,
-      )
-    )
-      return;
     toggleFlag(
       { key, enabled: !current },
       {
@@ -331,6 +325,15 @@ export default function SettingsPage() {
         },
       },
     );
+  };
+
+  const handleToggleFlag = (key: string, current: boolean) => {
+    const meta = FLAG_LABELS[key];
+    if (meta?.caution && !current) {
+      setPendingFlagToggle({ key, current });
+      return;
+    }
+    applyToggleFlag(key, current);
   };
 
   if (isLoading)
@@ -355,6 +358,19 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      <ConfirmAction
+        open={!!pendingFlagToggle}
+        title="Enable institution-wide workflow"
+        description={pendingFlagToggle ? `Enable “${FLAG_LABELS[pendingFlagToggle.key]?.label ?? pendingFlagToggle.key}”? This changes an institution-wide workflow and should be approved before activation.` : undefined}
+        confirmLabel="Enable workflow"
+        destructive={FLAG_LABELS[pendingFlagToggle?.key ?? '']?.caution ?? false}
+        onCancel={() => setPendingFlagToggle(null)}
+        onConfirm={() => {
+          if (!pendingFlagToggle) return;
+          applyToggleFlag(pendingFlagToggle.key, pendingFlagToggle.current);
+          setPendingFlagToggle(null);
+        }}
+      />
       <div>
         <h2 className="text-xl font-semibold text-foreground">
           University Configuration

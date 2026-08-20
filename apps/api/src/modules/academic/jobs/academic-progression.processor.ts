@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
+import { ModuleRef } from '@nestjs/core';
 import { Job } from 'bullmq';
 import { QUEUE_NAMES } from '../../../common/queue-names';
 import { AcademicService } from '../academic.service';
@@ -20,7 +21,7 @@ interface AcademicProgressionRefreshJob {
 export class AcademicProgressionProcessor extends WorkerHost {
   private readonly logger = new Logger(AcademicProgressionProcessor.name);
 
-  constructor(private readonly academic: AcademicService) { super(); }
+  constructor(private readonly moduleRef: ModuleRef) { super(); }
 
   async process(job: Job<AcademicProgressionRefreshJob>): Promise<void> {
     if (job.name !== 'refresh-progression') {
@@ -29,7 +30,8 @@ export class AcademicProgressionProcessor extends WorkerHost {
     }
     const { studentId, actorId } = job.data;
     if (!studentId || !actorId) throw new Error('Academic progression refresh requires studentId and actorId.');
-    await this.academic.runProgression(studentId, actorId);
+    const academic = await this.moduleRef.resolve(AcademicService, undefined, { strict: false });
+    await academic.runProgression(studentId, actorId);
     this.logger.log(`Academic progression refreshed for student ${studentId} from result ${job.data.resultId}.`);
   }
 

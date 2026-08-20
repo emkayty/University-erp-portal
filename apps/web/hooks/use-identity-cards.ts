@@ -12,7 +12,7 @@ export type IdentityCardRecord = {
   expiryDate: string;
   status: 'ACTIVE' | 'SUSPENDED' | 'REVOKED' | 'EXPIRED' | 'REPLACED';
   photoUrl?: string | null;
-  verificationToken?: string;
+  verificationUrl?: string;
   verificationCount: number;
   lastVerifiedAt?: string | null;
   lifecycleReason?: string | null;
