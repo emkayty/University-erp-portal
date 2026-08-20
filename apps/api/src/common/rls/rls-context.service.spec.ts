@@ -34,6 +34,20 @@ describe('RlsContextService', () => {
     expect(FORCE_RLS_MODELS.has('NotificationPreference')).toBe(true);
   });
 
+  it('keeps academic decision evidence under the forced-RLS contract', () => {
+    for (const model of [
+      'AcademicPlan',
+      'AcademicPlanItem',
+      'DegreeAudit',
+      'ProgressionEvaluation',
+      'AcademicStanding',
+      'AcademicPlacement',
+      'AcademicPolicyVersion',
+    ]) {
+      expect(FORCE_RLS_MODELS.has(model)).toBe(true);
+    }
+  });
+
   it('isolates concurrent requests from each other (the whole point of AsyncLocalStorage over a module-level variable)', async () => {
     const txA = { id: 'A' } as unknown as Parameters<typeof svc.run>[0];
     const txB = { id: 'B' } as unknown as Parameters<typeof svc.run>[0];

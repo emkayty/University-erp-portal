@@ -1,16 +1,91 @@
-'use client';
+"use client";
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '@/lib/api-client';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 export const academicKeys = {
-  journey: ['academic', 'me', 'journey'] as const,
+  journey: ["academic", "me", "journey"] as const,
+  graduationPolicies: (scope?: string, scopeId?: string) =>
+    ["academic", "graduation-policies", scope, scopeId] as const,
 };
+
+export type GraduationPolicy = {
+  id: string;
+  policyType: string;
+  scope: "INSTITUTION" | "FACULTY" | "DEPARTMENT" | "PROGRAMME";
+  scopeId: string | null;
+  priority: number;
+  ruleDefinition: {
+    requirements?: Array<{
+      graduationRequirementId: string;
+      requirementType: string;
+      config: Record<string, unknown>;
+      isMandatory: boolean;
+    }>;
+  };
+  approvalStatus: "DRAFT" | "ACTIVE" | "EXPIRED" | "REVOKED";
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  approvedAt?: string | null;
+};
+
+export function useGraduationPolicies(
+  scope?: GraduationPolicy["scope"],
+  scopeId?: string,
+) {
+  return useQuery({
+    queryKey: academicKeys.graduationPolicies(scope, scopeId),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (scope) params.set("scope", scope);
+      if (scopeId) params.set("scopeId", scopeId);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      return apiClient.get<GraduationPolicy[]>(
+        `/academic/graduation-policies${suffix}`,
+      );
+    },
+    enabled: Boolean(scope),
+  });
+}
+
+export function useCreateGraduationPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      scope: GraduationPolicy["scope"];
+      scopeId?: string;
+      priority?: number;
+      ruleDefinition: GraduationPolicy["ruleDefinition"];
+      effectiveFrom?: string;
+      effectiveTo?: string;
+    }) =>
+      apiClient.post<GraduationPolicy>("/academic/graduation-policies", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["academic", "graduation-policies"] }),
+  });
+}
+
+export function useActivateGraduationPolicy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (policyId: string) =>
+      apiClient.post<GraduationPolicy>(
+        `/academic/graduation-policies/${policyId}/activate`,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["academic", "graduation-policies"] }),
+  });
+}
 
 export function useSubmitAcademicAppeal() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { appealType: string; subjectId?: string; reason: string; evidenceRef?: string }) => apiClient.post('/academic/me/appeals', data),
+    mutationFn: (data: {
+      appealType: string;
+      subjectId?: string;
+      reason: string;
+      evidenceRef?: string;
+    }) => apiClient.post("/academic/me/appeals", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: academicKeys.journey }),
   });
 }
@@ -18,7 +93,8 @@ export function useSubmitAcademicAppeal() {
 export function useRequestProgrammeTransfer() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { toProgrammeId: string; reason?: string }) => apiClient.post('/academic/me/programme-transfers', data),
+    mutationFn: (data: { toProgrammeId: string; reason?: string }) =>
+      apiClient.post("/academic/me/programme-transfers", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: academicKeys.journey }),
   });
 }
@@ -26,7 +102,12 @@ export function useRequestProgrammeTransfer() {
 export function useRequestAcademicInterruption() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { type: string; startDate: string; endDate?: string; reason?: string }) => apiClient.post('/academic/me/interruptions', data),
+    mutationFn: (data: {
+      type: string;
+      startDate: string;
+      endDate?: string;
+      reason?: string;
+    }) => apiClient.post("/academic/me/interruptions", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: academicKeys.journey }),
   });
 }

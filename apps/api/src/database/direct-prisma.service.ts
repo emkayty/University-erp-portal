@@ -1,8 +1,15 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { Prisma, PrismaClient } from '@prisma/client';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Prisma, PrismaClient } from "@prisma/client";
 
-type AwaitedTuple<T extends readonly unknown[]> = { -readonly [K in keyof T]: Awaited<T[K]> };
+type AwaitedTuple<T extends readonly unknown[]> = {
+  -readonly [K in keyof T]: Awaited<T[K]>;
+};
 
 /**
  * DirectPrismaService — a second PrismaClient that connects directly to
@@ -63,26 +70,37 @@ export class DirectPrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly base: PrismaClient;
 
   constructor(config: ConfigService) {
-    const directUrl = config.get<string>('DATABASE_DIRECT_URL')
-      ?? config.get<string>('DATABASE_URL')!;
+    const directUrl =
+      config.get<string>("DATABASE_DIRECT_URL") ??
+      config.get<string>("DATABASE_URL")!;
 
     this.base = new PrismaClient({
       datasources: { db: { url: directUrl } },
-      log: [{ level: 'error', emit: 'event' }],
+      log: [{ level: "error", emit: "event" }],
     });
   }
 
   async onModuleInit(): Promise<void> {
     await this.base.$connect();
-    this.logger.log('DirectPrisma (non-pooled, uniportal_system) connected');
+    this.logger.log("DirectPrisma (non-pooled, uniportal_system) connected");
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.base.$disconnect();
   }
 
-  $transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>, options?: { maxWait?: number; timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel }): Promise<T>;
-  $transaction<P extends Prisma.PrismaPromise<any>[]>(arr: [...P], options?: { isolationLevel?: Prisma.TransactionIsolationLevel }): Promise<AwaitedTuple<P>>;
+  $transaction<T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: {
+      maxWait?: number;
+      timeout?: number;
+      isolationLevel?: Prisma.TransactionIsolationLevel;
+    },
+  ): Promise<T>;
+  $transaction<P extends Prisma.PrismaPromise<any>[]>(
+    arr: [...P],
+    options?: { isolationLevel?: Prisma.TransactionIsolationLevel },
+  ): Promise<AwaitedTuple<P>>;
   $transaction(...args: unknown[]): unknown {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (this.base.$transaction as any)(...args);
@@ -90,29 +108,98 @@ export class DirectPrismaService implements OnModuleInit, OnModuleDestroy {
   // System-only model delegates. These are intentionally exposed only on
   // DirectPrismaService because this connection is the dedicated BYPASSRLS
   // service identity used by background/pre-auth infrastructure.
-  get student() { return this.base.student; }
-  get studentResult() { return this.base.studentResult; }
-  get payment() { return this.base.payment; }
-  get payslip() { return this.base.payslip; }
-  get courseRegistration() { return this.base.courseRegistration; }
-  get lmsSubmission() { return this.base.lmsSubmission; }
-  get lmsProgress() { return this.base.lmsProgress; }
-  get lmsDiscussionPost() { return this.base.lmsDiscussionPost; }
-  get quizQuestion() { return this.base.quizQuestion; }
-  get quizAttempt() { return this.base.quizAttempt; }
-  get dataSubjectRequest() { return this.base.dataSubjectRequest; }
-  get securityIncident() { return this.base.securityIncident; }
-  get graduationCandidate() { return this.base.graduationCandidate; }
-  get applicant() { return this.base.applicant; }
-  get notification() { return this.base.notification; }
-  get notificationPreference() { return this.base.notificationPreference; }
-  get application() { return this.base.application; }
-  get user() { return this.base.user; }
-  get userRole() { return this.base.userRole; }
-  get roleDelegation() { return this.base.roleDelegation; }
-  get roleConflictRule() { return this.base.roleConflictRule; }
+  get student() {
+    return this.base.student;
+  }
+  get studentResult() {
+    return this.base.studentResult;
+  }
+  get payment() {
+    return this.base.payment;
+  }
+  get payslip() {
+    return this.base.payslip;
+  }
+  get courseRegistration() {
+    return this.base.courseRegistration;
+  }
+  get lmsSubmission() {
+    return this.base.lmsSubmission;
+  }
+  get lmsProgress() {
+    return this.base.lmsProgress;
+  }
+  get lmsDiscussionPost() {
+    return this.base.lmsDiscussionPost;
+  }
+  get quizQuestion() {
+    return this.base.quizQuestion;
+  }
+  get quizAttempt() {
+    return this.base.quizAttempt;
+  }
+  get dataSubjectRequest() {
+    return this.base.dataSubjectRequest;
+  }
+  get securityIncident() {
+    return this.base.securityIncident;
+  }
+  get graduationCandidate() {
+    return this.base.graduationCandidate;
+  }
+  get academicPlan() {
+    return this.base.academicPlan;
+  }
+  get academicPlanItem() {
+    return this.base.academicPlanItem;
+  }
+  get degreeAudit() {
+    return this.base.degreeAudit;
+  }
+  get progressionEvaluation() {
+    return this.base.progressionEvaluation;
+  }
+  get academicStanding() {
+    return this.base.academicStanding;
+  }
+  get academicPlacement() {
+    return this.base.academicPlacement;
+  }
+  get academicPolicyVersion() {
+    return this.base.academicPolicyVersion;
+  }
+  get applicant() {
+    return this.base.applicant;
+  }
+  get notification() {
+    return this.base.notification;
+  }
+  get notificationPreference() {
+    return this.base.notificationPreference;
+  }
+  get application() {
+    return this.base.application;
+  }
+  get user() {
+    return this.base.user;
+  }
+  get userRole() {
+    return this.base.userRole;
+  }
+  get roleDelegation() {
+    return this.base.roleDelegation;
+  }
+  get roleConflictRule() {
+    return this.base.roleConflictRule;
+  }
 
-  get $queryRaw() { return this.base.$queryRaw.bind(this.base); }
-  get $queryRawUnsafe() { return this.base.$queryRawUnsafe.bind(this.base); }
-  get $executeRaw() { return this.base.$executeRaw.bind(this.base); }
+  get $queryRaw() {
+    return this.base.$queryRaw.bind(this.base);
+  }
+  get $queryRawUnsafe() {
+    return this.base.$queryRawUnsafe.bind(this.base);
+  }
+  get $executeRaw() {
+    return this.base.$executeRaw.bind(this.base);
+  }
 }

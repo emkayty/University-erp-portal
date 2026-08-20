@@ -1,6 +1,6 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { AsyncLocalStorage } from "node:async_hooks";
+import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 
 /**
  * RlsContextService — audit remediation R2 ("request-scoped RLS").
@@ -39,9 +39,23 @@ export interface RlsIdentity {
  * DirectPrismaService explicitly. See docs/CHANGELOG.md item P0-2.
  */
 export const FORCE_RLS_MODELS = new Set([
-  'Student', 'StudentResult', 'Payment', 'Payslip',
-  'CourseRegistration', 'DataSubjectRequest', 'SecurityIncident', 'GraduationCandidate',
-  'Notification', 'NotificationPreference',
+  "Student",
+  "StudentResult",
+  "Payment",
+  "Payslip",
+  "CourseRegistration",
+  "DataSubjectRequest",
+  "SecurityIncident",
+  "GraduationCandidate",
+  "Notification",
+  "NotificationPreference",
+  "AcademicPlan",
+  "AcademicPlanItem",
+  "DegreeAudit",
+  "ProgressionEvaluation",
+  "AcademicStanding",
+  "AcademicPlacement",
+  "AcademicPolicyVersion",
 ]);
 
 @Injectable()

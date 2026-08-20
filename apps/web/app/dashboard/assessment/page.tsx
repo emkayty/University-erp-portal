@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/erp/confirm-action";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,7 +44,12 @@ export default function AssessmentPage() {
     ["HOD", "DEAN", "REGISTRAR", "SUPER_ADMIN"].includes(role),
   );
   const offerings = useAssessmentOfferings();
-  const gradebook = useAssessmentGradebook(activeOffering);
+  const gradebook = useAssessmentGradebook(
+    activeOffering,
+    page,
+    PAGE_SIZE,
+    search,
+  );
   const generate = useGenerateDraftResults();
   const finalizeMarks = useFinalizeAssessmentMarks();
   const exportGradebook = useAssessmentExport();
@@ -55,20 +60,11 @@ export default function AssessmentPage() {
   const data = gradebook.data;
   const semesterId = data?.offering?.semesterId ?? "";
 
-  const filteredRows = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return data?.rows ?? [];
-    return (data?.rows ?? []).filter((row) =>
-      `${row.student.firstName} ${row.student.lastName} ${row.student.matricNo}`
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [data?.rows, search]);
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
-  const visibleRows = filteredRows.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
-  );
+  const rows = data?.rows ?? [];
+  const pageCount = data?.pagination?.totalPages ?? 1;
+  const totalRows = data?.pagination?.total ?? data?.summary.total ?? 0;
+  const firstRow = totalRows ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastRow = totalRows ? Math.min(page * PAGE_SIZE, totalRows) : 0;
 
   const load = (event: React.FormEvent) => {
     event.preventDefault();
@@ -76,6 +72,7 @@ export default function AssessmentPage() {
     setSuccessMessage("");
     setUploadResult(null);
     setPage(1);
+    setSearch("");
     setActiveOffering(offeringId.trim());
   };
 
@@ -496,9 +493,8 @@ export default function AssessmentPage() {
                   <CardTitle>{data.scheme.name}</CardTitle>
                   <p className="mt-1 text-sm text-muted-foreground">
                     {data.scheme.components.length} components ·{" "}
-                    {data.scheme.status} · showing{" "}
-                    {Math.min(PAGE_SIZE, visibleRows.length)} of{" "}
-                    {filteredRows.length.toLocaleString()} filtered rows
+                    {data.scheme.status} · showing {rows.length} of{" "}
+                    {totalRows.toLocaleString()} roster rows
                   </p>
                   <p className="mt-2 text-xs text-muted-foreground">
                     Live entry saves a changed score when you leave the field.
@@ -558,6 +554,7 @@ export default function AssessmentPage() {
                 />
                 <p className="text-xs text-muted-foreground">
                   Page {page} of {pageCount}
+                  {gradebook.isFetching ? " · Loading…" : ""}
                 </p>
               </div>
             </CardHeader>
@@ -578,7 +575,7 @@ export default function AssessmentPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row) => (
+                    {rows.map((row) => (
                       <tr
                         key={row.student.id}
                         className="border-b last:border-0"
@@ -626,7 +623,7 @@ export default function AssessmentPage() {
                 className="space-y-3 md:hidden"
                 aria-label="Mobile gradebook records"
               >
-                {visibleRows.map((row) => (
+                {rows.map((row) => (
                   <article
                     key={`mobile-${row.student.id}`}
                     className="rounded-xl border border-border bg-card p-4"
@@ -700,7 +697,7 @@ export default function AssessmentPage() {
                   </article>
                 ))}
               </div>
-              {!visibleRows.length && (
+              {!rows.length && (
                 <p className="py-8 text-center text-sm text-muted-foreground">
                   No students match this search.
                 </p>
@@ -715,9 +712,7 @@ export default function AssessmentPage() {
                   Previous
                 </Button>
                 <span className="text-xs text-muted-foreground">
-                  Rows {filteredRows.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
-                  {Math.min(page * PAGE_SIZE, filteredRows.length)} of{" "}
-                  {filteredRows.length}
+                  Rows {firstRow}–{lastRow} of {totalRows}
                 </span>
                 <Button
                   variant="outline"

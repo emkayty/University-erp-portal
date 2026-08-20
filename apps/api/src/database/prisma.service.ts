@@ -338,25 +338,25 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.academicRequirement;
   }
   get academicPlan() {
-    return this.client.academicPlan;
+    return (this.rlsContext.getClient() ?? this.system).academicPlan;
   }
   get academicPolicyVersion() {
     return this.client.academicPolicyVersion;
   }
   get academicPlanItem() {
-    return this.client.academicPlanItem;
+    return (this.rlsContext.getClient() ?? this.system).academicPlanItem;
   }
   get academicPlacement() {
-    return this.client.academicPlacement;
+    return (this.rlsContext.getClient() ?? this.system).academicPlacement;
   }
   get academicStanding() {
-    return this.client.academicStanding;
+    return (this.rlsContext.getClient() ?? this.system).academicStanding;
   }
   get progressionEvaluation() {
-    return this.client.progressionEvaluation;
+    return (this.rlsContext.getClient() ?? this.system).progressionEvaluation;
   }
   get degreeAudit() {
-    return this.client.degreeAudit;
+    return (this.rlsContext.getClient() ?? this.system).degreeAudit;
   }
   get courseEquivalency() {
     return this.client.courseEquivalency;

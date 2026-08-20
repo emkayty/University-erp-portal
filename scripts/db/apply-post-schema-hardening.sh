@@ -128,3 +128,163 @@ CREATE POLICY "notification_preference_owner" ON "NotificationPreference"
   USING ("userId" = current_setting('app.current_user_id', true))
   WITH CHECK ("userId" = current_setting('app.current_user_id', true));
 SQL
+
+# Academic evidence cluster: protect degree-audit, plan, progression, standing,
+# and placement records with the same request identity used by protected student
+# records. DELETE is intentionally not granted so historical academic decisions
+# cannot be removed through the application role.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+ALTER TABLE academic_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE academic_plan_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE degree_audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE progression_evaluations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE academic_standings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE academic_placements ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE academic_plans FORCE ROW LEVEL SECURITY;
+ALTER TABLE academic_plan_items FORCE ROW LEVEL SECURITY;
+ALTER TABLE degree_audits FORCE ROW LEVEL SECURITY;
+ALTER TABLE progression_evaluations FORCE ROW LEVEL SECURITY;
+ALTER TABLE academic_standings FORCE ROW LEVEL SECURITY;
+ALTER TABLE academic_placements FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS academic_plan_read ON academic_plans;
+DROP POLICY IF EXISTS academic_plan_insert ON academic_plans;
+DROP POLICY IF EXISTS academic_plan_update ON academic_plans;
+CREATE POLICY academic_plan_read ON academic_plans FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY academic_plan_insert ON academic_plans FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY academic_plan_update ON academic_plans FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+
+DROP POLICY IF EXISTS academic_plan_item_read ON academic_plan_items;
+DROP POLICY IF EXISTS academic_plan_item_insert ON academic_plan_items;
+DROP POLICY IF EXISTS academic_plan_item_update ON academic_plan_items;
+CREATE POLICY academic_plan_item_read ON academic_plan_items FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "planId" IN (SELECT p.id FROM academic_plans p WHERE p."studentId"::text = current_setting('app.current_user_id', true))
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN') AND "planId" IN (
+    SELECT p.id FROM academic_plans p JOIN students s ON s.id = p."studentId"
+    WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)
+  ))
+);
+CREATE POLICY academic_plan_item_insert ON academic_plan_items FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN') AND "planId" IN (
+    SELECT p.id FROM academic_plans p JOIN students s ON s.id = p."studentId"
+    WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)
+  ))
+);
+CREATE POLICY academic_plan_item_update ON academic_plan_items FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN') AND "planId" IN (
+    SELECT p.id FROM academic_plans p JOIN students s ON s.id = p."studentId"
+    WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)
+  ))
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN') AND "planId" IN (
+    SELECT p.id FROM academic_plans p JOIN students s ON s.id = p."studentId"
+    WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)
+  ))
+);
+
+DROP POLICY IF EXISTS degree_audit_read ON degree_audits;
+DROP POLICY IF EXISTS degree_audit_insert ON degree_audits;
+CREATE POLICY degree_audit_read ON degree_audits FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY degree_audit_insert ON degree_audits FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+
+DROP POLICY IF EXISTS progression_evaluation_read ON progression_evaluations;
+DROP POLICY IF EXISTS progression_evaluation_insert ON progression_evaluations;
+CREATE POLICY progression_evaluation_read ON progression_evaluations FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY progression_evaluation_insert ON progression_evaluations FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+
+DROP POLICY IF EXISTS academic_standing_read ON academic_standings;
+DROP POLICY IF EXISTS academic_standing_insert ON academic_standings;
+CREATE POLICY academic_standing_read ON academic_standings FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY academic_standing_insert ON academic_standings FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+
+DROP POLICY IF EXISTS academic_placement_read ON academic_placements;
+DROP POLICY IF EXISTS academic_placement_insert ON academic_placements;
+DROP POLICY IF EXISTS academic_placement_update ON academic_placements;
+CREATE POLICY academic_placement_read ON academic_placements FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY academic_placement_insert ON academic_placements FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+  OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
+      AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
+);
+CREATE POLICY academic_placement_update ON academic_placements FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR')
+);
+SQL
+
+# Graduation-policy versions are governed records: readable by academic officers,
+# draftable by Registrar/Dean/Super Admin, and activatable only by the VC,
+# Registrar, or Super Admin. DELETE remains unavailable to preserve history.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+ALTER TABLE academic_policy_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE academic_policy_versions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS academic_policy_version_read ON academic_policy_versions;
+DROP POLICY IF EXISTS academic_policy_version_insert ON academic_policy_versions;
+DROP POLICY IF EXISTS academic_policy_version_update ON academic_policy_versions;
+CREATE POLICY academic_policy_version_read ON academic_policy_versions FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR','DEAN')
+);
+CREATE POLICY academic_policy_version_insert ON academic_policy_versions FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','REGISTRAR','DEAN')
+);
+CREATE POLICY academic_policy_version_update ON academic_policy_versions FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
+);
+SQL

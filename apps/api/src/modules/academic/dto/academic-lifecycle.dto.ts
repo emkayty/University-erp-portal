@@ -10,7 +10,7 @@ import {
   IsUUID,
   MaxLength,
   Min,
-} from 'class-validator';
+} from "class-validator";
 
 export class SubmitAcademicAppealDto {
   @IsString()
@@ -34,8 +34,8 @@ export class SubmitAcademicAppealDto {
 }
 
 export class DecideAcademicAppealDto {
-  @IsIn(['APPROVED', 'REJECTED'])
-  decision!: 'APPROVED' | 'REJECTED';
+  @IsIn(["APPROVED", "REJECTED"])
+  decision!: "APPROVED" | "REJECTED";
 
   @IsString()
   @IsNotEmpty()
@@ -54,8 +54,8 @@ export class RequestProgrammeTransferDto {
 }
 
 export class DecideProgrammeTransferDto {
-  @IsIn(['APPROVED', 'REJECTED'])
-  decision!: 'APPROVED' | 'REJECTED';
+  @IsIn(["APPROVED", "REJECTED"])
+  decision!: "APPROVED" | "REJECTED";
 
   @IsInt()
   @Min(0)
@@ -87,8 +87,8 @@ export class RequestAcademicInterruptionDto {
 }
 
 export class DecideAcademicInterruptionDto {
-  @IsIn(['APPROVED', 'REJECTED'])
-  decision!: 'APPROVED' | 'REJECTED';
+  @IsIn(["APPROVED", "REJECTED"])
+  decision!: "APPROVED" | "REJECTED";
 }
 
 export class IssueAcademicCredentialDto {
@@ -112,6 +112,31 @@ export class IssueAcademicCredentialDto {
 
   @IsObject()
   snapshot!: Record<string, unknown>;
+}
+
+export class CreateGraduationPolicyDto {
+  @IsIn(["INSTITUTION", "FACULTY", "DEPARTMENT", "PROGRAMME"])
+  scope!: "INSTITUTION" | "FACULTY" | "DEPARTMENT" | "PROGRAMME";
+
+  @IsOptional()
+  @IsUUID()
+  scopeId?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsObject()
+  ruleDefinition!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  effectiveTo?: string;
 }
 
 export class RevokeAcademicCredentialDto {

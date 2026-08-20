@@ -20,7 +20,7 @@ checks = {
     "payment initiation lease": "INITIATING" in SCHEMA and "initiationLeaseUntil" in PAYMENTS,
     "amount-bound idempotency": "different payment request, amount, or provider" in PAYMENTS,
     "global TSA receipt claim": "payment_receipt_claims" in MIGRATION and "paymentReceiptClaim" in PAYMENTS,
-    "interruption completion": "resumeInterruption" in ACADEMIC and "status: 'COMPLETED'" in ACADEMIC,
+    "interruption completion": "resumeInterruption" in ACADEMIC and ("status: 'COMPLETED'" in ACADEMIC or 'status: "COMPLETED"' in ACADEMIC),
 }
 
 failed = [name for name, passed in checks.items() if not passed]

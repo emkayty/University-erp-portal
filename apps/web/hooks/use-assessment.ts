@@ -41,6 +41,12 @@ export type AssessmentGradebook = {
     finalized?: number;
     unfinalized?: number;
   };
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export type GradeUploadResult = {
@@ -77,14 +83,33 @@ export function useAssessmentOfferings() {
   });
 }
 
-export function useAssessmentGradebook(courseOfferingId: string) {
+export function useAssessmentGradebook(
+  courseOfferingId: string,
+  page = 1,
+  pageSize = 50,
+  search = "",
+) {
   return useQuery({
-    queryKey: ["assessment", "gradebook", courseOfferingId],
-    queryFn: () =>
-      apiClient.get<AssessmentGradebook>(
-        `/assessment/offerings/${courseOfferingId}/gradebook`,
-      ),
+    queryKey: [
+      "assessment",
+      "gradebook",
+      courseOfferingId,
+      page,
+      pageSize,
+      search,
+    ],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (search.trim()) params.set("search", search.trim());
+      return apiClient.get<AssessmentGradebook>(
+        `/assessment/offerings/${courseOfferingId}/gradebook?${params.toString()}`,
+      );
+    },
     enabled: Boolean(courseOfferingId),
+    placeholderData: (previous) => previous,
   });
 }
 
