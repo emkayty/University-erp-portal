@@ -17,6 +17,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
     "db:generate": "turbo run prisma:generate",
+    "db:sync": "node scripts/db/deploy-schema-from-env.cjs",
     "db:validate": "pnpm --filter @uniportal/api prisma:validate",
     "db:migrate": "turbo run prisma:migrate",
     "db:migrate:dev": "cd apps/api && pnpm prisma migrate dev",
