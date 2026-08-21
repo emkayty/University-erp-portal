@@ -59,7 +59,7 @@ export class HealthController {
   @ApiOperation({ summary: 'Full system health check (DB + Redis + memory + disk)' })
   check() {
     return this.health.check([
-      () => this.prismaInd.pingCheck('database', this.prisma),
+      () => this.prismaInd.pingCheck('database', this.prisma.client),
       () => this.redisInd.isHealthy('redis'),          // H5 FIX: Redis now checked
       () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024),
       () => this.memory.checkRSS('memory_rss',   1024 * 1024 * 1024),
@@ -78,7 +78,7 @@ export class HealthController {
   @ApiOperation({ summary: 'Readiness probe (DB + Redis must be reachable)' })
   ready() {
     return this.health.check([
-      () => this.prismaInd.pingCheck('database', this.prisma),
+      () => this.prismaInd.pingCheck('database', this.prisma.client),
       () => this.redisInd.isHealthy('redis'),
     ]);
   }
