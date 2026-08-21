@@ -77,6 +77,48 @@ export function useActivateGraduationPolicy() {
   });
 }
 
+export function useMyDegreeAudit() {
+  return useQuery({
+    queryKey: [...academicKeys.journey, "degree-audit"],
+    queryFn: () =>
+      apiClient.get<Record<string, unknown> | null>(
+        "/academic/me/degree-audit",
+      ),
+  });
+}
+
+export function useMyAcademicPlan() {
+  return useQuery({
+    queryKey: [...academicKeys.journey, "plan"],
+    queryFn: () =>
+      apiClient.get<Record<string, unknown> | null>("/academic/me/plan"),
+  });
+}
+
+export function useRunDegreeAudit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: string) =>
+      apiClient.post(`/academic/students/${studentId}/degree-audit/run`),
+    onSuccess: (_data, studentId) => {
+      void qc.invalidateQueries({ queryKey: ["students", studentId] });
+      void qc.invalidateQueries({ queryKey: ["academic"] });
+    },
+  });
+}
+
+export function useRunProgressionEvaluation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: string) =>
+      apiClient.post(`/academic/students/${studentId}/progression/run`),
+    onSuccess: (_data, studentId) => {
+      void qc.invalidateQueries({ queryKey: ["students", studentId] });
+      void qc.invalidateQueries({ queryKey: ["academic"] });
+    },
+  });
+}
+
 export function useSubmitAcademicAppeal() {
   const qc = useQueryClient();
   return useMutation({

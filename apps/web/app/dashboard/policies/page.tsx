@@ -19,6 +19,9 @@ import {
   useCreateUniversityPolicy,
   usePolicyAcknowledgements,
   usePolicyLifecycleAction,
+  usePublishedUniversityPolicies,
+  usePublishedUniversityPolicy,
+  useAcknowledgePublishedUniversityPolicy,
   useUniversityPolicies,
   useUniversityPolicy,
   useUpdateUniversityPolicy,
@@ -109,15 +112,29 @@ export default function UniversityPoliciesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(blankForm());
   const [notice, setNotice] = useState("");
+  const [selectedPublishedId, setSelectedPublishedId] = useState<
+    string | undefined
+  >();
 
   const filters = useMemo(
     () => ({ status, category, search: search.trim() || undefined }),
     [status, category, search],
   );
-  const { data: list, isLoading } = useUniversityPolicies(filters, { enabled: canView });
-  const { data: selected, isLoading: selectedLoading } =
-    useUniversityPolicy(selectedId, { enabled: canView });
-  const { data: acknowledgementData } = usePolicyAcknowledgements(selectedId, { enabled: canView });
+  const { data: list, isLoading } = useUniversityPolicies(filters, {
+    enabled: canView,
+  });
+  const { data: selected, isLoading: selectedLoading } = useUniversityPolicy(
+    selectedId,
+    { enabled: canView },
+  );
+  const { data: acknowledgementData } = usePolicyAcknowledgements(selectedId, {
+    enabled: canView,
+  });
+  const { data: publishedPolicies = [], isLoading: publishedLoading } =
+    usePublishedUniversityPolicies({ enabled: !canView });
+  const { data: selectedPublished, isLoading: selectedPublishedLoading } =
+    usePublishedUniversityPolicy(selectedPublishedId, { enabled: !canView });
+  const acknowledge = useAcknowledgePublishedUniversityPolicy();
   const create = useCreateUniversityPolicy();
   const update = useUpdateUniversityPolicy();
   const lifecycle = usePolicyLifecycleAction();
@@ -208,21 +225,129 @@ export default function UniversityPoliciesPage() {
 
   if (!canView) {
     return (
-      <div className="space-y-4">
+      <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h2 className="text-xl font-semibold">University Policies</h2>
           <p className="text-sm text-muted-foreground">
-            Published policies remain available through the staff and student policy view.
+            Read current published policies and acknowledge those that require
+            confirmation. Draft and lifecycle controls remain restricted to
+            authorised governance roles.
           </p>
         </div>
-        <Card>
-          <CardContent className="py-10 text-center">
-            <p className="font-medium">Access restricted</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Draft and lifecycle management is limited to authorised governance roles.
-            </p>
-          </CardContent>
-        </Card>
+        {notice && (
+          <div
+            role="status"
+            className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800"
+          >
+            {notice}
+          </div>
+        )}
+        {publishedLoading ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              Loading published policies…
+            </CardContent>
+          </Card>
+        ) : publishedPolicies.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              No published policies are currently available.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {publishedPolicies.map((policy) => {
+              const acknowledged = Boolean(policy.acknowledgements?.length);
+              return (
+                <button
+                  key={policy.id}
+                  type="button"
+                  onClick={() => setSelectedPublishedId(policy.id)}
+                  className={cn(
+                    "rounded-lg border bg-card p-4 text-left transition-colors hover:border-[--color-primary]",
+                    selectedPublishedId === policy.id &&
+                      "border-[--color-primary] ring-2 ring-[--color-primary]/20",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{policy.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {policy.policyCode} · Version {policy.version} ·{" "}
+                        {policy.category}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-1 text-[11px]",
+                        acknowledged
+                          ? "bg-emerald-100 text-emerald-800"
+                          : policy.requiresAcknowledgement
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-slate-100 text-slate-700",
+                      )}
+                    >
+                      {acknowledged
+                        ? "Acknowledged"
+                        : policy.requiresAcknowledgement
+                          ? "Acknowledgement required"
+                          : "Published"}
+                    </span>
+                  </div>
+                  <p className="mt-3 line-clamp-3 text-sm text-muted-foreground">
+                    {policy.summary || "Open to read the published policy."}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {selectedPublishedId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {selectedPublishedLoading
+                  ? "Loading policy…"
+                  : selectedPublished?.title}
+              </CardTitle>
+              <CardDescription>
+                {selectedPublished?.policyCode} · Version{" "}
+                {selectedPublished?.version}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm">
+                {selectedPublished?.content ||
+                  "Policy content is not available."}
+              </div>
+              {selectedPublished?.requiresAcknowledgement &&
+                !selectedPublished?.acknowledgements?.length && (
+                  <Button
+                    type="button"
+                    loading={acknowledge.isPending}
+                    onClick={() =>
+                      acknowledge.mutate(selectedPublishedId, {
+                        onSuccess: () =>
+                          setNotice("Policy acknowledgement recorded."),
+                        onError: (error) => setNotice(error.message),
+                      })
+                    }
+                  >
+                    Acknowledge policy
+                  </Button>
+                )}
+              {selectedPublished?.acknowledgements?.length ? (
+                <p className="text-sm text-emerald-700">
+                  Acknowledged on{" "}
+                  {new Date(
+                    selectedPublished.acknowledgements[0].acknowledgedAt,
+                  ).toLocaleString()}
+                  .
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }

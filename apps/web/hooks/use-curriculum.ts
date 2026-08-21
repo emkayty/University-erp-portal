@@ -1,14 +1,21 @@
-'use client';
+"use client";
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CcmasComplianceV1, CourseV1, DepartmentV1, FacultyV1, ProgrammeV1, StaffV1 } from '@uniportal/types';
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  CcmasComplianceV1,
+  CourseV1,
+  DepartmentV1,
+  FacultyV1,
+  ProgrammeV1,
+  StaffV1,
+} from "@uniportal/types";
 
 export interface CourseOfferingRecord {
   id: string;
   courseId: string;
   academicCalendarId: string;
   academicYear: string;
-  semester: 'FIRST' | 'SECOND' | 'SUMMER';
+  semester: "FIRST" | "SECOND" | "SUMMER";
   lecturerId: string | null;
   curriculumVersionId?: string | null;
   maxStudents: number | null;
@@ -16,29 +23,40 @@ export interface CourseOfferingRecord {
   sectionCode: string;
   isActive: boolean;
   course: CourseV1 & { department?: { name?: string; code?: string } };
-  semesterModel?: { id: string; semesterNumber: number; academicYear: string; status?: string };
-  lecturer?: Pick<StaffV1, 'id' | 'employeeNo' | 'firstName' | 'lastName'> | null;
+  semesterModel?: {
+    id: string;
+    semesterNumber: number;
+    academicYear: string;
+    status?: string;
+  };
+  lecturer?: Pick<
+    StaffV1,
+    "id" | "employeeNo" | "firstName" | "lastName"
+  > | null;
   registrations?: unknown[];
 }
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from "@/lib/api-client";
 
 export const curriculumKeys = {
-  faculties:   ['curriculum', 'faculties']                      as const,
-  faculty:     (id: string) => ['curriculum', 'faculties', id]  as const,
-  departments: (fId?: string) => ['curriculum', 'departments', fId ?? 'all'] as const,
-  programmes:  (dId?: string) => ['curriculum', 'programmes',  dId ?? 'all'] as const,
-  programme:   (id: string)  => ['curriculum', 'programmes', id]  as const,
-  courses:     (dId?: string) => ['curriculum', 'courses', dId ?? 'all'] as const,
-  course:      (id: string)  => ['curriculum', 'courses', id]    as const,
-  offerings:   (calId?: string, sem?: string) => ['curriculum', 'offerings', calId ?? 'all', sem ?? 'all'] as const,
-  ccmas:       ['curriculum', 'ccmas-compliance']               as const,
+  faculties: ["curriculum", "faculties"] as const,
+  faculty: (id: string) => ["curriculum", "faculties", id] as const,
+  departments: (fId?: string) =>
+    ["curriculum", "departments", fId ?? "all"] as const,
+  programmes: (dId?: string) =>
+    ["curriculum", "programmes", dId ?? "all"] as const,
+  programme: (id: string) => ["curriculum", "programmes", id] as const,
+  courses: (dId?: string) => ["curriculum", "courses", dId ?? "all"] as const,
+  course: (id: string) => ["curriculum", "courses", id] as const,
+  offerings: (calId?: string, sem?: string) =>
+    ["curriculum", "offerings", calId ?? "all", sem ?? "all"] as const,
+  ccmas: ["curriculum", "ccmas-compliance"] as const,
 };
 
 // ── Faculties ─────────────────────────────────────────────────────────────────
 export function useFaculties() {
   return useQuery({
     queryKey: curriculumKeys.faculties,
-    queryFn:  () => apiClient.get<FacultyV1[]>('/curriculum/faculties'),
+    queryFn: () => apiClient.get<FacultyV1[]>("/curriculum/faculties"),
     staleTime: 10 * 60_000,
   });
 }
@@ -47,19 +65,25 @@ export function useCreateFaculty() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { name: string; code: string }) =>
-      apiClient.post<FacultyV1>('/curriculum/faculties', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'faculties'] }),
+      apiClient.post<FacultyV1>("/curriculum/faculties", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "faculties"] }),
   });
 }
 
 export function useUpdateFaculty() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean } }) =>
-      apiClient.patch<FacultyV1>(`/curriculum/faculties/${id}`, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { name?: string; isActive?: boolean };
+    }) => apiClient.patch<FacultyV1>(`/curriculum/faculties/${id}`, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'faculties'] });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "faculties"] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "departments"] });
     },
   });
 }
@@ -68,9 +92,12 @@ export function useUpdateFaculty() {
 export function useDepartments(facultyId?: string) {
   return useQuery({
     queryKey: curriculumKeys.departments(facultyId),
-    queryFn:  () => apiClient.get<DepartmentV1[]>(
-      facultyId ? `/curriculum/departments?facultyId=${facultyId}` : '/curriculum/departments',
-    ),
+    queryFn: () =>
+      apiClient.get<DepartmentV1[]>(
+        facultyId
+          ? `/curriculum/departments?facultyId=${facultyId}`
+          : "/curriculum/departments",
+      ),
     staleTime: 10 * 60_000,
   });
 }
@@ -79,20 +106,26 @@ export function useCreateDepartment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { name: string; code: string; facultyId: string }) =>
-      apiClient.post<DepartmentV1>('/curriculum/departments', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] }),
+      apiClient.post<DepartmentV1>("/curriculum/departments", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "departments"] }),
   });
 }
 
 export function useUpdateDepartment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean } }) =>
-      apiClient.patch<DepartmentV1>(`/curriculum/departments/${id}`, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: { name?: string; isActive?: boolean };
+    }) => apiClient.patch<DepartmentV1>(`/curriculum/departments/${id}`, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'departments'] });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "departments"] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "courses"] });
     },
   });
 }
@@ -101,9 +134,12 @@ export function useUpdateDepartment() {
 export function useProgrammes(departmentId?: string) {
   return useQuery({
     queryKey: curriculumKeys.programmes(departmentId),
-    queryFn:  () => apiClient.get<ProgrammeV1[]>(
-      departmentId ? `/curriculum/programmes?departmentId=${departmentId}` : '/curriculum/programmes',
-    ),
+    queryFn: () =>
+      apiClient.get<ProgrammeV1[]>(
+        departmentId
+          ? `/curriculum/programmes?departmentId=${departmentId}`
+          : "/curriculum/programmes",
+      ),
     staleTime: 10 * 60_000,
   });
 }
@@ -111,8 +147,8 @@ export function useProgrammes(departmentId?: string) {
 export function useProgramme(id: string) {
   return useQuery({
     queryKey: curriculumKeys.programme(id),
-    queryFn:  () => apiClient.get<ProgrammeV1>(`/curriculum/programmes/${id}`),
-    enabled:  !!id,
+    queryFn: () => apiClient.get<ProgrammeV1>(`/curriculum/programmes/${id}`),
+    enabled: !!id,
   });
 }
 
@@ -120,21 +156,36 @@ export function useCreateProgramme() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: {
-      name: string; code: string; departmentId: string;
-      degreeType: string; durationYears: number;
-      minCreditUnits?: number; maxCreditUnits?: number;
-    }) => apiClient.post<ProgrammeV1>('/curriculum/programmes', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] }),
+      name: string;
+      code: string;
+      departmentId: string;
+      degreeType: string;
+      durationYears: number;
+      minCreditUnits?: number;
+      maxCreditUnits?: number;
+    }) => apiClient.post<ProgrammeV1>("/curriculum/programmes", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] }),
   });
 }
 
 export function useUpdateProgramme() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { name?: string; isActive?: boolean; minCreditUnits?: number; maxCreditUnits?: number } }) =>
-      apiClient.patch<ProgrammeV1>(`/curriculum/programmes/${id}`, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: {
+        name?: string;
+        isActive?: boolean;
+        minCreditUnits?: number;
+        maxCreditUnits?: number;
+      };
+    }) => apiClient.patch<ProgrammeV1>(`/curriculum/programmes/${id}`, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] });
       void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
     },
   });
@@ -144,9 +195,12 @@ export function useUpdateProgramme() {
 export function useCourses(departmentId?: string) {
   return useQuery({
     queryKey: curriculumKeys.courses(departmentId),
-    queryFn:  () => apiClient.get<CourseV1[]>(
-      departmentId ? `/curriculum/courses?departmentId=${departmentId}` : '/curriculum/courses',
-    ),
+    queryFn: () =>
+      apiClient.get<CourseV1[]>(
+        departmentId
+          ? `/curriculum/courses?departmentId=${departmentId}`
+          : "/curriculum/courses",
+      ),
     staleTime: 10 * 60_000,
   });
 }
@@ -154,8 +208,8 @@ export function useCourses(departmentId?: string) {
 export function useCourse(id: string) {
   return useQuery({
     queryKey: curriculumKeys.course(id),
-    queryFn:  () => apiClient.get<CourseV1>(`/curriculum/courses/${id}`),
-    enabled:  !!id,
+    queryFn: () => apiClient.get<CourseV1>(`/curriculum/courses/${id}`),
+    enabled: !!id,
   });
 }
 
@@ -163,21 +217,36 @@ export function useCreateCourse() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: {
-      code: string; title: string; creditUnits: number;
-      departmentId: string; ccmasCategory: string; description?: string;
-    }) => apiClient.post<CourseV1>('/curriculum/courses', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] }),
+      code: string;
+      title: string;
+      creditUnits: number;
+      departmentId: string;
+      ccmasCategory: string;
+      description?: string;
+    }) => apiClient.post<CourseV1>("/curriculum/courses", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "courses"] }),
   });
 }
 
 export function useUpdateCourse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { title?: string; ccmasCategory?: string; description?: string; isActive?: boolean } }) =>
-      apiClient.patch<CourseV1>(`/curriculum/courses/${id}`, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: {
+        title?: string;
+        ccmasCategory?: string;
+        description?: string;
+        isActive?: boolean;
+      };
+    }) => apiClient.patch<CourseV1>(`/curriculum/courses/${id}`, data),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'courses'] });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "courses"] });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] });
       void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
     },
   });
@@ -186,13 +255,33 @@ export function useUpdateCourse() {
 export function useAddProgrammeCourse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ programmeId, courseId, level, semester, isCompulsory = true, ccmasCategory }: {
-      programmeId: string; courseId: string; level: number; semester: string;
-      isCompulsory?: boolean; ccmasCategory?: string;
-    }) => apiClient.post(`/curriculum/programmes/${programmeId}/courses`, { courseId, level, semester, isCompulsory, ccmasCategory }),
+    mutationFn: ({
+      programmeId,
+      courseId,
+      level,
+      semester,
+      isCompulsory = true,
+      ccmasCategory,
+    }: {
+      programmeId: string;
+      courseId: string;
+      level: number;
+      semester: string;
+      isCompulsory?: boolean;
+      ccmasCategory?: string;
+    }) =>
+      apiClient.post(`/curriculum/programmes/${programmeId}/courses`, {
+        courseId,
+        level,
+        semester,
+        isCompulsory,
+        ccmasCategory,
+      }),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: curriculumKeys.programme(vars.programmeId) });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({
+        queryKey: curriculumKeys.programme(vars.programmeId),
+      });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] });
       void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
     },
   });
@@ -201,11 +290,25 @@ export function useAddProgrammeCourse() {
 export function useRemoveProgrammeCourse() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ programmeId, courseId, level, semester }: { programmeId: string; courseId: string; level: number; semester: string }) =>
-      apiClient.delete(`/curriculum/programmes/${programmeId}/courses/${courseId}?level=${level}&semester=${semester}`),
+    mutationFn: ({
+      programmeId,
+      courseId,
+      level,
+      semester,
+    }: {
+      programmeId: string;
+      courseId: string;
+      level: number;
+      semester: string;
+    }) =>
+      apiClient.delete(
+        `/curriculum/programmes/${programmeId}/courses/${courseId}?level=${level}&semester=${semester}`,
+      ),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: curriculumKeys.programme(vars.programmeId) });
-      void qc.invalidateQueries({ queryKey: ['curriculum', 'programmes'] });
+      void qc.invalidateQueries({
+        queryKey: curriculumKeys.programme(vars.programmeId),
+      });
+      void qc.invalidateQueries({ queryKey: ["curriculum", "programmes"] });
       void qc.invalidateQueries({ queryKey: curriculumKeys.ccmas });
     },
   });
@@ -214,8 +317,19 @@ export function useRemoveProgrammeCourse() {
 export function useAddPrerequisite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ courseId, prerequisiteId, minGrade = 'E' }: { courseId: string; prerequisiteId: string; minGrade?: string }) =>
-      apiClient.post(`/curriculum/courses/${courseId}/prerequisites`, { prerequisiteId, minGrade }),
+    mutationFn: ({
+      courseId,
+      prerequisiteId,
+      minGrade = "E",
+    }: {
+      courseId: string;
+      prerequisiteId: string;
+      minGrade?: string;
+    }) =>
+      apiClient.post(`/curriculum/courses/${courseId}/prerequisites`, {
+        prerequisiteId,
+        minGrade,
+      }),
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: curriculumKeys.course(vars.courseId) }),
   });
@@ -224,39 +338,74 @@ export function useAddPrerequisite() {
 export function useRemovePrerequisite() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ courseId, prerequisiteId }: { courseId: string; prerequisiteId: string }) =>
-      apiClient.delete(`/curriculum/courses/${courseId}/prerequisites/${prerequisiteId}`),
+    mutationFn: ({
+      courseId,
+      prerequisiteId,
+    }: {
+      courseId: string;
+      prerequisiteId: string;
+    }) =>
+      apiClient.delete(
+        `/curriculum/courses/${courseId}/prerequisites/${prerequisiteId}`,
+      ),
     onSuccess: (_data, vars) =>
       qc.invalidateQueries({ queryKey: curriculumKeys.course(vars.courseId) }),
   });
 }
 
-export function useCourseOfferings(filters?: { calendarId?: string; semester?: string }) {
+export function useCourseOfferings(
+  filters?: { calendarId?: string; semester?: string },
+  options?: { enabled?: boolean },
+) {
   const params = new URLSearchParams();
-  if (filters?.calendarId) params.set('calendarId', filters.calendarId);
-  if (filters?.semester) params.set('semester', filters.semester);
+  if (filters?.calendarId) params.set("calendarId", filters.calendarId);
+  if (filters?.semester) params.set("semester", filters.semester);
   return useQuery({
     queryKey: curriculumKeys.offerings(filters?.calendarId, filters?.semester),
-    queryFn: () => apiClient.get<CourseOfferingRecord[]>(`/curriculum/offerings?${params.toString()}`),
+    queryFn: () =>
+      apiClient.get<CourseOfferingRecord[]>(
+        `/curriculum/offerings?${params.toString()}`,
+      ),
     staleTime: 30_000,
+    enabled: options?.enabled ?? true,
   });
 }
 
 export function useCreateCourseOffering() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { courseId: string; academicCalendarId: string; semester: 'FIRST' | 'SECOND' | 'SUMMER'; lecturerId?: string; curriculumVersionId?: string; sectionCode?: string; maxStudents?: number }) =>
-      apiClient.post<CourseOfferingRecord>('/curriculum/offerings', data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'offerings'] }),
+    mutationFn: (data: {
+      courseId: string;
+      academicCalendarId: string;
+      semester: "FIRST" | "SECOND" | "SUMMER";
+      lecturerId?: string;
+      curriculumVersionId?: string;
+      sectionCode?: string;
+      maxStudents?: number;
+    }) => apiClient.post<CourseOfferingRecord>("/curriculum/offerings", data),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "offerings"] }),
   });
 }
 
 export function useTransitionCourseOffering() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
-      apiClient.patch<CourseOfferingRecord>(`/curriculum/offerings/${id}/lifecycle`, { status, reason }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['curriculum', 'offerings'] }),
+    mutationFn: ({
+      id,
+      status,
+      reason,
+    }: {
+      id: string;
+      status: string;
+      reason?: string;
+    }) =>
+      apiClient.patch<CourseOfferingRecord>(
+        `/curriculum/offerings/${id}/lifecycle`,
+        { status, reason },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["curriculum", "offerings"] }),
   });
 }
 
@@ -264,7 +413,8 @@ export function useTransitionCourseOffering() {
 export function useCcmasCompliance() {
   return useQuery({
     queryKey: curriculumKeys.ccmas,
-    queryFn:  () => apiClient.get<CcmasComplianceV1[]>('/curriculum/ccmas-compliance'),
+    queryFn: () =>
+      apiClient.get<CcmasComplianceV1[]>("/curriculum/ccmas-compliance"),
     staleTime: 30 * 60_000,
   });
 }

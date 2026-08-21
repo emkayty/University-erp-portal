@@ -82,6 +82,51 @@ function invalidatePolicies(queryClient: ReturnType<typeof useQueryClient>) {
   return queryClient.invalidateQueries({ queryKey: universityPolicyKeys.root });
 }
 
+export type PublishedUniversityPolicy = UniversityPolicy & {
+  acknowledgements?: Array<{ acknowledgedAt: string }>;
+};
+
+export function usePublishedUniversityPolicies(options?: {
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: [...universityPolicyKeys.root, "published"],
+    queryFn: () =>
+      apiClient.get<PublishedUniversityPolicy[]>(
+        "/university-policies/published",
+      ),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function usePublishedUniversityPolicy(
+  id?: string,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: [...universityPolicyKeys.root, "published", id ?? "none"],
+    queryFn: () =>
+      apiClient.get<PublishedUniversityPolicy>(
+        `/university-policies/published/${id}`,
+      ),
+    enabled: Boolean(id) && (options?.enabled ?? true),
+  });
+}
+
+export function useAcknowledgePublishedUniversityPolicy() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiClient.post<PublishedUniversityPolicy>(
+        `/university-policies/published/${id}/acknowledge`,
+      ),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: [...universityPolicyKeys.root, "published"],
+      }),
+  });
+}
+
 export function useUniversityPolicies(
   filters: {
     status?: UniversityPolicyStatus;

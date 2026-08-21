@@ -7,6 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { effectiveRolesOf } from "@/lib/authz";
 import { useCurrentUser } from "@/stores/auth.store";
 import {
+  useCreateAssessmentScheme,
+  useSaveAssessmentComponents,
+  useFinalizeAssessmentScheme,
   useAssessmentCsvUpload,
   useAssessmentExport,
   useAssessmentGradebook,
@@ -37,6 +40,26 @@ export default function AssessmentPage() {
   const [successMessage, setSuccessMessage] = useState("");
   const [finalizeConfirmationOpen, setFinalizeConfirmationOpen] =
     useState(false);
+  const [schemeName, setSchemeName] = useState("Standard assessment scheme");
+  const [schemeVersion, setSchemeVersion] = useState("1");
+  const [schemeComponents, setSchemeComponents] = useState([
+    {
+      name: "Continuous Assessment",
+      code: "CA",
+      category: "CONTINUOUS_ASSESSMENT",
+      maxScore: "40",
+      weight: "40",
+      isRequired: true,
+    },
+    {
+      name: "Examination",
+      code: "EXAM",
+      category: "EXAMINATION",
+      maxScore: "60",
+      weight: "60",
+      isRequired: true,
+    },
+  ]);
 
   const user = useCurrentUser();
   const effectiveRoles = effectiveRolesOf(user);
@@ -50,6 +73,9 @@ export default function AssessmentPage() {
     PAGE_SIZE,
     search,
   );
+  const createScheme = useCreateAssessmentScheme();
+  const saveComponents = useSaveAssessmentComponents();
+  const finalizeScheme = useFinalizeAssessmentScheme();
   const generate = useGenerateDraftResults();
   const finalizeMarks = useFinalizeAssessmentMarks();
   const exportGradebook = useAssessmentExport();
@@ -74,6 +100,88 @@ export default function AssessmentPage() {
     setPage(1);
     setSearch("");
     setActiveOffering(offeringId.trim());
+  };
+
+  const saveSchemeDefinition = async () => {
+    if (!activeOffering) {
+      setErrorMessage(
+        "Load a course offering before saving its assessment scheme.",
+      );
+      return;
+    }
+    const components = schemeComponents.map((component, index) => ({
+      name: component.name.trim(),
+      code: component.code.trim().toUpperCase(),
+      category: component.category.trim(),
+      maxScore: Number(component.maxScore),
+      weight: Number(component.weight),
+      sequence: index + 1,
+      isRequired: component.isRequired,
+    }));
+    const totalWeight = components.reduce(
+      (sum, component) => sum + component.weight,
+      0,
+    );
+    if (
+      !schemeName.trim() ||
+      components.some(
+        (component) =>
+          !component.name ||
+          !component.code ||
+          !component.category ||
+          !Number.isFinite(component.maxScore) ||
+          component.maxScore <= 0 ||
+          !Number.isFinite(component.weight) ||
+          component.weight < 0,
+      ) ||
+      Math.abs(totalWeight - 100) > 0.001
+    ) {
+      setErrorMessage(
+        "Provide valid scheme fields and component weights that total exactly 100%.",
+      );
+      return;
+    }
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      const scheme = data?.scheme?.id
+        ? { id: data.scheme.id }
+        : await createScheme.mutateAsync({
+            courseOfferingId: activeOffering,
+            name: schemeName.trim(),
+            version: Number(schemeVersion) || 1,
+          });
+      await saveComponents.mutateAsync({ schemeId: scheme.id, components });
+      setSuccessMessage(
+        "Assessment scheme and components saved. Reload the gradebook before entering marks.",
+      );
+      await gradebook.refetch();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Assessment scheme could not be saved.",
+      );
+    }
+  };
+
+  const finalizeSchemeDefinition = async () => {
+    if (!activeOffering) return;
+    setErrorMessage("");
+    setSuccessMessage("");
+    try {
+      await finalizeScheme.mutateAsync(activeOffering);
+      setSuccessMessage(
+        "Assessment scheme finalized and locked for ordinary editing.",
+      );
+      await gradebook.refetch();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Assessment scheme finalization failed.",
+      );
+    }
   };
 
   const download = (
@@ -358,6 +466,189 @@ export default function AssessmentPage() {
           )}
         </CardContent>
       </Card>
+
+      {activeOffering && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Assessment scheme setup</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Define the approved components and weights before marks are
+              entered. Component weights must total exactly 100%; finalization
+              locks the scheme for ordinary editing.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-medium text-muted-foreground">
+                Scheme name
+                <input
+                  value={schemeName}
+                  onChange={(event) => setSchemeName(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                />
+              </label>
+              <label className="text-xs font-medium text-muted-foreground">
+                Version
+                <input
+                  type="number"
+                  min="1"
+                  value={schemeVersion}
+                  onChange={(event) => setSchemeVersion(event.target.value)}
+                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                />
+              </label>
+            </div>
+            <div className="space-y-2">
+              {schemeComponents.map((component, index) => (
+                <div
+                  key={`${component.code}-${index}`}
+                  className="grid gap-2 rounded-md border p-3 sm:grid-cols-6"
+                >
+                  <input
+                    aria-label={`Component ${index + 1} name`}
+                    value={component.name}
+                    onChange={(event) =>
+                      setSchemeComponents((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, name: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="Component name"
+                    className="h-9 rounded-md border bg-background px-2 text-sm sm:col-span-2"
+                  />
+                  <input
+                    aria-label={`Component ${index + 1} code`}
+                    value={component.code}
+                    onChange={(event) =>
+                      setSchemeComponents((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, code: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="Code"
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                  />
+                  <input
+                    aria-label={`Component ${index + 1} category`}
+                    value={component.category}
+                    onChange={(event) =>
+                      setSchemeComponents((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, category: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="Category"
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                  />
+                  <input
+                    aria-label={`Component ${index + 1} max score`}
+                    type="number"
+                    min="0.01"
+                    value={component.maxScore}
+                    onChange={(event) =>
+                      setSchemeComponents((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, maxScore: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="Max score"
+                    className="h-9 rounded-md border bg-background px-2 text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      aria-label={`Component ${index + 1} weight`}
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={component.weight}
+                      onChange={(event) =>
+                        setSchemeComponents((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, weight: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                      placeholder="Weight %"
+                      className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+                    />
+                    {schemeComponents.length > 1 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setSchemeComponents((current) =>
+                            current.filter(
+                              (_, itemIndex) => itemIndex !== index,
+                            ),
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setSchemeComponents((current) => [
+                    ...current,
+                    {
+                      name: "",
+                      code: "",
+                      category: "OTHER",
+                      maxScore: "0",
+                      weight: "0",
+                      isRequired: false,
+                    },
+                  ])
+                }
+              >
+                Add component
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                loading={createScheme.isPending || saveComponents.isPending}
+                onClick={saveSchemeDefinition}
+              >
+                Save scheme
+              </Button>
+              {canFinalizeMarks && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={finalizeScheme.isPending}
+                  onClick={finalizeSchemeDefinition}
+                >
+                  Finalize scheme
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {activeOffering && data && (
         <Card>

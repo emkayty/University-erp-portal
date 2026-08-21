@@ -113,6 +113,47 @@ export function useAssessmentGradebook(
   });
 }
 
+export function useCreateAssessmentScheme() {
+  return useMutation({
+    mutationFn: (data: {
+      courseOfferingId: string;
+      name: string;
+      version?: number;
+    }) =>
+      apiClient.post<{ id: string; name: string; status: string }>(
+        "/assessment/schemes",
+        data,
+      ),
+  });
+}
+
+export function useSaveAssessmentComponents() {
+  return useMutation({
+    mutationFn: (input: {
+      schemeId: string;
+      components: Array<{
+        name: string;
+        code: string;
+        category: string;
+        maxScore: number;
+        weight: number;
+        sequence?: number;
+        isRequired?: boolean;
+      }>;
+    }) =>
+      apiClient.post(`/assessment/schemes/${input.schemeId}/components`, {
+        components: input.components,
+      }),
+  });
+}
+
+export function useFinalizeAssessmentScheme() {
+  return useMutation({
+    mutationFn: (courseOfferingId: string) =>
+      apiClient.post(`/assessment/offerings/${courseOfferingId}/finalize`),
+  });
+}
+
 export function useGenerateDraftResults() {
   return useMutation({
     mutationFn: (courseOfferingId: string) =>
