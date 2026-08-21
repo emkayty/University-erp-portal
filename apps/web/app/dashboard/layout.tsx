@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Menu,
   X,
-  Search,
   Bell,
   ChevronRight,
   LogOut,
@@ -33,14 +32,23 @@ import {
   Sparkles,
   Activity,
   BadgeCheck,
+  ChevronDown,
 } from "lucide-react";
 
 import { useCurrentUser, useLogout } from "@/hooks/use-auth";
 import { useModuleCapabilities, usePublicBranding } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth.store";
 import { cn, getInitials } from "@/lib/utils";
-import { effectiveRolesOf, effectiveScopesOf, MODULE_ACCESS } from "@/lib/authz";
+import {
+  effectiveRolesOf,
+  effectiveScopesOf,
+  MODULE_ACCESS,
+} from "@/lib/authz";
 import type { RoleName, StaffScope } from "@uniportal/types";
+import {
+  DashboardCommandPalette,
+  type DashboardCommandItem,
+} from "@/components/dashboard/dashboard-command-palette";
 
 const ALL_NAV = [
   {
@@ -99,7 +107,15 @@ const ALL_NAV = [
     href: "/dashboard/exams",
     label: "Exams",
     icon: ListChecks,
-    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "STAFF", "STUDENT"],
+    roles: [
+      "SUPER_ADMIN",
+      "VC",
+      "REGISTRAR",
+      "DEAN",
+      "HOD",
+      "STAFF",
+      "STUDENT",
+    ],
     scope: "timetable",
   },
   {
@@ -153,7 +169,16 @@ const ALL_NAV = [
     href: "/dashboard/clearance",
     label: "Clearance",
     icon: ClipboardCheck,
-    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "BURSAR", "STAFF", "STUDENT"],
+    roles: [
+      "SUPER_ADMIN",
+      "VC",
+      "REGISTRAR",
+      "DEAN",
+      "HOD",
+      "BURSAR",
+      "STAFF",
+      "STUDENT",
+    ],
   },
   {
     href: "/dashboard/fees",
@@ -264,7 +289,15 @@ const ALL_NAV = [
     href: "/dashboard/users",
     label: "User Administration",
     icon: UserCog,
-    roles: ["SUPER_ADMIN", "VC", "REGISTRAR", "DEAN", "HOD", "BURSAR", "HR_MANAGER"],
+    roles: [
+      "SUPER_ADMIN",
+      "VC",
+      "REGISTRAR",
+      "DEAN",
+      "HOD",
+      "BURSAR",
+      "HR_MANAGER",
+    ],
   },
   {
     href: "/dashboard/audit-logs",
@@ -292,6 +325,109 @@ const ALL_NAV = [
   },
 ] as const;
 
+type NavHref = (typeof ALL_NAV)[number]["href"];
+
+const NAV_GROUPS = [
+  {
+    id: "home",
+    label: "Home",
+    description: "Your priorities and updates",
+    icon: LayoutDashboard,
+    items: ["/dashboard", "/dashboard/notifications"],
+  },
+  {
+    id: "admissions",
+    label: "Admissions & Student Lifecycle",
+    description: "From application to alumni",
+    icon: GraduationCap,
+    items: [
+      "/dashboard/admissions",
+      "/dashboard/students",
+      "/dashboard/clearance",
+      "/dashboard/identity-cards",
+      "/dashboard/alumni",
+    ],
+  },
+  {
+    id: "academic",
+    label: "Academic Operations",
+    description: "The academic lifecycle",
+    icon: BookOpen,
+    items: [
+      "/dashboard/academic",
+      "/dashboard/curriculum",
+      "/dashboard/course-offerings",
+      "/dashboard/assessment",
+      "/dashboard/exams",
+      "/dashboard/results",
+    ],
+  },
+  {
+    id: "learning",
+    label: "Teaching & Learning",
+    description: "Courses and learning activity",
+    icon: BookOpen,
+    items: ["/dashboard/lms"],
+  },
+  {
+    id: "finance-people",
+    label: "Finance & People",
+    description: "Money, staff and operations",
+    icon: WalletCards,
+    items: [
+      "/dashboard/fees",
+      "/dashboard/hr",
+      "/dashboard/payroll",
+      "/dashboard/enterprise",
+    ],
+  },
+  {
+    id: "campus",
+    label: "Campus Services",
+    description: "Everyday university services",
+    icon: Building2,
+    items: [
+      "/dashboard/calendar",
+      "/dashboard/library",
+      "/dashboard/hostel",
+      "/dashboard/clinic",
+      "/dashboard/transport",
+    ],
+  },
+  {
+    id: "governance",
+    label: "Governance & Intelligence",
+    description: "Evidence, risk and decisions",
+    icon: ShieldCheck,
+    items: [
+      "/dashboard/reports",
+      "/dashboard/research",
+      "/dashboard/policies",
+      "/dashboard/privacy",
+      "/dashboard/security-incidents",
+      "/dashboard/smart-operations",
+    ],
+  },
+  {
+    id: "platform",
+    label: "Administration & Platform",
+    description: "Access, configuration and health",
+    icon: Settings,
+    items: [
+      "/dashboard/users",
+      "/dashboard/audit-logs",
+      "/dashboard/reliability",
+      "/dashboard/settings",
+    ],
+  },
+] as const satisfies readonly {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof LayoutDashboard;
+  items: readonly NavHref[];
+}[];
+
 function canSee(
   item: (typeof ALL_NAV)[number],
   roles: readonly RoleName[],
@@ -299,15 +435,28 @@ function canSee(
   moduleCapabilities?: Record<string, boolean>,
 ) {
   const moduleFlag = (item as { moduleFlag?: string }).moduleFlag;
-  if (moduleFlag && moduleCapabilities && moduleCapabilities[moduleFlag] === false) return false;
+  if (
+    moduleFlag &&
+    moduleCapabilities &&
+    moduleCapabilities[moduleFlag] === false
+  )
+    return false;
   if (item.roles === "ALL") return true;
   const itemScope = (item as { scope?: StaffScope }).scope;
   const requiredScope = (item as { requiredScope?: StaffScope }).requiredScope;
-  const roleAllowed = roles.some((role) => (item.roles as readonly RoleName[]).includes(role));
-  const scopedStaffRole = roles.includes("STAFF") || roles.includes("SUPPORT_STAFF");
-  const scopeAllowed = scopedStaffRole && itemScope ? scopes.includes(itemScope) : false;
+  const roleAllowed = roles.some((role) =>
+    (item.roles as readonly RoleName[]).includes(role),
+  );
+  const scopedStaffRole =
+    roles.includes("STAFF") || roles.includes("SUPPORT_STAFF");
+  const scopeAllowed =
+    scopedStaffRole && itemScope ? scopes.includes(itemScope) : false;
   if (!roleAllowed && !scopeAllowed) return false;
-  if (requiredScope && (roles.includes("STAFF") || roles.includes("SUPPORT_STAFF")) && !roles.includes("SUPER_ADMIN")) {
+  if (
+    requiredScope &&
+    (roles.includes("STAFF") || roles.includes("SUPPORT_STAFF")) &&
+    !roles.includes("SUPER_ADMIN")
+  ) {
     return scopes.includes(requiredScope);
   }
   return true;
@@ -338,11 +487,15 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const { data: branding } = usePublicBranding();
-  const { data: moduleCapabilities } = useModuleCapabilities({ enabled: Boolean(user) });
+  const { data: moduleCapabilities } = useModuleCapabilities({
+    enabled: Boolean(user),
+  });
   const { isLoading, isError } = useCurrentUser();
   const { mutate: logout, isPending: loggingOut } = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [commandOpen, setCommandOpen] = useState(false);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
+    {},
+  );
 
   useEffect(() => {
     if (isError && !isLoading)
@@ -351,28 +504,55 @@ export default function DashboardLayout({
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandOpen((v) => !v);
-      }
-      if (event.key === "Escape") setCommandOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   const effectiveRoles = effectiveRolesOf(user);
   const effectiveScopes = effectiveScopesOf(user);
   const nav = useMemo(
-    () => ALL_NAV.filter((item) => canSee(item, effectiveRoles, effectiveScopes, moduleCapabilities)),
+    () =>
+      ALL_NAV.filter((item) =>
+        canSee(item, effectiveRoles, effectiveScopes, moduleCapabilities),
+      ),
     [effectiveRoles, effectiveScopes, moduleCapabilities],
+  );
+  const groupedNav = useMemo(
+    () =>
+      NAV_GROUPS.map((group) => ({
+        ...group,
+        items: group.items
+          .map((href) => nav.find((item) => item.href === href))
+          .filter((item): item is (typeof ALL_NAV)[number] => Boolean(item)),
+      })).filter((group) => group.items.length > 0),
+    [nav],
   );
   const current = nav.find(
     (item) =>
       pathname === item.href ||
       (item.href !== "/dashboard" && pathname.startsWith(item.href)),
+  );
+  const currentGroup = groupedNav.find((group) =>
+    group.items.some((item) => item.href === current?.href),
+  );
+  const commandItems = useMemo<DashboardCommandItem[]>(
+    () =>
+      nav.map((item) => ({
+        href: item.href,
+        label: item.label,
+        description: "Available to your role and scope",
+        keywords: [item.href],
+      })),
+    [nav],
+  );
+  const commandGroups = useMemo(
+    () =>
+      groupedNav.map((group) => ({
+        label: group.label,
+        items: group.items.map((item) => ({
+          href: item.href,
+          label: item.label,
+          description: group.description,
+          keywords: [group.label, item.href],
+        })),
+      })),
+    [groupedNav],
   );
   const title = current?.label ?? "Dashboard";
   const initials = user
@@ -397,7 +577,14 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground" style={branding?.primaryColor ? { '--color-primary': branding.primaryColor } as CSSProperties : undefined}>
+    <div
+      className="min-h-screen bg-background text-foreground"
+      style={
+        branding?.primaryColor
+          ? ({ "--color-primary": branding.primaryColor } as CSSProperties)
+          : undefined
+      }
+    >
       {mobileOpen && (
         <button
           aria-label="Close navigation"
@@ -417,15 +604,26 @@ export default function DashboardLayout({
           <Link
             href="/dashboard"
             className="flex items-center gap-3"
-            aria-label={`${branding?.institutionName ?? 'UniPortal ERP'} home`}
+            aria-label={`${branding?.institutionName ?? "UniPortal ERP"} home`}
           >
             <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[--color-primary] text-xs font-bold text-white shadow-sm">
-              {branding?.logoUrl ? <img src={branding.logoUrl} alt="" className="h-full w-full object-contain p-1" /> : 'UP'}
+              {branding?.logoUrl ? (
+                <img
+                  src={branding.logoUrl}
+                  alt=""
+                  className="h-full w-full object-contain p-1"
+                />
+              ) : (
+                "UP"
+              )}
             </span>
             <span>
-              <span className="block max-w-[170px] truncate text-sm font-bold">{branding?.institutionName ?? 'UniPortal ERP'}</span>
+              <span className="block max-w-[170px] truncate text-sm font-bold">
+                {branding?.institutionName ?? "UniPortal ERP"}
+              </span>
               <span className="block text-[11px] text-muted-foreground">
-                {branding?.institutionType?.replaceAll('_', ' ') ?? 'University workspace'}
+                {branding?.institutionType?.replaceAll("_", " ") ??
+                  "University workspace"}
               </span>
             </span>
           </Link>
@@ -443,40 +641,107 @@ export default function DashboardLayout({
           aria-label="Main navigation"
         >
           <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Workspace
+            Workspaces
           </p>
-          <ul className="space-y-1">
-            {nav.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(item.href));
-              const Icon = item.icon;
+          <div className="space-y-3">
+            {groupedNav.map((group) => {
+              const GroupIcon = group.icon;
+              const groupActive = group.items.some(
+                (item) =>
+                  pathname === item.href ||
+                  (item.href !== "/dashboard" &&
+                    pathname.startsWith(item.href)),
+              );
+              const isExpanded =
+                expandedGroups[group.id] ??
+                (groupActive || group.id === "home");
               return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    aria-current={active ? "page" : undefined}
+                <section
+                  key={group.id}
+                  aria-labelledby={`workspace-${group.id}`}
+                >
+                  <button
+                    type="button"
                     className={cn(
-                      "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-                      active
-                        ? "bg-[--color-primary] font-semibold text-white shadow-sm"
+                      "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
+                      groupActive
+                        ? "bg-[--color-primary]/10 text-[--color-primary]"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
+                    aria-expanded={isExpanded}
+                    aria-controls={`workspace-items-${group.id}`}
+                    onClick={() =>
+                      setExpandedGroups((current) => ({
+                        ...current,
+                        [group.id]: !isExpanded,
+                      }))
+                    }
                   >
-                    <Icon
+                    <GroupIcon
                       className="h-[18px] w-[18px] shrink-0"
                       aria-hidden="true"
                     />
-                    <span className="truncate">{item.label}</span>
-                    {active && (
-                      <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
-                    )}
-                  </Link>
-                </li>
+                    <span
+                      id={`workspace-${group.id}`}
+                      className="min-w-0 flex-1"
+                    >
+                      <span className="block truncate text-xs font-semibold">
+                        {group.label}
+                      </span>
+                      <span className="hidden truncate text-[10px] text-muted-foreground xl:block">
+                        {group.description}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "h-4 w-4 shrink-0 transition-transform",
+                        isExpanded && "rotate-180",
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {isExpanded && (
+                    <ul
+                      id={`workspace-items-${group.id}`}
+                      className="mt-1 space-y-1 border-l border-border pl-3"
+                    >
+                      {group.items.map((item) => {
+                        const active =
+                          pathname === item.href ||
+                          (item.href !== "/dashboard" &&
+                            pathname.startsWith(item.href));
+                        const Icon = item.icon;
+                        return (
+                          <li key={item.href}>
+                            <Link
+                              href={item.href}
+                              onClick={() => setMobileOpen(false)}
+                              aria-current={active ? "page" : undefined}
+                              className={cn(
+                                "group flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                                active
+                                  ? "bg-[--color-primary] font-semibold text-white shadow-sm"
+                                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                              )}
+                            >
+                              <Icon
+                                className="h-4 w-4 shrink-0"
+                                aria-hidden="true"
+                              />
+                              <span className="truncate">{item.label}</span>
+                              {active && (
+                                <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+                              )}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
               );
             })}
-          </ul>
+          </div>
         </nav>
 
         <div className="border-t border-border p-3">
@@ -491,6 +756,11 @@ export default function DashboardLayout({
               <p className="truncate text-[11px] text-muted-foreground">
                 {roleLabel(user?.primaryRole ?? effectiveRoles[0])}
               </p>
+              {scopeLabel(user?.staffScope) ? (
+                <p className="truncate text-[10px] text-muted-foreground/80">
+                  {scopeLabel(user?.staffScope)}
+                </p>
+              ) : null}
             </div>
             <button
               onClick={() => logout()}
@@ -517,24 +787,31 @@ export default function DashboardLayout({
             <Menu className="h-5 w-5" />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] text-muted-foreground">
-              UniPortal / {title}
+            <p className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+              <span className="shrink-0">UniPortal</span>
+              <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {currentGroup?.label ?? "Workspace"}
+              </span>
+              {currentGroup && current ? (
+                <>
+                  <ChevronRight
+                    className="h-3 w-3 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{title}</span>
+                </>
+              ) : null}
             </p>
             <h1 className="truncate text-sm font-semibold sm:text-base">
               {title}
             </h1>
           </div>
-          <button
-            onClick={() => setCommandOpen(true)}
-            className="hidden min-h-11 items-center gap-2 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground hover:text-foreground sm:flex"
-            aria-label="Open quick search"
-          >
-            <Search className="h-4 w-4" />
-            Search{" "}
-            <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">
-              ⌘K
-            </kbd>
-          </button>
+          <DashboardCommandPalette
+            role={user?.primaryRole ?? effectiveRoles[0] ?? "STUDENT"}
+            items={commandItems}
+            groups={commandGroups}
+          />
           <Link
             href="/dashboard/notifications"
             className="touch-target inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
@@ -551,54 +828,6 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
-
-      {commandOpen && (
-        <div
-          className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/30 p-4 pt-[12vh] backdrop-blur-sm"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Quick navigation"
-          onMouseDown={() => setCommandOpen(false)}
-        >
-          <div
-            className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 border-b border-border px-4">
-              <Search className="h-5 w-5 text-muted-foreground" />
-              <input
-                autoFocus
-                className="h-14 flex-1 bg-transparent text-sm outline-none"
-                placeholder="Go to a workspace…"
-                aria-label="Search workspaces"
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setCommandOpen(false);
-                }}
-              />
-              <kbd className="rounded border bg-muted px-2 py-1 text-[10px]">
-                ESC
-              </kbd>
-            </div>
-            <div className="max-h-[55vh] overflow-y-auto p-2">
-              {nav.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setCommandOpen(false)}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm hover:bg-muted"
-                  >
-                    <Icon className="h-4 w-4 text-[--color-primary]" />
-                    {item.label}
-                    <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
