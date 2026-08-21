@@ -36,5 +36,5 @@ ENCRYPTION_KEY_HEX="$(openssl rand -hex 32)"
 
 cd "$ROOT_DIR"
 docker compose -f "$COMPOSE_FILE" up --wait
-pnpm --filter @uniportal/api exec prisma migrate deploy --schema prisma/schema.prisma
+MIGRATE_DATABASE_URL="$DATABASE_URL" SCHEMA_DEPLOYMENT_MODE=push bash scripts/db/deploy-schema.sh
 pnpm --filter @uniportal/api test:e2e -- --runInBand

@@ -18,7 +18,7 @@
     "test:integration": "jest --config jest-integration.config.ts --runInBand",
     "test:reports": "jest --config jest-integration.config.ts --runInBand test/reports",
     "prisma:generate": "bash ../../scripts/prisma/with-local-schema-env.sh prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate": "bash ../../scripts/db/deploy-schema.sh",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:format": "prisma format",

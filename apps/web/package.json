@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "start:standalone": "bash ../../scripts/start-web.sh",
-    "lint": "eslint app hooks lib stores components middleware.ts next.config.ts --ext .ts,.tsx --max-warnings 0",
+    "lint": "eslint app hooks lib stores components proxy.ts next.config.ts --ext .ts,.tsx --max-warnings 0",
     "type-check": "tsc --noEmit",
     "test": "jest --passWithNoTests --testPathIgnorePatterns='test/(pact|e2e)'",
     "test:e2e": "playwright test",

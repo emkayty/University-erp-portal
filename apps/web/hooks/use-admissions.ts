@@ -317,12 +317,15 @@ export function useRecordOLevelResults() {
     mutationFn: ({
       applicantId,
       results,
+      replaceExisting = true,
     }: {
       applicantId: string;
       results: Array<Record<string, unknown>>;
+      replaceExisting?: boolean;
     }) =>
       apiClient.post(`/admissions/applications/${applicantId}/olevel-results`, {
         results,
+        replaceExisting,
       }),
     onSuccess: (_data, variables) =>
       qc.invalidateQueries({

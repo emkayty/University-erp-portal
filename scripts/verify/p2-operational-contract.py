@@ -15,8 +15,8 @@ E2E_RUNNER = ROOT / "scripts/test/run-e2e-hermetic.sh"
 E2E_COMPOSE = ROOT / "docker-compose.e2e.yml"
 
 checks = {
-    "opaque tracking DTO": "trackingToken" in ADMISSIONS_DTO and "Length(64,64)" in ADMISSIONS_DTO,
-    "constant-time tracking verification": "timingSafeEqual" in ADMISSIONS_SERVICE and "createHmac('sha256'" in ADMISSIONS_SERVICE,
+    "opaque tracking DTO": "trackingToken" in ADMISSIONS_DTO and "Length(64, 64)" in ADMISSIONS_DTO,
+    "constant-time tracking verification": "timingSafeEqual" in ADMISSIONS_SERVICE and "createHmac" in ADMISSIONS_SERVICE and "sha256" in ADMISSIONS_SERVICE,
     "tracking fails closed without secret": "ADMISSIONS_TRACKING_SECRET" in ADMISSIONS_SERVICE and "ServiceUnavailableException" in ADMISSIONS_SERVICE,
     "public tracking throttled": "@Throttle({ api: { limit: 5, ttl: 60_000 } })" in ADMISSIONS_CONTROLLER,
     "status UI uses credential": "trackingToken" in STATUS_PAGE and "public/track" in STATUS_PAGE,

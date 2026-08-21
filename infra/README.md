@@ -60,8 +60,8 @@ CloudFront regardless of `aws_region`). See `versions.tf` for the full list.
 Every `aws_secretsmanager_secret_version` in `iam_secrets_ses.tf` is seeded
 with a `REPLACE_ME` placeholder (or a Terraform-generated bootstrap value
 for the encryption key) and marked `lifecycle { ignore_changes =
-[secret_string] }` — Terraform creates the *slot* at the right path (spec
-§7.5), a human populates the *value* out-of-band, and future `terraform
+[secret_string] }` — Terraform creates the _slot_ at the right path (spec
+§7.5), a human populates the _value_ out-of-band, and future `terraform
 apply` runs won't stomp on it. Rotate the encryption key via the v1/v2
 dual-key procedure in `packages/utils/src/encryption.ts`, not by re-applying
 Terraform.
@@ -73,7 +73,7 @@ Terraform.
 reload`, which already fixed a real zero-downtime bug (see
 docs/CHANGELOG.md H-P6-5). This Terraform adds a CodeDeploy
 Application/DeploymentGroup so a proper AWS-native blue/green path (spec
-§3.3, §19.3: canary 10% for 5 min, auto-rollback on alarm) is *available*.
+§3.3, §19.3: canary 10% for 5 min, auto-rollback on alarm) is _available_.
 `.github/workflows/deploy-aws-codedeploy.yml` is the new job that uses it.
 Both paths currently exist side by side — cut over the `needs:` graph in
 `ci.yml` once the CodeDeploy path has been exercised in staging a few times;
@@ -88,15 +88,18 @@ single Postgres role (`uniportal`, the RDS master/bootstrap user — a
 superuser) into two, and migration `0012_p10_system_role_bypass_rls`
 (this pass) adds a third:
 
-- **`uniportal`** — owner/superuser. Used ONLY for `prisma migrate deploy`
-  (via `MIGRATE_DATABASE_URL`) and by `data.tf`'s RDS master user config.
-  Never used by the running application.
+- **`uniportal`** — owner/bootstrap role. Used only by the guarded
+  `scripts/db/deploy-schema.sh` workflow (via `MIGRATE_DATABASE_URL`) for
+  non-destructive `prisma db push`, extension preparation, and RLS hardening,
+  and by `data.tf`'s RDS master-user configuration. Never used by the running
+  application; `prisma migrate deploy` is intentionally not supported on this
+  release line.
 - **`uniportal_app`** — the runtime role (`DATABASE_URL`). Non-superuser,
   does not own any table, NOBYPASSRLS, has only
   `SELECT/INSERT/UPDATE/DELETE`. This is what actually makes the RLS
   policies in migrations 0002/0005/0007/0008/0009 enforceable — Postgres
   exempts table owners **and superusers** from RLS regardless of `FORCE
-  ROW LEVEL SECURITY`, so as long as the app connected as `uniportal`, every
+ROW LEVEL SECURITY`, so as long as the app connected as `uniportal`, every
   policy was inert no matter what the application code did.
 - **`uniportal_system`** — the `DATABASE_DIRECT_URL` role DirectPrismaService
   uses (advisory locks — see `apps/api/src/database/direct-prisma.service.ts`).

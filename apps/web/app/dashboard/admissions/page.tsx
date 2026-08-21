@@ -123,6 +123,10 @@ export default function AdmissionsPage() {
   const [requirementDocuments, setRequirementDocuments] = useState("");
   const [olevelSubject, setOlevelSubject] = useState("");
   const [olevelGrade, setOlevelGrade] = useState("C6");
+  const [olevelExamType, setOlevelExamType] = useState("WAEC");
+  const [olevelCandidateNumber, setOlevelCandidateNumber] = useState("");
+  const [olevelExaminationNumber, setOlevelExaminationNumber] = useState("");
+  const [olevelCentreNumber, setOlevelCentreNumber] = useState("");
   const [olevelExamYear, setOlevelExamYear] = useState(
     String(new Date().getFullYear()),
   );
@@ -230,11 +234,12 @@ export default function AdmissionsPage() {
     if (
       !selectedApp ||
       !olevelSubject.trim() ||
+      !["WAEC", "NECO", "NABTEB", "NBAIS", "GCE"].includes(olevelExamType) ||
       !/^[0-9]{4}$/.test(olevelExamYear) ||
       !["1", "2"].includes(olevelSitting)
     ) {
       setActionError(
-        "Provide a subject, a four-digit exam year, and sitting 1 or 2 before recording the result.",
+        "Provide a subject, exam type, four-digit exam year, and sitting 1 or 2 before recording the result.",
       );
       return;
     }
@@ -242,10 +247,15 @@ export default function AdmissionsPage() {
     recordOLevel(
       {
         applicantId: selectedApp.id,
+        replaceExisting: false,
         results: [
           {
             subject: olevelSubject.trim(),
             grade: olevelGrade,
+            examType: olevelExamType,
+            candidateNumber: olevelCandidateNumber.trim() || undefined,
+            examinationNumber: olevelExaminationNumber.trim() || undefined,
+            centreNumber: olevelCentreNumber.trim() || undefined,
             examYear: Number(olevelExamYear),
             sittingNumber: Number(olevelSitting),
           },
@@ -257,6 +267,9 @@ export default function AdmissionsPage() {
             "O’Level subject result recorded. Add the remaining verified subjects, then verify the complete sitting.",
           );
           setOlevelSubject("");
+          setOlevelCandidateNumber("");
+          setOlevelExaminationNumber("");
+          setOlevelCentreNumber("");
         },
         onError: (error) => setActionError(error.message),
       },
@@ -1000,7 +1013,7 @@ export default function AdmissionsPage() {
                         Reject O’Level
                       </Button>
                     </div>
-                    <div className="grid gap-2 border-t pt-3 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="grid gap-2 border-t pt-3 sm:grid-cols-2 lg:grid-cols-4">
                       <label className="text-xs">
                         Subject
                         <input
@@ -1039,6 +1052,22 @@ export default function AdmissionsPage() {
                         </select>
                       </label>
                       <label className="text-xs">
+                        Exam type
+                        <select
+                          value={olevelExamType}
+                          onChange={(event) =>
+                            setOlevelExamType(event.target.value)
+                          }
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        >
+                          <option value="WAEC">WAEC</option>
+                          <option value="NECO">NECO</option>
+                          <option value="NABTEB">NABTEB</option>
+                          <option value="NBAIS">NBAIS</option>
+                          <option value="GCE">GCE</option>
+                        </select>
+                      </label>
+                      <label className="text-xs">
                         Exam year
                         <input
                           type="number"
@@ -1063,6 +1092,39 @@ export default function AdmissionsPage() {
                           <option value="1">Sitting 1</option>
                           <option value="2">Sitting 2</option>
                         </select>
+                      </label>
+                      <label className="text-xs">
+                        Candidate number
+                        <input
+                          value={olevelCandidateNumber}
+                          onChange={(event) =>
+                            setOlevelCandidateNumber(event.target.value)
+                          }
+                          placeholder="Optional"
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        />
+                      </label>
+                      <label className="text-xs">
+                        Examination number
+                        <input
+                          value={olevelExaminationNumber}
+                          onChange={(event) =>
+                            setOlevelExaminationNumber(event.target.value)
+                          }
+                          placeholder="Optional"
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        />
+                      </label>
+                      <label className="text-xs">
+                        Centre number
+                        <input
+                          value={olevelCentreNumber}
+                          onChange={(event) =>
+                            setOlevelCentreNumber(event.target.value)
+                          }
+                          placeholder="Optional"
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        />
                       </label>
                       <Button
                         type="button"

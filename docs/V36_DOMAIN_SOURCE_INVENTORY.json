@@ -379,7 +379,7 @@
     "apps/api/prisma/migrations/0007_p7_library_fts_and_hostel/migration.sql",
     "apps/api/prisma/migrations/0005_rls_identity_fix/migration.sql",
     "apps/api/prisma/migrations/0020_p0_system_integrity/migration.sql",
-    "apps/web/middleware.ts",
+    "apps/web/proxy.ts",
     "apps/web/app/dashboard/layout.tsx",
     "apps/web/app/dashboard/settings/page.tsx",
     "apps/web/hooks/use-search.ts",
