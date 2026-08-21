@@ -53,7 +53,7 @@ function createService() {
     academicSubstitution: { findMany: jest.fn() },
     academicTransferCredit: { findMany: jest.fn() },
     courseEquivalency: { findMany: jest.fn() },
-    degreeAudit: { create: jest.fn() },
+    degreeAudit: { create: jest.fn(), findFirst: jest.fn() },
     academicPlan: {
       updateMany: jest.fn(),
       create: jest.fn(),
@@ -102,6 +102,7 @@ function createService() {
     },
   };
   const prisma = {
+    forRequest: jest.fn(() => tx),
     runExclusive: jest.fn(
       (_context: unknown, fn: (client: typeof tx) => unknown) => fn(tx),
     ),
@@ -122,6 +123,28 @@ function createService() {
 describe("AcademicService lifecycle safeguards", () => {
   beforeEach(() => jest.useFakeTimers().setSystemTime(NOW));
   afterEach(() => jest.useRealTimers());
+
+  it("routes student self-service degree-audit reads through the request-scoped RLS client", async () => {
+    const { service, prisma, tx } = createService();
+    tx.student.findUniqueOrThrow.mockResolvedValue({
+      id: "student-1",
+      curriculumVersionId: "curriculum-1",
+    });
+    tx.academicPlan.findFirst.mockResolvedValue(null);
+    tx.degreeAudit.findFirst.mockResolvedValue(null);
+
+    await service.getLatestDegreeAuditForUser("user-1");
+
+    expect(prisma.forRequest).toHaveBeenCalledWith(expect.anything());
+    expect(tx.student.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { userId: "user-1" },
+      select: { id: true, curriculumVersionId: true },
+    });
+    expect(tx.degreeAudit.findFirst).toHaveBeenCalledWith({
+      where: { studentId: "student-1", curriculumVersionId: "curriculum-1" },
+      orderBy: { createdAt: "desc" },
+    });
+  });
 
   it("loads approved exemptions, substitutions, transfers and effective equivalencies into the persisted audit evidence", async () => {
     const { service, tx, audit } = createService();

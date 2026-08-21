@@ -249,14 +249,20 @@ export class AcademicService {
   }
 
   async getJourneyForUser(userId: string) {
-    const student = await this.prisma.student.findUniqueOrThrow({
+    const db = this.prisma.forRequest(this.rlsContext);
+    const student = await db.student.findUniqueOrThrow({
       where: { userId },
     });
-    return this.getJourney(student.id);
+    return this.getJourney(student.id, db);
   }
 
-  async getJourney(studentId: string) {
-    const student = await this.prisma.student.findUniqueOrThrow({
+  async getJourney(
+    studentId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma.forRequest(
+      this.rlsContext,
+    ),
+  ) {
+    const student = await db.student.findUniqueOrThrow({
       where: { id: studentId },
       include: {
         programme: { include: { department: { include: { faculty: true } } } },
@@ -284,8 +290,8 @@ export class AcademicService {
       },
     });
     const [degreeAudit, academicPlan] = await Promise.all([
-      this.latestAudit(studentId, student.curriculumVersionId),
-      this.latestPlan(studentId, student.curriculumVersionId),
+      this.latestAudit(studentId, student.curriculumVersionId, db),
+      this.latestPlan(studentId, student.curriculumVersionId, db),
     ]);
     const outstanding = this.outstandingForJourney(
       degreeAudit?.policySnapshot,
@@ -369,19 +375,21 @@ export class AcademicService {
   }
 
   async getLatestDegreeAuditForUser(userId: string) {
-    const student = await this.prisma.student.findUniqueOrThrow({
+    const db = this.prisma.forRequest(this.rlsContext);
+    const student = await db.student.findUniqueOrThrow({
       where: { userId },
       select: { id: true, curriculumVersionId: true },
     });
-    return this.latestAudit(student.id, student.curriculumVersionId);
+    return this.latestAudit(student.id, student.curriculumVersionId, db);
   }
 
   async getPlanForUser(userId: string) {
-    const student = await this.prisma.student.findUniqueOrThrow({
+    const db = this.prisma.forRequest(this.rlsContext);
+    const student = await db.student.findUniqueOrThrow({
       where: { userId },
       select: { id: true, curriculumVersionId: true },
     });
-    return this.latestPlan(student.id, student.curriculumVersionId);
+    return this.latestPlan(student.id, student.curriculumVersionId, db);
   }
 
   /**
@@ -1410,8 +1418,14 @@ export class AcademicService {
     return credential;
   }
 
-  private async latestAudit(studentId: string, curriculumVersionId?: string) {
-    return this.prisma.degreeAudit.findFirst({
+  private async latestAudit(
+    studentId: string,
+    curriculumVersionId?: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma.forRequest(
+      this.rlsContext,
+    ),
+  ) {
+    return db.degreeAudit.findFirst({
       where: {
         studentId,
         ...(curriculumVersionId ? { curriculumVersionId } : {}),
@@ -1420,8 +1434,14 @@ export class AcademicService {
     });
   }
 
-  private async latestPlan(studentId: string, curriculumVersionId?: string) {
-    return this.prisma.academicPlan.findFirst({
+  private async latestPlan(
+    studentId: string,
+    curriculumVersionId?: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma.forRequest(
+      this.rlsContext,
+    ),
+  ) {
+    return db.academicPlan.findFirst({
       where: {
         studentId,
         status: ACTIVE,
