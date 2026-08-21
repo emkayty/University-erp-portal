@@ -32,10 +32,10 @@ export class AssessmentController {
   constructor(private readonly svc: AssessmentService) {}
   @Get("offerings")
   @Roles("STAFF", "HOD", "DEAN", "REGISTRAR", "VC", "SUPER_ADMIN")
-  offerings(@CurrentUser() u: JwtPayload) {
+  async offerings(@CurrentUser() u: JwtPayload) {
     return {
       success: true,
-      data: this.svc.findAccessibleOfferings(u.sub, u.role),
+      data: await this.svc.findAccessibleOfferings(u.sub, u.role),
     };
   }
   @Post("schemes")

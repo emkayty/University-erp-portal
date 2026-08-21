@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useProgrammes } from "@/hooks/use-curriculum";
+import { effectiveRolesOf, hasEffectiveRole } from "@/lib/authz";
+import { useCurrentUser, useIsLoading } from "@/stores/auth.store";
 import {
   useMyAcademicPlan,
   useMyDegreeAudit,
@@ -16,6 +18,9 @@ import {
 } from "@/hooks/use-academic";
 
 export default function AcademicJourneyPage() {
+  const user = useCurrentUser();
+  const authLoading = useIsLoading();
+  const isStudent = hasEffectiveRole(user, "STUDENT");
   const [appealType, setAppealType] = useState("RESULT_REVIEW");
   const [appealReason, setAppealReason] = useState("");
   const [transferProgrammeId, setTransferProgrammeId] = useState("");
@@ -31,13 +36,54 @@ export default function AcademicJourneyPage() {
   const { mutate: requestInterruption, isPending: requestingInterruption } =
     useRequestAcademicInterruption();
   const { data: programmes = [] } = useProgrammes();
-  const { data: latestDegreeAudit } = useMyDegreeAudit();
-  const { data: academicPlan } = useMyAcademicPlan();
+  const { data: latestDegreeAudit } = useMyDegreeAudit({ enabled: isStudent });
+  const { data: academicPlan } = useMyAcademicPlan({ enabled: isStudent });
   const { data, isLoading, error } = useQuery({
     queryKey: ["academic", "me", "journey"],
     queryFn: () => apiClient.get<any>("/academic/me/journey"),
+    enabled: isStudent,
   });
 
+  if (authLoading)
+    return <main className="p-6">Loading your academic access…</main>;
+  if (!isStudent) {
+    const roles = effectiveRolesOf(user).join(", ");
+    return (
+      <main className="space-y-4 p-4 md:p-6">
+        <Card className="p-6">
+          <p className="text-sm text-muted-foreground">Academic operations</p>
+          <h1 className="mt-1 text-2xl font-semibold">
+            Academic Life is student self-service
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+            This view is reserved for authenticated students. Your current role
+            {roles ? ` (${roles})` : ""} uses governed academic operations
+            instead of a personal academic journey.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2 text-sm">
+            <a
+              className="rounded-md border px-3 py-2 hover:bg-muted"
+              href="/dashboard/students"
+            >
+              Open student records
+            </a>
+            <a
+              className="rounded-md border px-3 py-2 hover:bg-muted"
+              href="/dashboard/results"
+            >
+              Open results governance
+            </a>
+            <a
+              className="rounded-md border px-3 py-2 hover:bg-muted"
+              href="/dashboard/curriculum"
+            >
+              Open curriculum
+            </a>
+          </div>
+        </Card>
+      </main>
+    );
+  }
   if (isLoading)
     return <main className="p-6">Loading your academic journey…</main>;
   if (error)

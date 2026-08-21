@@ -66,7 +66,8 @@ export default function AssessmentPage() {
   const canFinalizeMarks = effectiveRoles.some((role) =>
     ["HOD", "DEAN", "REGISTRAR", "SUPER_ADMIN"].includes(role),
   );
-  const offerings = useAssessmentOfferings();
+  const { data: offerings = [], isError: offeringsError } =
+    useAssessmentOfferings();
   const gradebook = useAssessmentGradebook(
     activeOffering,
     page,
@@ -412,7 +413,7 @@ export default function AssessmentPage() {
               className="flex h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="">Choose an authorised course offering</option>
-              {offerings.data?.map((offering) => (
+              {offerings.map((offering) => (
                 <option key={offering.id} value={offering.id}>
                   {offering.course.code} · {offering.course.title} ·{" "}
                   {offering.semesterModel.name} · Section {offering.sectionCode}
@@ -445,7 +446,7 @@ export default function AssessmentPage() {
               </p>
             </div>
           </details>
-          {offerings.isError && (
+          {offeringsError && (
             <p className="text-sm text-amber-700">
               Authorised offerings could not be loaded. Use the controlled
               manual lookup only if your administrator supplied the identifier.

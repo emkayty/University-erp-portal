@@ -77,21 +77,23 @@ export function useActivateGraduationPolicy() {
   });
 }
 
-export function useMyDegreeAudit() {
+export function useMyDegreeAudit(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...academicKeys.journey, "degree-audit"],
     queryFn: () =>
       apiClient.get<Record<string, unknown> | null>(
         "/academic/me/degree-audit",
       ),
+    enabled: options?.enabled ?? true,
   });
 }
 
-export function useMyAcademicPlan() {
+export function useMyAcademicPlan(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...academicKeys.journey, "plan"],
     queryFn: () =>
       apiClient.get<Record<string, unknown> | null>("/academic/me/plan"),
+    enabled: options?.enabled ?? true,
   });
 }
 
