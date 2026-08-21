@@ -312,7 +312,7 @@ export default function ResultsPage() {
                 setSelSem(e.target.value);
                 setQueueSelectedIds([]);
               }}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm sm:w-auto"
             >
               <option value="">All Semesters</option>
               {semesters.map((s) => (
@@ -334,7 +334,7 @@ export default function ResultsPage() {
                   setQueueOfferingId(e.target.value);
                   setQueueSelectedIds([]);
                 }}
-                className="h-9 min-w-64 rounded-md border border-input bg-background px-3 text-sm"
+                className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm sm:min-w-64 sm:w-auto"
               >
                 <option value="">
                   Semester report / choose course offering
@@ -368,8 +368,8 @@ export default function ResultsPage() {
               No results yet for the selected period.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="min-w-[620px] w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
                     {[
@@ -503,8 +503,8 @@ export default function ResultsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-hidden rounded border border-border">
-                    <table className="w-full text-sm">
+                  <div className="overflow-x-auto rounded border border-border">
+                    <table className="min-w-[620px] w-full text-sm">
                       <thead className="bg-muted">
                         <tr>
                           {["Code", "Course", "Score", "Grade", "GP", "CU"].map(
@@ -566,7 +566,7 @@ export default function ResultsPage() {
               Enter scores individually via the form below, or use the API for
               bulk submission.
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-w-2xl">
+            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 {
                   id: "studentId",

@@ -842,7 +842,7 @@ export default function AssessmentPage() {
                     setPage(1);
                   }}
                   placeholder="Search name or Matric No"
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm sm:max-w-sm"
+                  className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm sm:max-w-sm"
                 />
                 <p className="text-xs text-muted-foreground">
                   Page {page} of {pageCount}
@@ -852,7 +852,7 @@ export default function AssessmentPage() {
             </CardHeader>
             <CardContent>
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full text-left text-sm">
+                <table className="min-w-[720px] w-full text-left text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="p-2">Student</th>

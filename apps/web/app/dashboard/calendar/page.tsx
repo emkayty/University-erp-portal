@@ -116,9 +116,9 @@ export default function CalendarPage() {
   if (isLoading) return <div className="animate-pulse space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-lg bg-muted" />)}</div>;
 
   return (
-    <div className="flex gap-6">
+    <div className="flex flex-col gap-6 lg:flex-row">
       {/* ── Left: Calendar list ──────────────────────────────────────────── */}
-      <div className="w-80 flex-shrink-0 space-y-3">
+      <div className="w-full flex-shrink-0 space-y-3 lg:w-80">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Academic Calendars</h2>
           {canManage && (
@@ -146,7 +146,7 @@ export default function CalendarPage() {
                   <Label htmlFor="endDate" required>End Date</Label>
                   <Input id="endDate" type="date" error={createForm.formState.errors.endDate?.message} {...createForm.register('endDate')} />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Button type="submit" size="sm" loading={creating}>Create</Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
                 </div>
@@ -189,7 +189,7 @@ export default function CalendarPage() {
       </div>
 
       {/* ── Right: Calendar detail ───────────────────────────────────────── */}
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         {!selectedCalendar ? (
           <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border">
             <p className="text-sm text-muted-foreground">Select a calendar to view details</p>
@@ -262,7 +262,7 @@ export default function CalendarPage() {
                       <Input id="reason" placeholder="e.g. ASUU industrial action — suspension effective 15 March 2026"
                         error={suspendForm.formState.errors.reason?.message} {...suspendForm.register('reason')} />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Button type="submit" variant="destructive" size="sm" loading={suspending}>Confirm Suspension</Button>
                       <Button type="button" size="sm" variant="outline" onClick={() => setShowSuspend(false)}>Cancel</Button>
                     </div>
@@ -297,7 +297,7 @@ export default function CalendarPage() {
                       <Label htmlFor="evEnd">End Date</Label>
                       <Input id="evEnd" type="date" {...eventForm.register('endDate')} />
                     </div>
-                    <div className="sm:col-span-2 flex gap-2">
+                    <div className="sm:col-span-2 flex flex-col gap-2 sm:flex-row">
                       <Button type="submit" size="sm" loading={addingEvent}>Add Event</Button>
                       <Button type="button" size="sm" variant="outline" onClick={() => setShowAddEvent(false)}>Cancel</Button>
                     </div>

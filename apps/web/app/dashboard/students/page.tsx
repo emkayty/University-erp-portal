@@ -409,11 +409,11 @@ export default function StudentsPage() {
       {/* ── List tab ─────────────────────────────────────────────────────── */}
       {tab === "list" && (
         <div className="space-y-3">
-          <div className="flex gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <select
               value={statusFilter}
               onChange={(e) => setStatus(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm sm:w-auto"
             >
               <option value="">All Statuses</option>
               {[
@@ -438,8 +438,8 @@ export default function StudentsPage() {
               ))}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="min-w-[760px] w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
                     {[

@@ -1292,7 +1292,7 @@ export default function ApplyPage() {
       </main>
     );
   const selectClass =
-    "mt-1 flex h-10 w-full rounded-md border bg-background px-3 text-sm";
+    "mt-1 flex min-h-11 w-full rounded-md border bg-background px-3 text-sm";
   return (
     <main className="min-h-screen bg-muted/30 px-4 py-8 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -1300,7 +1300,7 @@ export default function ApplyPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="enterprise-eyebrow">UniPortal Admissions</p>
-              <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 University Admission Application
               </h1>
               <p className="mt-2 max-w-3xl text-muted-foreground">
@@ -1318,10 +1318,10 @@ export default function ApplyPage() {
           </div>
         </header>
         <nav
-          className="glass-accent sticky top-4 z-20 rounded-xl p-3"
+          className="glass-accent sticky top-2 z-20 rounded-xl p-3 sm:top-4"
           aria-label="Application progress"
         >
-          <ol className="grid gap-3 sm:grid-cols-4">
+          <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               ["1", "Plan", "Cycle & choices"],
               ["2", "Tell us about you", "Identity & contact"],
@@ -1368,7 +1368,7 @@ export default function ApplyPage() {
                 autoComplete="off"
               />
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <Button
                 type="button"
                 variant="outline"
@@ -3216,6 +3216,7 @@ export default function ApplyPage() {
                     submission.
                   </p>
                   <Button
+                    className="w-full sm:w-auto"
                     type="submit"
                     loading={submitting}
                     disabled={

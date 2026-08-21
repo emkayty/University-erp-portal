@@ -268,7 +268,7 @@ export default function FeesPage() {
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="feeType" required>Fee Type</Label>
-                    <select id="feeType" {...scheduleForm.register('feeType')} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring">
+                    <select id="feeType" {...scheduleForm.register('feeType')} className="min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring">
                       <option value="">Select…</option>
                       {FEE_TYPES.map((t) => <option key={t} value={t}>{t.replace('_',' ')}</option>)}
                     </select>
@@ -298,8 +298,8 @@ export default function FeesPage() {
             </Card>
           )}
 
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="min-w-[860px] w-full text-sm">
               <thead className="bg-muted">
                 <tr>
                   {['Type','Programme','Level','Year','Amount','Due','Status', isBursar?'Actions':''].filter(Boolean).map((h) => (
@@ -346,8 +346,8 @@ export default function FeesPage() {
               {!showWaiverForm ? (
                 <div className="space-y-2">
                   <Label htmlFor="feeIdLookup">Student Fee (Invoice) ID</Label>
-                  <div className="flex gap-2">
-                    <Input id="feeIdLookup" placeholder="UUID of the StudentFee record"
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input className="w-full" id="feeIdLookup" placeholder="UUID of the StudentFee record"
                       value={selectedFeeId} onChange={(e) => setSelFeeId(e.target.value)} />
                     <Button size="sm" disabled={!selectedFeeId} onClick={() => setShowWaiver(true)}>Continue</Button>
                   </div>
@@ -365,7 +365,7 @@ export default function FeesPage() {
                     <Input id="reason" placeholder="e.g. Documented financial hardship — see attached letter"
                       error={waiverForm.formState.errors.reason?.message} {...waiverForm.register('reason')} />
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Button type="submit" size="sm" loading={requestingWaiver}>Submit Request</Button>
                     <Button type="button" size="sm" variant="outline" onClick={() => { setShowWaiver(false); setSelFeeId(''); }}>Cancel</Button>
                   </div>

@@ -1469,7 +1469,7 @@ export default function AdmissionsPage() {
                       placeholder="Explain the decision clearly for the applicant"
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                     />
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
                         size="sm"
                         variant="outline"
@@ -1506,8 +1506,8 @@ export default function AdmissionsPage() {
               ))}
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="min-w-[760px] w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
                     {[
