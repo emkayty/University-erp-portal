@@ -11,12 +11,41 @@ describe('IntelligenceService workflows', () => {
     tx = { automationTask: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'task-1', status: 'IN_PROGRESS', assignedToId: 'actor-1' }) } };
     prisma = {
       $transaction: jest.fn((fn: (client: any) => unknown) => fn(tx)),
-      enterpriseAlert: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
-      automationTask: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
+      enterpriseAlert: { findUniqueOrThrow: jest.fn(), update: jest.fn(), count: jest.fn() },
+      automationTask: { findUniqueOrThrow: jest.fn(), update: jest.fn(), count: jest.fn() },
+      student: { count: jest.fn() },
+      programme: { count: jest.fn() },
+      curriculumVersion: { count: jest.fn() },
+      courseRegistration: { count: jest.fn() },
+      studentResult: { count: jest.fn() },
+      degreeAudit: { count: jest.fn() },
+      academicPlan: { count: jest.fn() },
       user: { findUnique: jest.fn().mockResolvedValue({ id: 'actor-2', isActive: true }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
     service = new IntelligenceService(prisma);
+  });
+
+  it('summarizes data readiness without mutating institutional records', async () => {
+    prisma.student.count.mockResolvedValue(12);
+    prisma.programme.count.mockResolvedValue(3);
+    prisma.curriculumVersion.count.mockResolvedValue(4);
+    prisma.courseRegistration.count.mockResolvedValue(42);
+    prisma.studentResult.count.mockResolvedValue(28);
+    prisma.degreeAudit.count.mockResolvedValue(10);
+    prisma.academicPlan.count.mockResolvedValue(8);
+    prisma.enterpriseAlert.count.mockResolvedValue(2);
+    prisma.automationTask.count.mockResolvedValue(1);
+
+    const summary = await service.getDataQualitySummary();
+
+    expect(summary.status).toBe('ATTENTION');
+    expect(summary.totals).toEqual({ checks: 9, attention: 2, critical: 0 });
+    expect(summary.checks.find((check) => check.code === 'OPEN_INTELLIGENCE_ALERTS')).toMatchObject({
+      count: 2,
+      severity: 'WARNING',
+    });
+    expect(prisma.student.count).toHaveBeenCalledWith({ where: { deletedAt: null } });
   });
 
   it('rejects resolution by a non-assignee', async () => {

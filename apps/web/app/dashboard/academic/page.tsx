@@ -120,6 +120,54 @@ export default function AcademicJourneyPage() {
       </section>
       <section className="grid gap-4 lg:grid-cols-2">
         <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Journey readiness</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                The system shows what can be verified from the current academic record.
+              </p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${data.readiness?.status === "READY" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+              {data.readiness?.status ?? "ATTENTION"}
+            </span>
+          </div>
+          {data.readiness?.warnings?.length ? (
+            <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+              {data.readiness.warnings.map((warning: string) => (
+                <li key={warning} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              The current journey evidence is complete enough for guided planning.
+            </p>
+          )}
+        </Card>
+        <Card className="p-5">
+          <h2 className="font-semibold">Next legitimate actions</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Recommendations are advisory; approvals remain with authorized academic officers.
+          </p>
+          <div className="mt-4 space-y-3 text-sm">
+            {data.nextActions?.length ? data.nextActions.map((action: any) => (
+              <div key={action.code} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <strong>{action.title}</strong>
+                  {action.requiresApproval && <span className="text-xs text-amber-700">Approval required</span>}
+                </div>
+                <p className="mt-1 text-muted-foreground">{action.reason}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Responsible role: {action.ownerRole}</p>
+              </div>
+            )) : (
+              <p className="text-muted-foreground">No additional action is currently recommended.</p>
+            )}
+          </div>
+        </Card>
+      </section>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-5">
           <h2 className="font-semibold">Next actions</h2>
           <div className="mt-4 space-y-3 text-sm">
             {data.outstanding.length ? (

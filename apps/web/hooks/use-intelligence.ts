@@ -12,10 +12,36 @@ export type IntelligenceTask = {
   status: string; assignedToId?: string | null; dueAt?: string | null;
 };
 
+export type DataQualityCheck = {
+  code: string;
+  domain: string;
+  label: string;
+  count: number;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  message: string;
+};
+
+export type DataQualitySummary = {
+  generatedAt: string;
+  status: 'HEALTHY' | 'ATTENTION' | 'CRITICAL';
+  totals: { checks: number; attention: number; critical: number };
+  checks: DataQualityCheck[];
+};
+
 const keys = {
   alerts: (status?: string) => ['intelligence', 'alerts', status ?? 'all'] as const,
   tasks: (status?: string) => ['intelligence', 'tasks', status ?? 'all'] as const,
 };
+
+export function useDataQualitySummary(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ['intelligence', 'data-quality'] as const,
+    queryFn: () => apiClient.get<DataQualitySummary>('/intelligence/data-quality'),
+    enabled: options?.enabled ?? true,
+    staleTime: 60_000,
+    refetchInterval: 300_000,
+  });
+}
 
 export function useIntelligenceAlerts(status?: string) {
   return useQuery({

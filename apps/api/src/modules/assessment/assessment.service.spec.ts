@@ -49,6 +49,54 @@ describe('AssessmentService academic-integrity controls', () => {
     expect(prisma.courseOffering.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { isActive: true, course: { department: { faculty: { dean: { userId: 'dean-1' } } } } } }));
   });
 
+  it('surfaces review-only assurance signals for a loaded gradebook', async () => {
+    prisma.courseOffering.findUnique.mockResolvedValue({
+      id: 'offering-1',
+      semesterId: 'semester-1',
+      course: { code: 'CSC301', title: 'Data Structures' },
+      semesterModel: { name: 'Second Semester' },
+    });
+    prisma.assessmentScheme.findFirst.mockResolvedValue({
+      id: 'scheme-1',
+      name: 'Standard scheme',
+      status: 'ACTIVE',
+      components: [
+        { id: 'ca-1', code: 'CA', name: 'CA', maxScore: 30, weight: 30, isRequired: true, sequence: 1 },
+        { id: 'exam-1', code: 'EXAM', name: 'Exam', maxScore: 70, weight: 70, isRequired: true, sequence: 2 },
+      ],
+    });
+    const registrations = Array.from({ length: 5 }, (_, index) => ({
+      id: `registration-${index + 1}`,
+      studentId: `student-${index + 1}`,
+      status: 'REGISTERED',
+      student: {
+        id: `student-${index + 1}`,
+        matricNo: `MAT/${String(index + 1).padStart(3, '0')}`,
+        firstName: 'Test',
+        lastName: `Student ${index + 1}`,
+      },
+    }));
+    prisma.courseRegistration.findMany.mockResolvedValue(registrations);
+    prisma.assessmentMark.findMany.mockResolvedValue(
+      registrations.flatMap((registration) => [
+        { studentId: registration.studentId, componentId: 'ca-1', score: 25, status: 'DRAFT', version: 1, examTimetableId: null, enteredById: 'staff-1' },
+        { studentId: registration.studentId, componentId: 'exam-1', score: 60, status: 'DRAFT', version: 1, examTimetableId: null, enteredById: 'staff-1' },
+      ]),
+    );
+
+    const gradebook = await service.getGradebook('offering-1', 'staff-1', 'STAFF');
+
+    expect(gradebook.summary).toMatchObject({ total: 5, complete: 5, incomplete: 0 });
+    expect(gradebook.assurance).toEqual(expect.objectContaining({
+      status: 'ATTENTION',
+      reviewOnly: true,
+      unknownStudentMarks: 0,
+      outOfRangeMarks: 0,
+      identicalScoreClusters: 1,
+    }));
+    expect(gradebook.assurance?.warnings.join(' ')).toContain('human review only');
+  });
+
   it('requires shared offering authorization before saving a mark', async () => {
     prisma.assessmentComponent.findUniqueOrThrow.mockResolvedValue({
       maxScore: 100,

@@ -41,6 +41,14 @@ export type AssessmentGradebook = {
     finalized?: number;
     unfinalized?: number;
   };
+  assurance?: {
+    status: "READY" | "ATTENTION";
+    warnings: string[];
+    reviewOnly: boolean;
+    unknownStudentMarks: number;
+    outOfRangeMarks: number;
+    identicalScoreClusters: number;
+  };
   pagination?: {
     page: number;
     pageSize: number;

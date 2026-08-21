@@ -777,6 +777,39 @@ export default function AssessmentPage() {
             <Metric label="Finalized" value={data.summary.finalized ?? 0} />
             <Metric label="Unfinalized" value={data.summary.unfinalized ?? 0} />
           </div>
+          {data.assurance && (
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-sm">Results Assurance</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Deterministic review signals are advisory only; marks are never changed automatically.
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${data.assurance.status === "READY" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    {data.assurance.status}
+                  </span>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Metric label="Roster-linked anomalies" value={data.assurance.unknownStudentMarks} />
+                  <Metric label="Range/component reviews" value={data.assurance.outOfRangeMarks} />
+                  <Metric label="Identical-score clusters" value={data.assurance.identicalScoreClusters} />
+                </div>
+                {data.assurance.warnings.length > 0 ? (
+                  <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    {data.assurance.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                    No deterministic assurance warning was found in the loaded gradebook.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">

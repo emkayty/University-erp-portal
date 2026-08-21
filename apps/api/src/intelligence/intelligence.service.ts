@@ -37,6 +37,146 @@ export class IntelligenceService {
     });
   }
 
+  async getDataQualitySummary() {
+    const [
+      activeStudents,
+      programmes,
+      curriculumVersions,
+      courseRegistrations,
+      resultRecords,
+      degreeAudits,
+      activeAcademicPlans,
+      openAlerts,
+      openTasks,
+    ] = await Promise.all([
+      this.prisma.student.count({ where: { deletedAt: null } }),
+      this.prisma.programme.count({ where: { isActive: true } }),
+      this.prisma.curriculumVersion.count(),
+      this.prisma.courseRegistration.count(),
+      this.prisma.studentResult.count(),
+      this.prisma.degreeAudit.count(),
+      this.prisma.academicPlan.count({ where: { status: "ACTIVE" } }),
+      this.prisma.enterpriseAlert.count({ where: { status: "OPEN" } }),
+      this.prisma.automationTask.count({ where: { status: "OPEN" } }),
+    ]);
+
+    const checks = [
+      {
+        code: "ACTIVE_STUDENTS",
+        domain: "STUDENT_LIFECYCLE",
+        label: "Active student records",
+        count: activeStudents,
+        severity: activeStudents === 0 ? "WARNING" : "INFO",
+        message:
+          activeStudents === 0
+            ? "No active student records are available for academic analytics."
+            : `${activeStudents.toLocaleString()} active student record(s) are available.`,
+      },
+      {
+        code: "ACTIVE_PROGRAMMES",
+        domain: "ACADEMIC_STRUCTURE",
+        label: "Active programmes",
+        count: programmes,
+        severity: programmes === 0 ? "CRITICAL" : "INFO",
+        message:
+          programmes === 0
+            ? "No active programmes are available for academic journey evaluation."
+            : `${programmes.toLocaleString()} active programme(s) are available.`,
+      },
+      {
+        code: "CURRICULUM_VERSIONS",
+        domain: "ACADEMIC_STRUCTURE",
+        label: "Curriculum versions",
+        count: curriculumVersions,
+        severity: curriculumVersions === 0 ? "WARNING" : "INFO",
+        message:
+          curriculumVersions === 0
+            ? "No curriculum version is available for degree-audit evaluation."
+            : `${curriculumVersions.toLocaleString()} curriculum version(s) are available.`,
+      },
+      {
+        code: "COURSE_REGISTRATIONS",
+        domain: "ACADEMIC_OPERATIONS",
+        label: "Course registrations",
+        count: courseRegistrations,
+        severity: courseRegistrations === 0 ? "WARNING" : "INFO",
+        message:
+          courseRegistrations === 0
+            ? "No course registrations are available for progression and workload analysis."
+            : `${courseRegistrations.toLocaleString()} course registration(s) are available.`,
+      },
+      {
+        code: "RESULT_RECORDS",
+        domain: "RESULTS",
+        label: "Result records",
+        count: resultRecords,
+        severity: resultRecords === 0 ? "WARNING" : "INFO",
+        message:
+          resultRecords === 0
+            ? "No result records are available for results assurance or academic progress analysis."
+            : `${resultRecords.toLocaleString()} result record(s) are available.`,
+      },
+      {
+        code: "DEGREE_AUDITS",
+        domain: "ACADEMIC_PROGRESS",
+        label: "Degree audits",
+        count: degreeAudits,
+        severity: degreeAudits === 0 ? "WARNING" : "INFO",
+        message:
+          degreeAudits === 0
+            ? "No persisted degree audits are available; student journey completion cannot be verified."
+            : `${degreeAudits.toLocaleString()} degree audit(s) are available.`,
+      },
+      {
+        code: "ACTIVE_ACADEMIC_PLANS",
+        domain: "ACADEMIC_PROGRESS",
+        label: "Active academic plans",
+        count: activeAcademicPlans,
+        severity: activeAcademicPlans === 0 ? "WARNING" : "INFO",
+        message:
+          activeAcademicPlans === 0
+            ? "No active academic plans are available for next-action guidance."
+            : `${activeAcademicPlans.toLocaleString()} active academic plan(s) are available.`,
+      },
+      {
+        code: "OPEN_INTELLIGENCE_ALERTS",
+        domain: "GOVERNANCE",
+        label: "Open intelligence alerts",
+        count: openAlerts,
+        severity: openAlerts > 0 ? "WARNING" : "INFO",
+        message:
+          openAlerts > 0
+            ? `${openAlerts.toLocaleString()} alert(s) require human review.`
+            : "No open intelligence alerts are waiting for review.",
+      },
+      {
+        code: "OPEN_AUTOMATION_TASKS",
+        domain: "GOVERNANCE",
+        label: "Open human-review tasks",
+        count: openTasks,
+        severity: openTasks > 0 ? "WARNING" : "INFO",
+        message:
+          openTasks > 0
+            ? `${openTasks.toLocaleString()} task(s) require human action.`
+            : "No open human-review tasks are waiting for action.",
+      },
+    ] as const;
+
+    const attentionChecks = checks.filter((check) => check.severity !== "INFO");
+    const criticalChecks = checks.filter((check) => check.severity === "CRITICAL");
+
+    return {
+      generatedAt: new Date().toISOString(),
+      status: criticalChecks.length > 0 ? "CRITICAL" : attentionChecks.length > 0 ? "ATTENTION" : "HEALTHY",
+      totals: {
+        checks: checks.length,
+        attention: attentionChecks.length,
+        critical: criticalChecks.length,
+      },
+      checks,
+    };
+  }
+
   async evaluateActiveRules(
     domain: string,
     entityType: string,

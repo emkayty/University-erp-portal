@@ -13,6 +13,13 @@ import { AssignTaskDto, UpdateTaskStatusDto } from './intelligence.dto';
 export class IntelligenceController {
   constructor(private readonly intelligence: IntelligenceService) {}
 
+  @Get('data-quality')
+  @Roles('SUPER_ADMIN', 'VC', 'REGISTRAR')
+  @ApiOperation({ summary: 'Summarize institutional data readiness for intelligence workflows' })
+  async dataQuality() {
+    return this.intelligence.getDataQualitySummary();
+  }
+
   @Get('alerts')
   @ApiOperation({ summary: 'List enterprise alerts visible to the current staff member' })
   async alerts(@Query('status') status?: string, @Query('domain') domain?: string, @CurrentUser() user?: JwtPayload) {

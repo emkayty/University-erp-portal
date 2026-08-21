@@ -454,6 +454,50 @@ export class AssessmentService {
         (registration) => registration.student.id,
       ),
     );
+    const registeredStudentIds = new Set(
+      registrations.map((registration) => registration.student.id),
+    );
+    const componentById = new Map(
+      scheme.components.map((component) => [component.id, component]),
+    );
+    const unknownStudentMarks = marks.filter(
+      (mark) => !registeredStudentIds.has(mark.studentId),
+    ).length;
+    const outOfRangeMarks = marks.filter((mark) => {
+      const component = componentById.get(mark.componentId);
+      const score = Number(mark.score);
+      return !component || !Number.isFinite(score) || score < 0 || score > Number(component.maxScore);
+    }).length;
+    const identicalScoreClusters = new Map<string, number>();
+    for (const studentId of summaryStudentIds) {
+      const markMap = byStudent.get(studentId) ?? new Map();
+      if (!required.every((component) => markMap.has(component.id))) continue;
+      let finalScore = 0;
+      for (const component of scheme.components) {
+        const mark = markMap.get(component.id);
+        if (mark) {
+          finalScore +=
+            (Number(mark.score) / Number(component.maxScore)) *
+            Number(component.weight);
+        }
+      }
+      const key = (Math.round(finalScore * 100) / 100).toFixed(2);
+      identicalScoreClusters.set(key, (identicalScoreClusters.get(key) ?? 0) + 1);
+    }
+    const reviewOnlyIdenticalScoreClusters = [...identicalScoreClusters.values()].filter(
+      (count) => count >= 5,
+    ).length;
+    const assuranceWarnings = [
+      ...(unknownStudentMarks > 0
+        ? [`${unknownStudentMarks} mark record(s) are linked to students outside the registered roster.`]
+        : []),
+      ...(outOfRangeMarks > 0
+        ? [`${outOfRangeMarks} mark record(s) require range or component review.`]
+        : []),
+      ...(reviewOnlyIdenticalScoreClusters > 0
+        ? [`${reviewOnlyIdenticalScoreClusters} identical-score cluster(s) are surfaced for human review only.`]
+        : []),
+    ];
     let complete = 0;
     let finalized = 0;
     for (const studentId of summaryStudentIds) {
@@ -482,6 +526,14 @@ export class AssessmentService {
         incomplete: Math.max(0, summaryTotal - complete),
         finalized,
         unfinalized: Math.max(0, summaryTotal - finalized),
+      },
+      assurance: {
+        status: assuranceWarnings.length > 0 ? "ATTENTION" : "READY",
+        warnings: assuranceWarnings,
+        reviewOnly: true,
+        unknownStudentMarks,
+        outOfRangeMarks,
+        identicalScoreClusters: reviewOnlyIdenticalScoreClusters,
       },
       ...(isPaged
         ? {

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import {
   useAnalyticsDashboard, useHodDashboard, useAuditSummary,
 } from '@/hooks/use-reports';
+import { useDataQualitySummary } from '@/hooks/use-intelligence';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
 import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
@@ -44,7 +45,7 @@ function KpiTile({
   );
 }
 
-type DashTab = 'overview' | 'hod' | 'audit';
+type DashTab = 'overview' | 'hod' | 'audit' | 'quality';
 
 export default function AnalyticsPage() {
   const user   = useAuthStore((s) => s.user);
@@ -60,11 +61,13 @@ export default function AnalyticsPage() {
   const { data: kpi, isLoading: kpiLoading } = useAnalyticsDashboard(undefined, { enabled: isAdmin });
   const { data: hod, isLoading: hodLoading } = useHodDashboard(isHod ? deptId : undefined, { enabled: isAdmin || isHod });
   const { data: audit, isLoading: auditLoading } = useAuditSummary({ enabled: isAdmin });
+  const { data: quality, isLoading: qualityLoading } = useDataQualitySummary({ enabled: isAdmin });
 
   const tabs: { k: DashTab; l: string; show: boolean }[] = [
     { k: 'overview', l: 'Institution Overview', show: isAdmin },
     { k: 'hod',      l: 'Department Dashboard',  show: isAdmin || isHod },
     { k: 'audit',    l: 'Audit Summary',          show: isAdmin },
+    { k: 'quality',  l: 'Data Quality',           show: isAdmin },
   ];
 
   const visibleTabs = tabs.filter((t) => t.show);
@@ -328,6 +331,59 @@ export default function AnalyticsPage() {
                 ? 'No department data found. Ensure your user is linked to a department.'
                 : 'Select a department from the HOD dropdown to view its dashboard.'}
             </p>
+          )}
+        </>
+      )}
+
+      {/* ── Data Quality (super_admin) ─────────────────────────────────────── */}
+      {tab === 'quality' && (
+        <>
+          {qualityLoading ? (
+            <div className="animate-pulse space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 rounded bg-muted" />)}
+              </div>
+              <div className="h-64 rounded bg-muted" />
+            </div>
+          ) : quality ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <KpiTile
+                  label="Foundation status"
+                  value={quality.status}
+                  sub="deterministic readiness checks"
+                  color={quality.status === 'HEALTHY' ? 'text-green-600' : quality.status === 'CRITICAL' ? 'text-[--color-danger]' : 'text-[--color-warning]'}
+                />
+                <KpiTile label="Checks" value={quality.totals.checks} sub="tracked data domains" />
+                <KpiTile label="Needs attention" value={quality.totals.attention} sub="human review recommended" color={quality.totals.attention ? 'text-[--color-warning]' : 'text-green-600'} />
+                <KpiTile label="Critical" value={quality.totals.critical} sub="blocking readiness checks" color={quality.totals.critical ? 'text-[--color-danger]' : 'text-green-600'} />
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Data readiness checks</CardTitle>
+                  <CardDescription>Counts are read-only and support investigation; they do not modify institutional records.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-2">
+                  {quality.checks.map((check) => (
+                    <div key={check.code} className="rounded-lg border p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{check.label}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{check.domain.replaceAll('_', ' ')}</p>
+                        </div>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-semibold', check.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' : check.severity === 'WARNING' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
+                          {check.severity}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-2xl font-semibold">{check.count.toLocaleString()}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{check.message}</p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Data quality information is unavailable.</p>
           )}
         </>
       )}

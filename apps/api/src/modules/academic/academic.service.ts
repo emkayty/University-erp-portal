@@ -304,6 +304,56 @@ export class AcademicService {
     );
     const credits = Number(student.totalCreditUnitsEarned);
     const required = student.programme.minCreditUnits;
+    const currentRegistrationCount = student.courseRegs.filter(
+      (registration) => registration.status === "REGISTERED",
+    ).length;
+    const hasPublishedResults = student.results.length > 0;
+    const readinessWarnings: string[] = [];
+    if (!degreeAudit) readinessWarnings.push("No official degree audit has been generated yet.");
+    if (!academicPlan) readinessWarnings.push("No active academic plan is available yet.");
+    if (!hasPublishedResults) readinessWarnings.push("No published results are available for progress verification.");
+    if (currentRegistrationCount === 0 && student.status === "ACTIVE") {
+      readinessWarnings.push("No current course registration is available for this active student.");
+    }
+
+    const nextActions = [
+      ...(outstanding.length > 0
+        ? [{
+            code: "REVIEW_OUTSTANDING_REQUIREMENTS",
+            title: "Review outstanding academic requirements",
+            reason: `${outstanding.length} course or requirement item(s) need attention.`,
+            ownerRole: "STUDENT",
+            requiresApproval: false,
+          }]
+        : []),
+      ...(!degreeAudit
+        ? [{
+            code: "REQUEST_DEGREE_AUDIT",
+            title: "Request an official degree audit",
+            reason: "An authorized academic officer must generate the first official audit.",
+            ownerRole: "REGISTRAR",
+            requiresApproval: true,
+          }]
+        : []),
+      ...(!academicPlan
+        ? [{
+            code: "REFRESH_ACADEMIC_PLAN",
+            title: "Refresh the academic plan",
+            reason: "A current plan is needed to provide reliable next-semester guidance.",
+            ownerRole: "ACADEMIC_ADVISER",
+            requiresApproval: true,
+          }]
+        : []),
+      ...(currentRegistrationCount === 0 && student.status === "ACTIVE"
+        ? [{
+            code: "CONFIRM_REGISTRATION",
+            title: "Confirm current-semester registration",
+            reason: "An active student has no current registered course in the available record.",
+            ownerRole: "STUDENT",
+            requiresApproval: false,
+          }]
+        : []),
+    ];
 
     return {
       student: {
@@ -338,6 +388,17 @@ export class AcademicService {
         outstandingCourses: outstanding.length,
         outstandingRequirementGroups,
       },
+      readiness: {
+        status: readinessWarnings.length === 0 ? "READY" : "ATTENTION",
+        warnings: readinessWarnings,
+        evidence: {
+          hasDegreeAudit: Boolean(degreeAudit),
+          hasAcademicPlan: Boolean(academicPlan),
+          hasPublishedResults,
+          currentRegistrationCount,
+        },
+      },
+      nextActions,
       history: student.academicHistory,
       currentCourses: student.courseRegs
         .filter((registration) => registration.status === "REGISTERED")
