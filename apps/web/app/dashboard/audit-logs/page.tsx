@@ -92,17 +92,17 @@ export default function AuditLogsPage() {
 
   return (
     <div className="erp-workspace-page">
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Audit Logs</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
+      <header className="erp-workspace-header">
+        <p className="enterprise-eyebrow">Security and accountability</p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">Audit Logs</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Immutable, append-only record of all system actions. ISO 27001 · NDPR 2019 compliant.
           Retained 7 years. PII fields shown as [ENCRYPTED].
         </p>
-      </div>
+      </header>
 
       {/* ── Filter bar ──────────────────────────────────────────────────────── */}
-      <Card>
+      <Card className="erp-control-rail">
         <CardContent className="pt-4">
           <div className="flex flex-wrap gap-3">
             <div className="min-w-[180px] flex-1">
@@ -168,7 +168,7 @@ export default function AuditLogsPage() {
             const isOpen      = expanded === log.id;
             return (
               <Card key={log.id}
-                className={cn('overflow-hidden transition-all', isSensitive && 'border-amber-200')}>
+                className={cn('erp-data-surface overflow-hidden transition-all', isSensitive && 'border-amber-200')}>
                 <CardContent className="pt-3 pb-3">
                   <button type="button"
                     className="w-full text-left"

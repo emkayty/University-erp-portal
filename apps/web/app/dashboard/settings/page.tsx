@@ -387,15 +387,16 @@ export default function SettingsPage() {
           setPendingFlagToggle(null);
         }}
       />
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">
+      <header className="erp-workspace-header">
+        <p className="enterprise-eyebrow">Institutional governance</p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight">
           University Configuration
-        </h2>
-        <p className="text-sm text-muted-foreground">
+        </h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
           Set institution-wide operating policies. Academic policy changes
           create a new tracked policy version for result records.
         </p>
-      </div>
+      </header>
       {!isSuperAdmin && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           You can review the configuration, but only a Super Administrator can
