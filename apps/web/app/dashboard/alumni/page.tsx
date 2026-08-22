@@ -8,7 +8,7 @@ import {
   useCampaign, useDonateToCampaign, useUpdateAlumniProfile,
 } from '@/hooks/use-alumni';
 import { useAuthStore } from '@/stores/auth.store';
-import { hasEffectiveRole } from '@/lib/authz';
+import { hasEffectiveRole, hasEffectiveScope } from '@/lib/authz';
 import { cn, formatDate } from '@/lib/utils';
 import type { CampaignV1 } from '@uniportal/types';
 
@@ -22,7 +22,7 @@ type Tab = 'campaigns' | 'profile' | 'directory';
 export default function AlumniPage() {
   const user    = useAuthStore((s) => s.user);
   const isAdmin = hasEffectiveRole(user, 'VC', 'SUPER_ADMIN');
-  const isStaff = user?.staffScope?.scopes?.includes('alumni');
+  const isStaff = hasEffectiveScope(user, 'alumni');
 
   const [tab, setTab]               = useState<Tab>('campaigns');
   const [selectedCampaign, setSelC] = useState<string | null>(null);
@@ -102,7 +102,7 @@ export default function AlumniPage() {
         <h2 className="text-xl font-semibold text-foreground">Alumni & Endowment</h2>
         <div className="flex gap-2 flex-wrap">
           {tabs.map((t) => (
-            <button key={t.k} onClick={() => { setTab(t.k); setSelC(null); setErr(''); setMsg(''); }}
+            <button type="button" key={t.k} onClick={() => { setTab(t.k); setSelC(null); setErr(''); setMsg(''); }}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab === t.k ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.l}

@@ -140,7 +140,7 @@ export default function TransportPage() {
         <h2 className="text-xl font-semibold text-foreground">Transport & Logistics</h2>
         <div className="flex gap-2 flex-wrap">
           {tabs.map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k)}
+            <button type="button" key={t.k} onClick={() => setTab(t.k)}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab === t.k ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.l}

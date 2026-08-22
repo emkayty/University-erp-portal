@@ -165,7 +165,7 @@ export default function CalendarPage() {
         {calendars.map((cal) => {
           const cfg = STATUS_CONFIG[cal.status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.DRAFT;
           return (
-            <button
+            <button type="button"
               key={cal.id}
               onClick={() => { setSelected(cal.id); setActionError(''); setShowSuspend(false); setShowAddEvent(false); }}
               className={cn(

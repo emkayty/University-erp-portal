@@ -1142,7 +1142,7 @@ function TodayCard({ role }: { role: RoleName }) {
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
-  const role = user?.primaryRole ?? effectiveRolesOf(user)[0] ?? "STUDENT";
+  const role = effectiveRolesOf(user)[0] ?? "STUDENT";
   const { data: snapshot, isLoading, isError, refetch } = useMyDashboard();
   const copy = ROLE_COPY[role];
   const quickActions = ACTIONS[role];

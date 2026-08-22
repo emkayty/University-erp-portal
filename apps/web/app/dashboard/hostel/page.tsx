@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
+import { hasEffectiveRole } from '@/lib/authz';
 import type { HostelBlockV1, RoomAllocationV1 } from '@uniportal/types';
 
 type HostelRoom = {
@@ -31,9 +32,8 @@ type ActiveAllocation = RoomAllocationV1 & {
 
 export default function HostelPage() {
   const user = useAuthStore((state) => state.user);
-  const effectiveRoles = user?.effectiveRoles?.length ? user.effectiveRoles : (user?.primaryRole ? [user.primaryRole] : []);
-  const isStudent = effectiveRoles.includes('STUDENT');
-  const canManage = effectiveRoles.some((role) => ['REGISTRAR', 'SUPER_ADMIN'].includes(role));
+  const isStudent = hasEffectiveRole(user, 'STUDENT');
+  const canManage = hasEffectiveRole(user, 'REGISTRAR', 'SUPER_ADMIN');
   const [error, setError] = useState('');
   const [academicYear, setAcademicYear] = useState('2025/2026');
   const [selectedBlockId, setSelectedBlockId] = useState('');

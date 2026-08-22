@@ -110,11 +110,11 @@ export default function PayrollPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Payroll</h2>
         <div className="flex gap-2">
-          {canViewRuns && <button onClick={() => setTab('runs')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='runs'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Payroll Runs</button>}
-          {canViewOwnPayslips && <button onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
+          {canViewRuns && <button type="button" onClick={() => setTab('runs')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='runs'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Payroll Runs</button>}
+          {canViewOwnPayslips && <button type="button" onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
             My Payslips
           </button>}
-          {!isStaff && canViewRunPayslips && <button onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
+          {!isStaff && canViewRunPayslips && <button type="button" onClick={() => setTab('payslips')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='payslips'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
             Payslips
           </button>}
         </div>

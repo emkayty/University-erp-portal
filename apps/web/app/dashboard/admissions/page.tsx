@@ -34,6 +34,7 @@ import {
 import { useAuthStore } from "@/stores/auth.store";
 import { useProgrammes } from "@/hooks/use-curriculum";
 import { cn, formatDate } from "@/lib/utils";
+import { effectiveRolesOf } from "@/lib/authz";
 import type { ApplicantV1 } from "@uniportal/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -75,11 +76,7 @@ type CycleForm = z.infer<typeof cycleSchema>;
 
 export default function AdmissionsPage() {
   const user = useAuthStore((s) => s.user);
-  const effectiveRoles = user?.effectiveRoles?.length
-    ? user.effectiveRoles
-    : user?.primaryRole
-      ? [user.primaryRole]
-      : [];
+  const effectiveRoles = effectiveRolesOf(user);
   const canManage = effectiveRoles.some((role) =>
     ["SUPER_ADMIN", "REGISTRAR"].includes(role),
   );
@@ -350,7 +347,7 @@ export default function AdmissionsPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-foreground">Admissions</h2>
         <div className="flex gap-2">
-          <button
+          <button type="button"
             onClick={() => setTab("applications")}
             className={cn(
               "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
@@ -361,7 +358,7 @@ export default function AdmissionsPage() {
           >
             Applications
           </button>
-          <button
+          <button type="button"
             onClick={() => setTab("cycles")}
             className={cn(
               "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
@@ -817,7 +814,7 @@ export default function AdmissionsPage() {
                   {selectedApp.firstName} {selectedApp.lastName} —{" "}
                   {selectedApp.applicationNo}
                 </CardTitle>
-                <button
+                <button type="button"
                   onClick={() => setSelectedApp(null)}
                   className="text-muted-foreground hover:text-foreground text-lg leading-none"
                 >

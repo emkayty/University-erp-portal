@@ -12,7 +12,7 @@ import {
 } from '@/hooks/use-research';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn, formatDate } from '@/lib/utils';
-import { hasEffectiveRole } from '@/lib/authz';
+import { hasEffectiveRole, hasEffectiveScope } from '@/lib/authz';
 import type { MemberRole, ResearchStatus } from '@uniportal/types';
 
 const STATUS_COLORS: Record<ResearchStatus, string> = {
@@ -36,7 +36,7 @@ type Tab = 'projects' | 'summary';
 
 export default function ResearchPage() {
   const user       = useAuthStore((s) => s.user);
-  const isResearch = user?.staffScope?.scopes?.includes('research');
+  const isResearch = hasEffectiveScope(user, 'research');
   const isAdmin = hasEffectiveRole(user, 'REGISTRAR', 'VC', 'SUPER_ADMIN');
   const [tab, setTab]           = useState<Tab>('projects');
   const [selectedId, setSelected] = useState<string | null>(null);
@@ -136,7 +136,7 @@ export default function ResearchPage() {
         <h2 className="text-xl font-semibold text-foreground">Research & Grants</h2>
         <div className="flex gap-2">
           {(['projects', 'summary'] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
+            <button type="button" key={t} onClick={() => setTab(t)}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab === t ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -186,7 +186,7 @@ export default function ResearchPage() {
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {['', 'PENDING', 'ETHICS_REVIEW', 'ACTIVE', 'COMPLETED', 'SUSPENDED', 'CANCELLED'].map((s) => (
-              <button key={s || 'all'} onClick={() => setStatus(s)}
+              <button type="button" key={s || 'all'} onClick={() => setStatus(s)}
                 className={cn('rounded-full px-3 py-1 text-xs font-medium transition-colors',
                   statusFilter === s ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
                 {s || 'All'}

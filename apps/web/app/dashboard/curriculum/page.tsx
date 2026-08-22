@@ -553,7 +553,7 @@ export default function CurriculumPage() {
       {/* Tab bar */}
       <div className="flex gap-1 rounded-lg border border-border bg-muted p-1">
         {NAV.map((n) => (
-          <button
+          <button type="button"
             key={n.id}
             onClick={() => resetNav(n.id)}
             className={cn(
@@ -711,7 +711,7 @@ export default function CurriculumPage() {
         <div className="space-y-3">
           {/* Faculty breadcrumb */}
           {selectedFacId && (
-            <button
+            <button type="button"
               onClick={() => setPanel("faculties")}
               className="text-xs text-muted-foreground hover:text-foreground"
             >
@@ -722,7 +722,7 @@ export default function CurriculumPage() {
           )}
           {/* Filter by faculty */}
           <div className="flex flex-wrap gap-2">
-            <button
+            <button type="button"
               onClick={() => {
                 setSelectedFacId(null);
               }}
@@ -736,7 +736,7 @@ export default function CurriculumPage() {
               All
             </button>
             {faculties.map((f: FacultyV1) => (
-              <button
+              <button type="button"
                 key={f.id}
                 onClick={() => setSelectedFacId(f.id)}
                 className={cn(
@@ -906,7 +906,7 @@ export default function CurriculumPage() {
       {panel === "programmes" && (
         <div className="space-y-3">
           {selectedDeptId && (
-            <button
+            <button type="button"
               onClick={() => setPanel("departments")}
               className="text-xs text-muted-foreground hover:text-foreground"
             >

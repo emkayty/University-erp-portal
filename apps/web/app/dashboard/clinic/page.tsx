@@ -142,7 +142,7 @@ export default function ClinicPage() {
         </div>
         <div className="flex gap-2">
           {tabs.map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k)}
+            <button type="button" key={t.k} onClick={() => setTab(t.k)}
               className={cn(
                 'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab === t.k
@@ -199,7 +199,7 @@ export default function ClinicPage() {
         <div className="space-y-3">
           <div className="flex gap-2 flex-wrap">
             {['', 'SCHEDULED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'].map((s) => (
-              <button key={s || 'all'}
+              <button type="button" key={s || 'all'}
                 onClick={() => { setStatus(s); setErr(''); setMsg(''); }}
                 className={cn(
                   'rounded-full px-3 py-1 text-xs font-medium transition-colors',
@@ -333,7 +333,7 @@ export default function ClinicPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2">
-                          <button
+                          <button type="button"
                             onClick={() => { setStockId(drug.id); setStockQty(''); setErr(''); setMsg(''); }}
                             className="text-xs text-[--color-primary] hover:underline">
                             Adjust

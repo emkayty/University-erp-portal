@@ -71,7 +71,7 @@ export default function HrPage() {
         <h2 className="text-xl font-semibold text-foreground">Human Resources</h2>
         <div className="flex gap-2">
           {[{ key:'staff', label:'Staff' }, { key:'grades', label:'Salary Grades' }, { key:'leave', label:`Leave${leaves.length > 0 ? ` (${leaves.length})` : ''}` }].map((t) => (
-            <button key={t.key} onClick={() => setTab(t.key as typeof tab)}
+            <button type="button" key={t.key} onClick={() => setTab(t.key as typeof tab)}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab===t.key?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.label}
             </button>

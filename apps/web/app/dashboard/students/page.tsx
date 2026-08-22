@@ -255,7 +255,7 @@ export default function StudentsPage() {
         </h2>
         <div className="flex gap-2">
           {["list", "profile", "matriculate"].map((t) => (
-            <button
+            <button type="button"
               key={t}
               onClick={() => setTab(t as typeof tab)}
               className={cn(
@@ -347,7 +347,7 @@ export default function StudentsPage() {
             <strong className="font-mono">{newMatricInfo.tempPwd}</strong> —
             share securely with student
           </p>
-          <button
+          <button type="button"
             onClick={() => setNewMatric(null)}
             className="mt-2 text-xs text-green-600 hover:underline"
           >

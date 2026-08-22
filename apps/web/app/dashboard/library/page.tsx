@@ -68,7 +68,7 @@ export default function LibraryPage() {
         <h2 className="text-xl font-semibold text-foreground">Library</h2>
         <div className="flex gap-2">
           {[{k:'search',l:'Catalogue'},{k:'loans',l:`My Loans (${loans.length})`}, ...(canManageLibrary ? [{ k: 'overdue', l: `Overdue (${overdueLoans.length})` }] : [])].map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k as typeof tab)}
+            <button type="button" key={t.k} onClick={() => setTab(t.k as typeof tab)}
               className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 tab===t.k?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.l}

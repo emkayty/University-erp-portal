@@ -265,7 +265,7 @@ export default function ResultsPage() {
         <h2 className="text-xl font-semibold text-foreground">Results</h2>
         <div className="flex gap-2 flex-wrap">
           {tabs.map((t) => (
-            <button
+            <button type="button"
               key={t.key}
               onClick={() => setTab(t.key as typeof tab)}
               className={cn(

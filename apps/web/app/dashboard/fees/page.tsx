@@ -155,13 +155,13 @@ export default function FeesPage() {
         <h2 className="text-xl font-semibold text-foreground">Fees & Payments</h2>
         <div className="flex gap-2">
           {isStudent && (
-            <button onClick={() => setTab('my')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='my'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>My Fees</button>
+            <button type="button" onClick={() => setTab('my')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='my'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>My Fees</button>
           )}
           {!isStudent && (
-            <button onClick={() => setTab('schedules')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='schedules'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Fee Schedules</button>
+            <button type="button" onClick={() => setTab('schedules')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='schedules'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Fee Schedules</button>
           )}
           {canWaive && (
-            <button onClick={() => setTab('waivers')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='waivers'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
+            <button type="button" onClick={() => setTab('waivers')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='waivers'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>
               Waivers {pendingWaivers.length > 0 && isBursar && <span className="ml-1 rounded-full bg-amber-200 px-1.5 text-xs text-amber-800">{pendingWaivers.length}</span>}
             </button>
           )}

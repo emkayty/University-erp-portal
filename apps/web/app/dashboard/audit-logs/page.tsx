@@ -170,7 +170,7 @@ export default function AuditLogsPage() {
               <Card key={log.id}
                 className={cn('overflow-hidden transition-all', isSensitive && 'border-amber-200')}>
                 <CardContent className="pt-3 pb-3">
-                  <button
+                  <button type="button"
                     className="w-full text-left"
                     onClick={() => setExpanded(isOpen ? null : log.id)}
                     aria-expanded={isOpen}>

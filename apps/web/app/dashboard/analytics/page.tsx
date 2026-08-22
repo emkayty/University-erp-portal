@@ -8,6 +8,7 @@ import { useDataQualitySummary } from '@/hooks/use-intelligence';
 import { useAuthStore } from '@/stores/auth.store';
 import { cn } from '@/lib/utils';
 import { effectiveRolesOf, hasEffectiveRole } from '@/lib/authz';
+import { DataFreshness } from '@/components/dashboard/dashboard-primitives';
 
 // ── Sparkline bar visualisation ───────────────────────────────────────────────
 function MiniBar({ value, max, color = 'bg-[--color-primary]' }: { value: number; max: number; color?: string }) {
@@ -78,32 +79,46 @@ export default function AnalyticsPage() {
 
   const totalStudents  = kpi?.students.total ?? 0;
   const activeStudents = kpi?.students.byStatus.find((s) => s.status === 'ACTIVE')?.count ?? 0;
+  const dashboardLoading = kpiLoading || hodLoading || auditLoading || qualityLoading;
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-semibold text-foreground">Analytics Dashboard</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {kpi?.academicCalendar
-              ? `Academic Year ${kpi.academicCalendar.academicYear} · Status: ${kpi.academicCalendar.status}`
-              : 'No active academic calendar'}
-            {' '}&nbsp;·&nbsp; Refreshes every 60 s
-          </p>
-        </div>
-
-        {visibleTabs.length > 1 && (
-          <div className="flex gap-2 flex-wrap">
-            {visibleTabs.map((t) => (
-              <button key={t.k} onClick={() => setTab(t.k)}
-                className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  tab === t.k ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
-                {t.l}
-              </button>
-            ))}
+      <div className="glass-accent rounded-2xl p-4 sm:p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="enterprise-eyebrow">Decision workspace</p>
+            <h2 className="mt-1 text-xl font-semibold text-foreground">Analytics Dashboard</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {kpi?.academicCalendar
+                ? `Academic Year ${kpi.academicCalendar.academicYear} · Status: ${kpi.academicCalendar.status}`
+                : 'No active academic calendar'}
+              {' '}&nbsp;·&nbsp; Refreshes every 5 min
+            </p>
           </div>
-        )}
+
+          {visibleTabs.length > 1 && (
+            <div className="flex gap-2 flex-wrap">
+              {visibleTabs.map((t) => (
+                <button key={t.k} type="button" onClick={() => setTab(t.k)}
+                  className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    tab === t.k ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <DataFreshness
+            status={dashboardLoading ? 'loading' : 'verified'}
+            label={dashboardLoading ? 'Refreshing authorized analytics' : 'Verified analytics data'}
+            detail="Analytics refreshes every five minutes. Sensitive views remain filtered by your effective role and department scope."
+          />
+          <span className="rounded-full border border-border bg-card/70 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+            Effective view: {role ? role.replace(/_/g, ' ') : 'Authorized role'}
+          </span>
+        </div>
       </div>
 
       {/* ── Institution Overview (VC / super_admin) ───────────────────────── */}

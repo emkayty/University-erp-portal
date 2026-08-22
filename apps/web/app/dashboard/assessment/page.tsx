@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BarChart3, CheckCircle2, CircleAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/erp/confirm-action";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,13 @@ import {
 } from "@/hooks/use-assessment";
 
 const PAGE_SIZE = 50;
+
+const SCORE_BANDS = [
+  { label: "70–100", className: "text-emerald-700 dark:text-emerald-400", match: (score: number) => score >= 70 },
+  { label: "50–69", className: "text-blue-700 dark:text-blue-400", match: (score: number) => score >= 50 && score < 70 },
+  { label: "40–49", className: "text-amber-700 dark:text-amber-400", match: (score: number) => score >= 40 && score < 50 },
+  { label: "0–39", className: "text-red-700 dark:text-red-400", match: (score: number) => score < 40 },
+] as const;
 
 type UploadMode = "VALIDATE_ONLY" | "APPLY";
 
@@ -92,6 +100,20 @@ export default function AssessmentPage() {
   const totalRows = data?.pagination?.total ?? data?.summary.total ?? 0;
   const firstRow = totalRows ? (page - 1) * PAGE_SIZE + 1 : 0;
   const lastRow = totalRows ? Math.min(page * PAGE_SIZE, totalRows) : 0;
+  const visibleScores = rows
+    .map((row) => row.finalScore)
+    .filter((score) => Number.isFinite(score));
+  const visibleAverage = visibleScores.length
+    ? (visibleScores.reduce((sum, score) => sum + score, 0) / visibleScores.length).toFixed(1)
+    : "—";
+  const visibleBandCounts = SCORE_BANDS.map((band) =>
+    visibleScores.filter((score) => band.match(score)).length,
+  );
+  const visibleIncomplete = rows.filter((row) => !row.complete).length;
+  const completionPercent = data?.summary.total
+    ? Math.round((data.summary.complete / data.summary.total) * 100)
+    : 0;
+  const autosaveActive = Boolean(savingMarkKey) || saveMark.isPending;
 
   const load = (event: React.FormEvent) => {
     event.preventDefault();
@@ -378,6 +400,28 @@ export default function AssessmentPage() {
           review the errors and summary, then apply the unchanged file once.
           Finalized marks remain protected.
         </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2" aria-live="polite">
+          <span
+            className={`inline-flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold ${
+              autosaveActive
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
+            }`}
+          >
+            {autosaveActive ? (
+              <CircleAlert className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            )}
+            {autosaveActive
+              ? "Saving latest mark…"
+              : "Autosave ready · changes save on field exit"}
+          </span>
+          <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[--color-primary]/20 bg-[--color-primary]/5 px-3 py-2 text-xs font-medium text-[--color-primary]">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            Audit trail active · finalized marks require controlled amendment
+          </span>
+        </div>
       </header>
 
       {(errorMessage || gradebook.isError) && (
@@ -777,6 +821,50 @@ export default function AssessmentPage() {
             <Metric label="Finalized" value={data.summary.finalized ?? 0} />
             <Metric label="Unfinalized" value={data.summary.unfinalized ?? 0} />
           </div>
+          <Card className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <BarChart3 className="h-4 w-4 text-[--color-primary]" aria-hidden="true" />
+                    Loaded cohort snapshot
+                  </CardTitle>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A quick distribution view of the currently loaded page ({rows.length} of {totalRows.toLocaleString()} roster rows). Full-roster completion remains the source of truth above.
+                  </p>
+                </div>
+                <span className="rounded-full border border-[--color-primary]/20 bg-[--color-primary]/5 px-2.5 py-1 text-xs font-semibold text-[--color-primary]">
+                  Page {page} · {completionPercent}% complete overall
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-4">
+                <Metric label="Visible average" value={visibleAverage} />
+                <Metric label="Visible complete" value={rows.length - visibleIncomplete} />
+                <Metric label="Visible pending" value={visibleIncomplete} />
+                <Metric label="Visible scored" value={visibleScores.length} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Visible score bands">
+                {SCORE_BANDS.map((band, index) => {
+                  const count = visibleBandCounts[index];
+                  const width = visibleScores.length ? Math.round((count / visibleScores.length) * 100) : 0;
+                  return (
+                    <div key={band.label} className="rounded-xl border border-border bg-background/60 p-3">
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className={`font-semibold ${band.className}`}>{band.label}</span>
+                        <span className="font-mono text-muted-foreground">{count}</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                        <div className="h-full rounded-full bg-[--color-primary] transition-[width]" style={{ width: `${width}%` }} />
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{width}% of visible scored rows</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
           {data.assurance && (
             <Card>
               <CardHeader>
@@ -1130,12 +1218,12 @@ function LiveMarkInput({
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <Card>
       <CardContent className="pt-5">
         <p className="text-sm text-muted-foreground">{label}</p>
-        <p className="mt-1 text-2xl font-semibold">{value.toLocaleString()}</p>
+        <p className="mt-1 text-2xl font-semibold">{typeof value === "number" ? value.toLocaleString() : value}</p>
       </CardContent>
     </Card>
   );

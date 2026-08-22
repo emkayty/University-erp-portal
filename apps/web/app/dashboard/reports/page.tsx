@@ -105,7 +105,7 @@ export default function ReportsPage() {
         </div>
         <div className="flex flex-wrap gap-1">
           {TABS.map((t) => (
-            <button key={t.k} onClick={() => setTab(t.k)}
+            <button type="button" key={t.k} onClick={() => setTab(t.k)}
               className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
                 tab === t.k ? 'bg-[--color-primary] text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
               {t.l}
@@ -127,7 +127,7 @@ export default function ReportsPage() {
                 <label className="text-xs font-medium text-muted-foreground uppercase">Report Type</label>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {visibleReportTypes.map((rt) => (
-                    <button key={rt.value}
+                    <button type="button" key={rt.value}
                       onClick={() => setType(rt.value)}
                       className={cn(
                         'rounded-lg border p-3 text-left transition-all',
