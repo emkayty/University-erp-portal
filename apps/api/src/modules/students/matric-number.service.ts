@@ -1,21 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { DirectPrismaService } from '../../database/direct-prisma.service';
+import { Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
 import { buildAdvisoryLockKey } from '@uniportal/utils';
+import { DirectPrismaService } from '../../database/direct-prisma.service';
+import {
+  DEFAULT_MATRIC_NUMBER_FORMAT,
+  renderMatricNumber,
+  renderMatricNumberPrefix,
+  type MatricNumberFormatValues,
+  type MatricNumberSequenceScope,
+} from './matric-number-format';
 
 /**
- * MatricNumberService — generates unique, sequential matric numbers.
+ * Generates institution-configured, unique matriculation numbers.
  *
- * Format:  {DEPT_CODE}/{ADMISSION_YEAR}/{SEQUENCE_5_DIGITS}
- * Example: CSC/2025/00001
+ * Supported format tokens:
+ * {INSTITUTION}, {FACULTY}, {DEPT}, {PROGRAMME}, {YEAR}, {ENTRY_YEAR},
+ * and exactly one trailing sequence token: {SEQ} or {SEQ:05}.
  *
- * M5 FIX (Advisory Lock + PgBouncer):
- * Uses DirectPrismaService (DATABASE_DIRECT_URL) — a non-pooled connection
- * that bypasses PgBouncer. pg_advisory_xact_lock is session-scoped; PgBouncer
- * transaction mode assigns different backend connections per transaction,
- * making advisory locks ineffective on a pooled connection.
- *
- * The lock key is deterministic per (deptCode, year) pair using a separator
- * to prevent hash collisions (M1 fix: "CSC"+"24" ≠ "CS"+"C24").
+ * The generator remains on DirectPrismaService because its advisory lock and
+ * cross-student sequence lookup must not be weakened by a transaction-pooled
+ * connection or row-level security.
  */
 @Injectable()
 export class MatricNumberService {
@@ -23,40 +26,77 @@ export class MatricNumberService {
 
   constructor(private readonly direct: DirectPrismaService) {}
 
-  /**
-   * Generates the next matric number for a department + admission year.
-   * Serialises concurrent calls via PostgreSQL advisory lock.
-   *
-   * @param departmentCode  e.g. "CSC"
-   * @param admissionYear   e.g. "2025" (4-digit start year)
-   */
-  async generate(departmentCode: string, admissionYear: string): Promise<string> {
-    const lockKey = buildAdvisoryLockKey(departmentCode, admissionYear);
-
+  async generate(
+    departmentCode: string,
+    admissionYear: string,
+    context: Partial<Pick<MatricNumberFormatValues, 'institutionCode' | 'facultyCode' | 'programmeCode'>> = {},
+  ): Promise<string> {
     return this.direct.$transaction(async (tx) => {
-      // Acquire advisory lock — blocks all other transactions with same key
-      // until this transaction commits or rolls back
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
-
-      const prefix = `${departmentCode.toUpperCase()}/${admissionYear}`;
-
-      // Count existing students with this dept/year prefix
-      const existing = await tx.student.findMany({
-        where:  { matricNo: { startsWith: prefix } },
-        select: { matricNo: true },
-        orderBy: { matricNo: 'desc' },
-        take:   1,
+      const settings = await tx.institutionSettings.findFirst({
+        select: {
+          institutionCode: true,
+          matricNumberFormat: true,
+          matricNumberSequenceScope: true,
+        },
       });
+      const format = settings?.matricNumberFormat?.trim() || DEFAULT_MATRIC_NUMBER_FORMAT;
+      const sequenceScope = (settings?.matricNumberSequenceScope ?? 'DEPARTMENT_YEAR') as MatricNumberSequenceScope;
+      const values: MatricNumberFormatValues = {
+        institutionCode: normalizeCode(context.institutionCode ?? settings?.institutionCode ?? 'UNI'),
+        facultyCode: normalizeCode(context.facultyCode ?? 'FAC'),
+        departmentCode: normalizeCode(departmentCode),
+        programmeCode: normalizeCode(context.programmeCode ?? departmentCode),
+        admissionYear: normalizeYear(admissionYear),
+      };
 
-      let sequence = 1;
-      if (existing.length > 0 && existing[0]) {
-        const lastSeq = parseInt(existing[0].matricNo.split('/')[2] ?? '0', 10);
-        sequence = lastSeq + 1;
+      let prefixAndPadding: ReturnType<typeof renderMatricNumberPrefix>;
+      try {
+        prefixAndPadding = renderMatricNumberPrefix(format, values);
+      } catch (error) {
+        throw new UnprocessableEntityException({
+          code: 'MATRIC_NUMBER_FORMAT_INVALID',
+          message: error instanceof Error ? error.message : 'The configured matriculation format is invalid.',
+        });
       }
 
-      const matricNo = `${prefix}/${String(sequence).padStart(5, '0')}`;
-      this.logger.log(`Generated matric number: ${matricNo}`);
+      const lockScope = sequenceScope === 'GLOBAL'
+        ? 'GLOBAL'
+        : sequenceScope === 'YEAR'
+          ? values.admissionYear
+          : `${values.departmentCode}/${values.admissionYear}`;
+      const lockKey = buildAdvisoryLockKey('matric-number', lockScope);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey}::bigint)`;
+
+      // The sequence token is required to be the final component. That makes
+      // the prefix query deterministic while allowing the institution to place
+      // its other identifiers in any order before the sequence.
+      const existing = await tx.student.findMany({
+        where: { matricNo: { startsWith: prefixAndPadding.prefix } },
+        select: { matricNo: true },
+        orderBy: { matricNo: 'desc' },
+        take: 250,
+      });
+      const sequence = existing.reduce((highest, student) => {
+        const suffix = student.matricNo.slice(prefixAndPadding.prefix.length);
+        const parsed = /^\d+$/.test(suffix) ? Number(suffix) : 0;
+        return Number.isSafeInteger(parsed) ? Math.max(highest, parsed) : highest;
+      }, 0) + 1;
+      const matricNo = renderMatricNumber(format, values, sequence);
+      if (matricNo.length > 80) {
+        throw new UnprocessableEntityException({ code: 'MATRIC_NUMBER_TOO_LONG', message: 'The configured matriculation format produces an identifier longer than 80 characters.' });
+      }
+      this.logger.log(`Generated configured matric number: ${matricNo}`);
       return matricNo;
     });
   }
+}
+
+function normalizeCode(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 30) || 'X';
+}
+
+function normalizeYear(value: string): string {
+  const normalized = value.trim();
+  if (!/^\d{4}$/.test(normalized)) throw new UnprocessableEntityException('Admission year must be a four-digit year.');
+  return normalized;
 }

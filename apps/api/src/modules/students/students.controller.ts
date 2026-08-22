@@ -6,7 +6,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { StudentStatus } from '@prisma/client';
 import type { JwtPayload } from '@uniportal/types';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { CurrentUser, Roles, StaffScopes } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { RequiresActiveCalendar } from '../../common/guards/calendar.guard';
 import { resolveSelfOrTargetStudentId } from '../../common/resolve-self-or-target';
@@ -33,6 +33,47 @@ export class StudentsController {
   }
 
   // ── Student list / profile ─────────────────────────────────────────────────
+  @Get('directory')
+  @Roles('STAFF', 'SUPPORT_STAFF')
+  @StaffScopes('records')
+  @ApiOperation({ summary: 'List active students for records-scoped staff operations' })
+  @ApiQuery({ name: 'programmeId', required: false })
+  @ApiQuery({ name: 'departmentId', required: false })
+  @ApiQuery({ name: 'level', required: false, type: Number })
+  @ApiQuery({ name: 'search', required: false, description: 'Matric number, name, or email' })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  async directory(
+    @Query('programmeId') programmeId?: string,
+    @Query('departmentId') departmentId?: string,
+    @Query('level', new ParseIntPipe({ optional: true })) level?: number,
+    @Query('search') search?: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page = 1,
+    @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize = 50,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    const result = await this.svc.findAll({
+      status: StudentStatus.ACTIVE,
+      programmeId,
+      departmentId: departmentId ?? user?.staffScope?.deptId,
+      facultyId: user?.staffScope?.facultyId,
+      level,
+      search,
+      page,
+      pageSize: Math.min(pageSize, 200),
+    });
+    return {
+      success: true,
+      data: {
+        students: result.students,
+        total: result.total,
+        page,
+        pageSize: result.pageSize,
+        totalPages: result.totalPages,
+      },
+    };
+  }
+
   @Get()
   @Roles('SUPER_ADMIN', 'REGISTRAR', 'HOD', 'DEAN', 'BURSAR')
   @ApiQuery({ name: 'status',       required: false, enum: StudentStatus })
@@ -41,16 +82,18 @@ export class StudentsController {
   @ApiQuery({ name: 'level',        required: false, type: Number })
   @ApiQuery({ name: 'page',         required: false, type: Number })
   @ApiQuery({ name: 'pageSize',     required: false, type: Number })
+  @ApiQuery({ name: 'search',       required: false, description: 'Matric number, name, or email' })
   async findAll(
     @Query('status')        status?:       StudentStatus,
     @Query('programmeId')   programmeId?:  string,
     @Query('departmentId')  departmentId?: string,
     @Query('level', new ParseIntPipe({ optional: true })) level?: number,
+    @Query('search') search?: string,
     @Query('page',  new ParseIntPipe({ optional: true })) page     = 1,
     @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize = 50,
   ) {
     const result = await this.svc.findAll({
-      status, programmeId, departmentId, level, page,
+      status, programmeId, departmentId, level, search, page,
       pageSize: Math.min(pageSize, 200),
     });
     return {

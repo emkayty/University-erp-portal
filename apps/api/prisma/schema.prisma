@@ -300,6 +300,17 @@ model InstitutionSettings {
   assessmentFinalExamWeight            Decimal @default(60.00) @db.Decimal(5, 2)
   assessmentContinuousAssessmentWeight Decimal @default(40.00) @db.Decimal(5, 2)
   gradePolicyVersion                   Int     @default(1) @db.SmallInt
+  // Matriculation identifiers are institution policy, not application constants.
+  // Supported tokens are documented in MatricNumberService.
+  matricNumberFormat                   String  @default("{DEPT}/{YEAR}/{SEQ:05}") @db.VarChar(120)
+  matricNumberSequenceScope             MatricNumberSequenceScope @default(DEPARTMENT_YEAR)
+  // Identity-card layout can use built-in rendering or approved front/back artwork.
+  identityCardTemplateMode              IdentityCardTemplateMode @default(BUILT_IN)
+  identityCardFrontBackgroundUrl        String? @db.VarChar(500)
+  identityCardBackBackgroundUrl         String? @db.VarChar(500)
+  identityCardPrimaryColor              String  @default("#0056B3") @db.VarChar(7)
+  identityCardAccentColor               String  @default("#C9960C") @db.VarChar(7)
+  identityCardFooterText               String? @db.VarChar(160)
   enableLiveGradebook                  Boolean @default(true)
   requireResultValidation              Boolean @default(true)
   requireAdmissionClearance            Boolean            @default(true)
@@ -315,6 +326,17 @@ model InstitutionSettings {
 }
 
 // FIX M2: Course repeat policy enum
+enum MatricNumberSequenceScope {
+  GLOBAL
+  YEAR
+  DEPARTMENT_YEAR
+}
+
+enum IdentityCardTemplateMode {
+  BUILT_IN
+  EXTERNAL_ARTWORK
+}
+
 enum CourseRepeatPolicy {
   REPLACE // New grade replaces old F (only new grade counts)
   INCLUDE // All attempts included in CGPA denominator
@@ -1738,7 +1760,7 @@ model AcademicSubject {
 // ── Student ────────────────────────────────────────────────────────────────────
 model Student {
   id                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  matricNo               String        @unique @db.VarChar(20)
+  matricNo               String        @unique @db.VarChar(80)
   personId               String        @unique @db.Uuid
   applicantId            String?       @unique @db.Uuid
   userId                 String        @unique @db.Uuid

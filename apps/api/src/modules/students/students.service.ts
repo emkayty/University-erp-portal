@@ -185,7 +185,10 @@ export class StudentsService {
     }
     const admYear     = applicant.applicationNo.slice(0, 4); // First 4 chars = year
     const entryLevel  = dto.entryLevel ?? 100;
-    const matricNo    = await this.matricSvc.generate(department.code, admYear);
+    const matricNo    = await this.matricSvc.generate(department.code, admYear, {
+      facultyCode: department.faculty.code,
+      programmeCode: programme.code,
+    });
 
     // Get active academic calendar for student record
     const calendar = await this.prisma.academicCalendar.findFirst({
@@ -302,14 +305,27 @@ export class StudentsService {
   // ── Find / List ────────────────────────────────────────────────────────────
   async findAll(filters: {
     status?: StudentStatus; programmeId?: string; level?: number;
-    departmentId?: string; page: number; pageSize: number;
+    departmentId?: string; facultyId?: string; search?: string; page: number; pageSize: number;
   }) {
-    const { status, programmeId, level, departmentId, page, pageSize } = filters;
-    const where = {
+    const { status, programmeId, level, departmentId, facultyId, search, page, pageSize } = filters;
+    const normalizedSearch = search?.trim();
+    if (normalizedSearch && normalizedSearch.length > 100) {
+      throw new BadRequestException('Student search must be at most 100 characters.');
+    }
+    const where: Prisma.StudentWhereInput = {
       ...(status       ? { status }       : {}),
       ...(programmeId  ? { programmeId }  : {}),
       ...(level        ? { level }        : {}),
       ...(departmentId ? { departmentId } : {}),
+      ...(facultyId ? { department: { facultyId } } : {}),
+      ...(normalizedSearch ? {
+        OR: [
+          { matricNo: { contains: normalizedSearch, mode: 'insensitive' } },
+          { firstName: { contains: normalizedSearch, mode: 'insensitive' } },
+          { lastName: { contains: normalizedSearch, mode: 'insensitive' } },
+          { email: { contains: normalizedSearch, mode: 'insensitive' } },
+        ],
+      } : {}),
     };
     // Was this.prisma.$transaction([student.findMany(...), student.count(...)])
     // — Prisma's array/batch form. The ambient RLS transaction client
@@ -337,7 +353,18 @@ export class StudentsService {
       take:    pageSize,
     });
     const total = await db.student.count({ where });
-    return { students, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    const normalizedStudents = students.map((student) => ({
+      ...student,
+      programmeName: student.programme.name,
+      programmeCode: student.programme.code,
+      departmentName: student.department.name,
+      departmentCode: student.department.code,
+      // Keep these relation objects for existing consumers while adding the
+      // flattened StudentV1 contract expected by frontend tables and exports.
+      programme: student.programme,
+      department: student.department,
+    }));
+    return { students: normalizedStudents, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   }
 
   async findById(id: string) {

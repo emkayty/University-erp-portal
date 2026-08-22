@@ -187,13 +187,15 @@ async function request<T>(
   return data.data;
 }
 
-async function downloadFile(path: string, baseUrl: string = API_BASE): Promise<{ blob: Blob; filename?: string }> {
+async function downloadFile(path: string, options: { method?: 'GET' | 'POST'; body?: unknown } = {}, baseUrl: string = API_BASE): Promise<{ blob: Blob; filename?: string }> {
   const url = `${baseUrl}/api/v1${path}`;
   const requestId = crypto.randomUUID();
+  const method = options.method ?? 'GET';
   const perform = (token: string | null) => fetch(url, {
-    method: 'GET',
-    headers: { 'X-Request-ID': requestId, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    method,
+    headers: { 'X-Request-ID': requestId, ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     credentials: 'include',
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
   let res: Response;
@@ -244,7 +246,7 @@ export const createApiClient = (baseUrl: string = API_BASE) => ({
   patch: <T>(path: string, body?: unknown, opts?: { idempotencyKey?: string }) => request<T>('PATCH', path, { body, ...opts }, baseUrl),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, { body }, baseUrl),
   delete: <T>(path: string, body?: unknown) => request<T>('DELETE', path, { body }, baseUrl),
-  download: (path: string) => downloadFile(path, baseUrl),
+  download: (path: string, opts?: { method?: 'GET' | 'POST'; body?: unknown }) => downloadFile(path, opts, baseUrl),
 });
 
 export const apiClient = createApiClient();

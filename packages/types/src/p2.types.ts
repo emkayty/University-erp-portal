@@ -11,6 +11,8 @@ export type InstitutionType =
   | "COLLEGE_OF_EDUCATION"
   | "SPECIALIST_INSTITUTION";
 export type CourseRepeatPolicy = "REPLACE" | "INCLUDE" | "BEST";
+export type MatricNumberSequenceScope = "GLOBAL" | "YEAR" | "DEPARTMENT_YEAR";
+export type IdentityCardTemplateMode = "BUILT_IN" | "EXTERNAL_ARTWORK";
 
 export interface SettingsV1 {
   id: string;
@@ -41,6 +43,14 @@ export interface SettingsV1 {
   requireResultValidation: boolean;
   sesRateLimitPerSecond: number;
   resultNotifConcurrency: number;
+  matricNumberFormat: string;
+  matricNumberSequenceScope: MatricNumberSequenceScope;
+  identityCardTemplateMode: IdentityCardTemplateMode;
+  identityCardFrontBackgroundUrl: string | null;
+  identityCardBackBackgroundUrl: string | null;
+  identityCardPrimaryColor: string;
+  identityCardAccentColor: string;
+  identityCardFooterText: string | null;
   updatedAt: string;
 }
 
@@ -70,6 +80,14 @@ export interface UpdateSettingsDto {
   requireResultValidation?: boolean;
   sesRateLimitPerSecond?: number;
   resultNotifConcurrency?: number;
+  matricNumberFormat?: string;
+  matricNumberSequenceScope?: MatricNumberSequenceScope;
+  identityCardTemplateMode?: IdentityCardTemplateMode;
+  identityCardFrontBackgroundUrl?: string;
+  identityCardBackBackgroundUrl?: string;
+  identityCardPrimaryColor?: string;
+  identityCardAccentColor?: string;
+  identityCardFooterText?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -13,6 +13,7 @@ import { DEFAULT_FEATURE_FLAGS, FEATURE_FLAG_KEYS, type FeatureFlagKey } from "@
 import { AuditService } from "../../common/audit/audit.service";
 import { PrismaService } from "../../database/prisma.service";
 import type { UpdateSettingsDto } from "./dto/settings.dto";
+import { validateMatricNumberFormat } from '../students/matric-number-format';
 
 export const SETTINGS_CACHE_KEY = "institution:settings";
 export const FEATURE_FLAG_CACHE = "institution:feature-flags";
@@ -131,6 +132,17 @@ export class SettingsService {
       admissionClearanceEffectiveAt,
       ...settingsData
     } = dto;
+    if (dto.matricNumberFormat !== undefined) {
+      const formatError = validateMatricNumberFormat(dto.matricNumberFormat);
+      if (formatError) throw new BadRequestException(formatError);
+    }
+    for (const field of ['identityCardFrontBackgroundUrl', 'identityCardBackBackgroundUrl'] as const) {
+      const value = dto[field]?.trim();
+      if (value && !isApprovedArtworkReference(value)) {
+        throw new BadRequestException(`${field} must be a relative private-storage key or an HTTPS artwork URL.`);
+      }
+    }
+
     const clearancePolicyChanged =
       settingsData.requireAdmissionClearance !== undefined &&
       settingsData.requireAdmissionClearance !== existing.requireAdmissionClearance;
@@ -306,4 +318,9 @@ export class SettingsService {
       this.cache.del(FEATURE_FLAG_CACHE),
     ]);
   }
+}
+
+function isApprovedArtworkReference(value: string): boolean {
+  if (/^https:\/\/[^\s]+$/i.test(value)) return true;
+  return /^(?!\/)(?!.*\.\.)(?!.*:\/\/)[A-Za-z0-9_./-]+$/.test(value);
 }

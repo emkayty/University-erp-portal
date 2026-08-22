@@ -33,6 +33,15 @@ enum CourseRepeatPolicy {
   INCLUDE = "INCLUDE",
   BEST = "BEST",
 }
+enum MatricNumberSequenceScope {
+  GLOBAL = "GLOBAL",
+  YEAR = "YEAR",
+  DEPARTMENT_YEAR = "DEPARTMENT_YEAR",
+}
+enum IdentityCardTemplateMode {
+  BUILT_IN = "BUILT_IN",
+  EXTERNAL_ARTWORK = "EXTERNAL_ARTWORK",
+}
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional()
@@ -196,6 +205,51 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsEnum(CourseRepeatPolicy)
   courseRepeatPolicy?: CourseRepeatPolicy;
+
+  @ApiPropertyOptional({ description: 'Institution-controlled matriculation format. Tokens: {INSTITUTION}, {FACULTY}, {DEPT}, {PROGRAMME}, {YEAR}, {ENTRY_YEAR}, and one trailing {SEQ} or {SEQ:05}.' })
+  @IsOptional()
+  @IsString()
+  @Length(5, 120)
+  @Matches(/^(?=.{5,120}$)(?:[A-Za-z0-9 ._\-/]|\{(?:INSTITUTION|FACULTY|DEPT|PROGRAMME|YEAR|ENTRY_YEAR|SEQ(?::\d{1,2})?)\})+$/)
+  matricNumberFormat?: string;
+
+  @ApiPropertyOptional({ enum: MatricNumberSequenceScope })
+  @IsOptional()
+  @IsEnum(MatricNumberSequenceScope)
+  matricNumberSequenceScope?: MatricNumberSequenceScope;
+
+  @ApiPropertyOptional({ enum: IdentityCardTemplateMode })
+  @IsOptional()
+  @IsEnum(IdentityCardTemplateMode)
+  identityCardTemplateMode?: IdentityCardTemplateMode;
+
+  @ApiPropertyOptional({ description: 'Approved private-storage key or explicitly allow-listed HTTPS artwork URL.' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  identityCardFrontBackgroundUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Approved private-storage key or explicitly allow-listed HTTPS artwork URL.' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 500)
+  identityCardBackBackgroundUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsHexColor()
+  identityCardPrimaryColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsHexColor()
+  identityCardAccentColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(0, 160)
+  identityCardFooterText?: string;
 
   @ApiPropertyOptional({ minimum: 1, maximum: 500 })
   @IsOptional()

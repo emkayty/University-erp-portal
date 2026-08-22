@@ -70,6 +70,12 @@ export function useIdentityCards(filters?: { holderType?: string; status?: strin
   });
 }
 
+export function useBulkIdentityCardsPdf() {
+  return useMutation({
+    mutationFn: (cardIds: string[]) => apiClient.download('/identity-cards/bulk-pdf', { method: 'POST', body: { cardIds } }),
+  });
+}
+
 export function useIssueIdentityCard() {
   const qc = useQueryClient();
   return useMutation({

@@ -4,11 +4,19 @@ import { createHash, randomBytes } from 'node:crypto';
 import { encryptPii, decryptPii } from '@uniportal/utils';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../database/prisma.service';
+import { SettingsService } from '../settings/settings.service';
+import { BulkIdentityCardPdfDto } from './dto/identity-card-pdf.dto';
+import { IdentityCardPdfService, type CardSettings } from './identity-card-pdf.service';
 import { IdentityCardLifecycleDto, IssueIdentityCardDto } from './dto/identity-card.dto';
 
 @Injectable()
 export class IdentityCardsService {
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly settings: SettingsService,
+    private readonly pdf: IdentityCardPdfService,
+  ) {}
 
   async getMine(userId: string) {
     const card = await this.prisma.identityCard.findFirst({
@@ -38,6 +46,29 @@ export class IdentityCardsService {
       take: 200,
     });
     return cards.map((card) => this.toAuthenticated(card));
+  }
+
+  async bulkPdf(dto: BulkIdentityCardPdfDto, actorId: string) {
+    const cardIds = [...new Set(dto.cardIds)];
+    const cards = await this.prisma.identityCard.findMany({
+      where: { id: { in: cardIds }, status: IdentityCardStatus.ACTIVE },
+      include: this.cardInclude(),
+    });
+    if (cards.length !== cardIds.length) {
+      throw new BadRequestException('Bulk printing accepts only active identity cards; refresh the register and remove unavailable cards.');
+    }
+    const byId = new Map(cards.map((card) => [card.id, card]));
+    const ordered = cardIds.map((id) => byId.get(id)!).filter(Boolean);
+    const settings = await this.settings.getSettings() as CardSettings;
+    const buffer = await this.pdf.render(ordered, settings);
+    const date = new Date().toISOString().slice(0, 10);
+    await this.audit.log({
+      action: AuditAction.EXPORT,
+      targetTable: 'identity_cards',
+      targetId: actorId,
+      metadata: { type: 'IDENTITY_CARD_BULK_PDF', count: ordered.length, layout: 'A4_10_UP_DUPLEX_SHORT_EDGE' },
+    }, actorId);
+    return { buffer, filename: `uniportal-identity-cards-${date}.pdf`, count: ordered.length };
   }
 
   async issue(dto: IssueIdentityCardDto, actorId: string, actorRoles: readonly string[] = []) {

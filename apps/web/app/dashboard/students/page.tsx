@@ -15,6 +15,7 @@ import {
   useMatriculate,
   useStudents,
   useStudent,
+  useStudentDirectory,
   useRegisteredCourses,
   useAcademicHistory,
   useUpdateStudentProfile,
@@ -30,7 +31,7 @@ import {
   useRunProgressionEvaluation,
 } from "@/hooks/use-academic";
 import { cn, formatDate, formatNgn } from "@/lib/utils";
-import { effectiveRolesOf, hasEffectiveRole } from "@/lib/authz";
+import { effectiveRolesOf, hasEffectiveRole, hasEffectiveScope } from "@/lib/authz";
 import type { StudentV1 } from "@uniportal/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +59,7 @@ export default function StudentsPage() {
   const user = useAuthStore((s) => s.user);
   const role = effectiveRolesOf(user)[0] ?? "";
   const canManage = hasEffectiveRole(user, "SUPER_ADMIN", "REGISTRAR");
+  const canRecordsDirectory = hasEffectiveRole(user, "STAFF", "SUPPORT_STAFF") && hasEffectiveScope(user, "records");
   const canRecommendGraduation = hasEffectiveRole(
     user,
     "SUPER_ADMIN",
@@ -76,6 +78,9 @@ export default function StudentsPage() {
 
   const [tab, setTab] = useState<"list" | "profile" | "matriculate">("list");
   const [statusFilter, setStatus] = useState("");
+  const [directorySearch, setDirectorySearch] = useState("");
+  const [directoryLevel, setDirectoryLevel] = useState("");
+  const [directoryPage, setDirectoryPage] = useState(1);
   const [selectedId, setSelId] = useState(
     isStudent ? (user?.studentId ?? "") : (requestedStudentId ?? ""),
   );
@@ -103,10 +108,22 @@ export default function StudentsPage() {
     }
   }, [isStudent, requestedStudentId]);
 
-  const { data: students = [], isLoading } = useStudents({
+  const generalStudents = useStudents({
     status: statusFilter || undefined,
+    search: directorySearch || undefined,
     pageSize: 100,
+    enabled: !canRecordsDirectory && !isStudent,
   });
+  const directoryStudents = useStudentDirectory({
+    search: directorySearch || undefined,
+    level: directoryLevel ? Number(directoryLevel) : undefined,
+    page: directoryPage,
+    pageSize: 50,
+    enabled: canRecordsDirectory,
+  });
+  const students = canRecordsDirectory ? directoryStudents.data?.students ?? [] : generalStudents.data ?? [];
+  const isLoading = canRecordsDirectory ? directoryStudents.isLoading : generalStudents.isLoading;
+  const directoryMeta = directoryStudents.data ? { page: directoryStudents.data.page, totalPages: directoryStudents.data.totalPages, total: directoryStudents.data.total } : null;
   const { data: student } = useStudent(selectedId);
   const { data: courses = [] } = useRegisteredCourses(selectedId);
   const { data: history = [] } = useAcademicHistory(selectedId);
@@ -409,7 +426,9 @@ export default function StudentsPage() {
       {/* ── List tab ─────────────────────────────────────────────────────── */}
       {tab === "list" && (
         <div className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            {canRecordsDirectory && <Input value={directorySearch} onChange={(event) => { setDirectorySearch(event.target.value); setDirectoryPage(1); }} placeholder="Search matric no, name or email" aria-label="Search active students" />}
+            {canRecordsDirectory && <Input type="number" min={100} max={800} step={100} value={directoryLevel} onChange={(event) => { setDirectoryLevel(event.target.value); setDirectoryPage(1); }} placeholder="Level e.g. 300" aria-label="Filter active students by level" className="sm:max-w-44" />}
             <select
               value={statusFilter}
               onChange={(e) => setStatus(e.target.value)}
@@ -431,7 +450,9 @@ export default function StudentsPage() {
             </select>
           </div>
 
-          {isLoading ? (
+          {!canManage && !canRecordsDirectory ? (
+            <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">Student directory access requires an appropriate active records scope.</div>
+          ) : isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="h-10 animate-pulse rounded bg-muted" />
@@ -519,6 +540,7 @@ export default function StudentsPage() {
               </table>
             </div>
           )}
+          {canRecordsDirectory && directoryMeta && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm"><span className="text-muted-foreground">Showing active students · {directoryMeta.total} total · page {directoryMeta.page} of {Math.max(directoryMeta.totalPages, 1)}</span><div className="flex gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setDirectoryPage((page) => Math.max(1, page - 1))} disabled={directoryPage <= 1 || isLoading}>Previous</Button><Button type="button" size="sm" variant="outline" onClick={() => setDirectoryPage((page) => Math.min(directoryMeta.totalPages, page + 1))} disabled={directoryPage >= directoryMeta.totalPages || isLoading}>Next</Button></div></div>}
         </div>
       )}
 

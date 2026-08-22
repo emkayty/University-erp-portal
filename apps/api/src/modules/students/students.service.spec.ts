@@ -196,7 +196,7 @@ describe('StudentsService', () => {
 
     it('generates matric number via MatricNumberService (advisory lock)', async () => {
       await svc.matriculate({ applicantId: 'app-1' }, 'actor');
-      expect(matricSvc.generate).toHaveBeenCalledWith('CSC', '2025');
+      expect(matricSvc.generate).toHaveBeenCalledWith('CSC', '2025', { facultyCode: undefined, programmeCode: 'CSC-BSC' });
     });
 
     it('rejects if applicant status is not ACCEPTED or CLEARANCE', async () => {

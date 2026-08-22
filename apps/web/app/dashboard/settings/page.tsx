@@ -71,6 +71,14 @@ const settingsSchema = z
     mfaMandatoryRoles: z.array(z.string()),
     sesRateLimitPerSecond: z.coerce.number().min(1).max(500),
     resultNotifConcurrency: z.coerce.number().min(1).max(500),
+    matricNumberFormat: z.string().min(5).max(120).regex(/^(?=.{5,120}$)(?:[A-Za-z0-9 ._\-/]|\{(?:INSTITUTION|FACULTY|DEPT|PROGRAMME|YEAR|ENTRY_YEAR|SEQ(?::\d{1,2})?)\})+$/),
+    matricNumberSequenceScope: z.enum(["GLOBAL", "YEAR", "DEPARTMENT_YEAR"]),
+    identityCardTemplateMode: z.enum(["BUILT_IN", "EXTERNAL_ARTWORK"]),
+    identityCardFrontBackgroundUrl: z.string().max(500),
+    identityCardBackBackgroundUrl: z.string().max(500),
+    identityCardPrimaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+    identityCardAccentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+    identityCardFooterText: z.string().max(160),
   })
   .refine((data) => data.feeWaiverCapHodPct < data.feeWaiverCapBursarPct, {
     message: "HOD waiver cap must be lower than Bursar waiver cap",
@@ -252,6 +260,14 @@ export default function SettingsPage() {
       mfaMandatoryRoles: settings.mfaMandatoryRoles,
       sesRateLimitPerSecond: settings.sesRateLimitPerSecond,
       resultNotifConcurrency: settings.resultNotifConcurrency,
+      matricNumberFormat: settings.matricNumberFormat,
+      matricNumberSequenceScope: settings.matricNumberSequenceScope,
+      identityCardTemplateMode: settings.identityCardTemplateMode,
+      identityCardFrontBackgroundUrl: settings.identityCardFrontBackgroundUrl ?? "",
+      identityCardBackBackgroundUrl: settings.identityCardBackBackgroundUrl ?? "",
+      identityCardPrimaryColor: settings.identityCardPrimaryColor ?? "#0056B3",
+      identityCardAccentColor: settings.identityCardAccentColor ?? "#C9960C",
+      identityCardFooterText: settings.identityCardFooterText ?? "",
     });
   }, [settings, form]);
 
@@ -471,6 +487,60 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Identifiers and Identity-Card Design</CardTitle>
+            <CardDescription>
+              Matriculation numbers are issued by policy. Build a trusted template here, or reference approved front/back artwork created in a third-party design tool and uploaded to private object storage.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="matricNumberFormat">Matriculation number format</Label>
+                <Input id="matricNumberFormat" disabled={!isSuperAdmin} error={error("matricNumberFormat")} {...form.register("matricNumberFormat")} />
+                <p className="mt-1 text-xs text-muted-foreground">Tokens: {"{DEPT}"}, {"{PROGRAMME}"}, {"{FACULTY}"}, {"{INSTITUTION}"}, {"{YEAR}"}, and one final {"{SEQ:05}"}.</p>
+              </div>
+              <div>
+                <Label htmlFor="matricNumberSequenceScope">Sequence scope</Label>
+                <select id="matricNumberSequenceScope" disabled={!isSuperAdmin} className={inputClass} {...form.register("matricNumberSequenceScope")}>
+                  <option value="DEPARTMENT_YEAR">Department and admission year</option>
+                  <option value="YEAR">Admission year</option>
+                  <option value="GLOBAL">Institution-wide</option>
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="identityCardTemplateMode">Identity-card template mode</Label>
+                <select id="identityCardTemplateMode" disabled={!isSuperAdmin} className={inputClass} {...form.register("identityCardTemplateMode")}>
+                  <option value="BUILT_IN">Built-in institutional template</option>
+                  <option value="EXTERNAL_ARTWORK">Approved external artwork</option>
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="identityCardFooterText">Card footer / verification note</Label>
+                <Input id="identityCardFooterText" disabled={!isSuperAdmin} error={error("identityCardFooterText")} {...form.register("identityCardFooterText")} />
+              </div>
+              <div>
+                <Label htmlFor="identityCardFrontBackgroundUrl">Front artwork storage key or HTTPS URL</Label>
+                <Input id="identityCardFrontBackgroundUrl" disabled={!isSuperAdmin} error={error("identityCardFrontBackgroundUrl")} {...form.register("identityCardFrontBackgroundUrl")} />
+              </div>
+              <div>
+                <Label htmlFor="identityCardBackBackgroundUrl">Back artwork storage key or HTTPS URL</Label>
+                <Input id="identityCardBackBackgroundUrl" disabled={!isSuperAdmin} error={error("identityCardBackBackgroundUrl")} {...form.register("identityCardBackBackgroundUrl")} />
+              </div>
+              <div>
+                <Label htmlFor="identityCardPrimaryColor">Built-in primary colour</Label>
+                <Input id="identityCardPrimaryColor" disabled={!isSuperAdmin} error={error("identityCardPrimaryColor")} {...form.register("identityCardPrimaryColor")} />
+              </div>
+              <div>
+                <Label htmlFor="identityCardAccentColor">Built-in accent colour</Label>
+                <Input id="identityCardAccentColor" disabled={!isSuperAdmin} error={error("identityCardAccentColor")} {...form.register("identityCardAccentColor")} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">External artwork is optional. The renderer falls back to the built-in layout when artwork is unavailable, and never fetches arbitrary unapproved media. Changing the matriculation format affects future matriculations only.</p>
           </CardContent>
         </Card>
 

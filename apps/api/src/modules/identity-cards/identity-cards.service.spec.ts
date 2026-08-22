@@ -44,7 +44,9 @@ describe('IdentityCardsService response disclosure', () => {
       },
     };
     const audit = { log: jest.fn() };
-    return { service: new IdentityCardsService(prisma as never, audit as never), prisma };
+    const settings = { getSettings: jest.fn() };
+    const pdf = { render: jest.fn() };
+    return { service: new IdentityCardsService(prisma as never, audit as never, settings as never, pdf as never), prisma, settings, pdf };
   }
 
   it('omits verification material from administrative list responses', async () => {
