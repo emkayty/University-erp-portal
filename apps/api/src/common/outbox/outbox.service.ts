@@ -210,7 +210,7 @@ export class OutboxService {
       }
 
       this.logger.debug(`Outbox: enqueued ${events.length} event(s)`);
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
   }
 
   private routeEvent(eventType: string, payload: Record<string, unknown>): { queue: Queue; jobName: string; attempts?: number; repeat?: { every: number }; jobId?: string; forwardPayload?: boolean } {

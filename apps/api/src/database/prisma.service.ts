@@ -188,8 +188,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
    */
   async runSystem<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: {
+      maxWait?: number;
+      timeout?: number;
+      isolationLevel?: Prisma.TransactionIsolationLevel;
+    },
   ): Promise<T> {
-    return this.system.$transaction(async (tx) => fn(tx));
+    return this.system.$transaction(async (tx) => fn(tx), options);
   }
 
   async isHealthy(): Promise<boolean> {
