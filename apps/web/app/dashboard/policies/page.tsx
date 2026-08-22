@@ -353,8 +353,8 @@ export default function UniversityPoliciesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div className="erp-workspace-page mx-auto max-w-7xl">
+      <div className="erp-workspace-header flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <h2 className="text-xl font-semibold">University Policies</h2>
           <p className="text-sm text-muted-foreground">

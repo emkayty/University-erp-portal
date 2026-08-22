@@ -66,8 +66,8 @@ export default function HrPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="erp-workspace-page">
+      <div className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Human Resources</h2>
         <div className="flex gap-2">
           {[{ key:'staff', label:'Staff' }, { key:'grades', label:'Salary Grades' }, { key:'leave', label:`Leave${leaves.length > 0 ? ` (${leaves.length})` : ''}` }].map((t) => (

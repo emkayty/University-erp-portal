@@ -137,7 +137,7 @@ export default function UsersAdminPage() {
 
   if (!canManageUsers) {
     return (
-      <div className="space-y-6">
+      <div className="erp-workspace-page">
         <header>
           <p className="text-sm text-muted-foreground">Delegated authority administration</p>
           <h1 className="text-2xl font-semibold">User Administration</h1>
@@ -216,8 +216,8 @@ export default function UsersAdminPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <header>
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header">
         <p className="text-sm text-muted-foreground">Identity, access lifecycle, segregation of duties, and delegated authority</p>
         <h1 className="text-2xl font-semibold">User Administration</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Every grant, expiry, scope, delegation, and session-remediation action is validated again by the API. Use the least privilege needed for the appointment and record the business reason.</p>

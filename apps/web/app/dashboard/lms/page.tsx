@@ -259,8 +259,8 @@ export default function LmsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <header className="space-y-1">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header space-y-1">
         <h2 className="text-xl font-semibold">Learning</h2>
         <p className="text-sm text-muted-foreground">
           Deliver course materials and announcements from one controlled workspace.

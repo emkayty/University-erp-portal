@@ -88,7 +88,7 @@ export default function PayrollPage() {
 
   if (!canViewPayroll) {
     return (
-      <div className="space-y-4">
+      <div className="erp-workspace-page">
         <header>
           <p className="text-sm text-muted-foreground">Salary processing and payslip services</p>
           <h2 className="text-xl font-semibold text-foreground">Payroll</h2>
@@ -106,8 +106,8 @@ export default function PayrollPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="erp-workspace-page">
+      <div className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-xl font-semibold text-foreground">Payroll</h2>
         <div className="flex gap-2">
           {canViewRuns && <button type="button" onClick={() => setTab('runs')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='runs'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>Payroll Runs</button>}

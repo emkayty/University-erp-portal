@@ -22,7 +22,7 @@ export default function ClearancePage() {
   const canClear = hasEffectiveRole(user, 'SUPER_ADMIN', 'REGISTRAR', 'DEAN', 'HOD', 'BURSAR', 'STAFF', 'SUPPORT_STAFF');
   const canWaive = hasEffectiveRole(user, 'SUPER_ADMIN', 'VC');
 
-  return <div className="space-y-6">
+  return <div className="erp-workspace-page">
     <header><p className="text-sm text-muted-foreground">Graduation and operational readiness</p><h1 className="text-2xl font-semibold">Clearance Workspace</h1><p className="mt-1 text-sm text-muted-foreground">Track each clearance obligation and record decisions with an explicit reason.</p></header>
     {!isStudent && <Card><CardContent className="pt-5"><form onSubmit={(e) => { e.preventDefault(); setStudentId(inputId.trim()); }} className="flex flex-col gap-3 sm:flex-row"><Input value={inputId} onChange={(e) => setInputId(e.target.value)} placeholder="Student UUID" required /><Button type="submit">Load clearance</Button></form></CardContent></Card>}
     {isError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">Unable to load clearance. Confirm the student identifier and your access scope.</div>}

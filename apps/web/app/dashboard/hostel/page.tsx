@@ -98,8 +98,8 @@ export default function HostelPage() {
   const availableRooms = useMemo(() => rooms.filter((room) => room.currentOccupancy < room.capacity), [rooms]);
 
   return (
-    <div className="space-y-6">
-      <header><p className="text-sm text-muted-foreground">Student accommodation capacity, allocation, and vacancy control</p><h1 className="text-2xl font-semibold">Hostel & Accommodation</h1></header>
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header"><p className="text-sm text-muted-foreground">Student accommodation capacity, allocation, and vacancy control</p><h1 className="text-2xl font-semibold">Hostel & Accommodation</h1></header>
       {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">{error}</div>}
 
       <Card className="max-w-xl"><CardHeader className="pb-2"><CardTitle className="text-sm">Academic year</CardTitle></CardHeader><CardContent><input className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={academicYear} onChange={(event) => setAcademicYear(event.target.value)} pattern="\\d{4}/\\d{4}" aria-label="Academic year" /></CardContent></Card>

@@ -373,7 +373,7 @@ export default function SettingsPage() {
     "w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="erp-workspace-page mx-auto max-w-5xl">
       <ConfirmAction
         open={!!pendingFlagToggle}
         title="Enable institution-wide workflow"

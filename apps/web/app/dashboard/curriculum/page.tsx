@@ -528,9 +528,9 @@ export default function CurriculumPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="erp-workspace-page">
       {/* ── Top nav ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="erp-workspace-header flex items-center justify-between">
         <h2 className="text-xl font-semibold text-foreground">
           Curriculum Management
         </h2>

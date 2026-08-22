@@ -40,8 +40,8 @@ export default function SmartOperationsPage() {
   const privileged = hasEffectiveRole(user, "SUPER_ADMIN", "VC", "REGISTRAR");
 
   return (
-    <div className="space-y-6">
-      <header
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header"
         data-alert-route={SMART_ALERTS_ROUTE}
         data-task-route={SMART_TASKS_ROUTE}
       >

@@ -19,8 +19,8 @@ export default function EnterprisePage() {
   const role = useAuthStore((s) => effectiveRolesOf(s.user)[0]);
 
   return (
-    <div className="space-y-6">
-      <header>
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header">
         <h2 className="text-xl font-semibold">Enterprise Operations</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Cross-functional services are separated by business responsibility. Access is still enforced by the API; this page is only a navigation and orientation layer.

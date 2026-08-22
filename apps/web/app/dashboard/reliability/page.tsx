@@ -33,7 +33,7 @@ export default function ReliabilityPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="erp-workspace-page">
       <ConfirmAction
         open={!!pendingReplayId}
         title="Replay dead-lettered event"
@@ -47,7 +47,7 @@ export default function ReliabilityPage() {
           setPendingReplayId(null);
         }}
       />
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="erp-workspace-header flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">BullMQ and transactional outbox operations</p>
           <h1 className="text-2xl font-semibold">Reliability Operations</h1>

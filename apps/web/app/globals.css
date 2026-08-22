@@ -325,10 +325,60 @@
 /* Shared page treatment: preserve information architecture while giving important workspaces the same premium hierarchy. */
 .erp-workspace-page{
   --erp-page-gap: 1.25rem;
+  --erp-page-radius: 1rem;
+  --erp-page-surface: hsl(var(--card));
+  --erp-page-border: hsl(var(--border));
   display: flex;
   flex-direction: column;
   gap: var(--erp-page-gap);
+  min-width: 0;
 }
+.erp-workspace-page > *{min-width:0}
+.erp-workspace-page > header:not(.erp-workspace-header){
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:1rem;
+  padding:0.25rem 0.125rem 0;
+}
+.erp-workspace-page > header:not(.erp-workspace-header) h1,
+.erp-workspace-page > header:not(.erp-workspace-header) h2{
+  margin:0;
+  color:hsl(var(--foreground));
+  font-size:clamp(1.125rem,1.7vw,1.45rem);
+  font-weight:700;
+  letter-spacing:-.02em;
+}
+.erp-workspace-page > header:not(.erp-workspace-header) p{
+  margin:.35rem 0 0;
+  max-width:70ch;
+  color:hsl(var(--muted-foreground));
+  font-size:.875rem;
+  line-height:1.5;
+}
+.erp-workspace-page > .rounded-lg.border,
+.erp-workspace-page > .rounded-xl.border,
+.erp-workspace-page > .rounded-2xl.border,
+.erp-workspace-page > fieldset,
+.erp-workspace-page > form{
+  border-color:var(--erp-page-border);
+  border-radius:var(--erp-page-radius);
+  background:var(--erp-page-surface);
+  box-shadow:0 8px 22px rgba(16,24,40,.045);
+}
+.erp-workspace-page > fieldset{padding:1rem}
+.erp-workspace-page > .overflow-x-auto,
+.erp-workspace-page > .overflow-hidden{border-color:var(--erp-page-border)}
+.erp-workspace-page :where(input,select,textarea):focus-visible{
+  outline:none;
+  box-shadow:var(--erp-focus-ring);
+  border-color:var(--color-primary);
+}
+.erp-workspace-page :where(a,button,[role="button"]):focus-visible{
+  outline:none;
+  box-shadow:var(--erp-focus-ring);
+}
+.erp-workspace-page :where(button,[role="button"]):active{transform:scale(.985)}
 .erp-workspace-header{
   position: relative;
   overflow: hidden;
@@ -373,7 +423,8 @@
 .erp-data-surface.erp-scroll-surface:focus-visible{outline: none; box-shadow: var(--erp-focus-ring)}
 @media(max-width:640px){
   .erp-workspace-header{border-radius: .875rem; padding: 1rem}
-  .erp-workspace-page{--erp-page-gap: 1rem}
+  .erp-workspace-page{--erp-page-gap: 1rem;--erp-page-radius:.875rem}
+  .erp-workspace-page > header:not(.erp-workspace-header){align-items:flex-start;flex-direction:column;gap:.5rem;padding-inline:0}
 }
 
 /* Approved dashboard shell treatment: navy institutional header on mobile, light glass accent on desktop. */

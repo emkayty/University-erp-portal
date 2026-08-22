@@ -95,8 +95,8 @@ export default function ReportsPage() {
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div className="erp-workspace-page">
+      <div className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Reporting & Analytics</h2>
           <p className="text-xs text-muted-foreground mt-0.5">

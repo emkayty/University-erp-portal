@@ -92,8 +92,8 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="enterprise-eyebrow">Personal communication centre</p>
           <h2 className="text-xl font-semibold">Notifications</h2>

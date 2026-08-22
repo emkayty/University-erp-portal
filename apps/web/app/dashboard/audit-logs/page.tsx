@@ -52,7 +52,7 @@ export default function AuditLogsPage() {
 
   if (!canView) {
     return (
-      <div className="space-y-4">
+      <div className="erp-workspace-page">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Audit Logs</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -91,7 +91,7 @@ export default function AuditLogsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="erp-workspace-page">
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-foreground">Audit Logs</h2>
