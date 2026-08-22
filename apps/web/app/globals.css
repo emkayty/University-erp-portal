@@ -404,6 +404,8 @@
 }
 .erp-workspace-header > *{position: relative; z-index: 1}
 .erp-workspace-header h1,.erp-workspace-header h2{letter-spacing: -.02em}
+.erp-workspace-header.erp-greeting-card{display:block;padding:1.5rem 1.75rem}
+.erp-workspace-header.erp-greeting-card > *{min-width:0}
 .erp-control-rail{
   min-width: 0;
   border-color: color-mix(in srgb, var(--color-primary) 18%, hsl(var(--border)));

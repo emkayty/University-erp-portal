@@ -1196,7 +1196,7 @@ export default function DashboardPage() {
 
   return (
     <div className="erp-workspace-page mx-auto w-full max-w-[1440px] pb-10">
-      <header className="erp-greeting-card glass-accent rounded-3xl p-5 sm:p-7">
+      <header className="erp-workspace-header erp-greeting-card">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <div className="flex flex-wrap items-center gap-2">
