@@ -25,8 +25,13 @@
     --radius:            0.5rem;
 
     /* ── Brand ───────────────────────────────────────────────────────────── */
+    /* Default institutional blue: #0056B3. Branding settings may override --color-primary at runtime. */
     --color-primary:       #0056B3;
+    /* Deep navy used by the approved mockup navigation/header surfaces. */
     --color-primary-dark:  #003D80;
+    --color-sidebar-bg:    #062B5C;
+    --color-sidebar-hover: rgba(255, 255, 255, 0.10);
+    --color-sidebar-muted: rgba(255, 255, 255, 0.72);
     --color-accent:        #C9960C;
     --color-success:       #107C10;
     --color-danger:        #C43B2A;
@@ -316,6 +321,32 @@
 }
 @media(max-width:560px){.erp-user-copy{display:none}.erp-topbar{height:58px}.erp-brand{padding-bottom:14px}}
 @media(prefers-reduced-motion:reduce){.erp-sidebar{transition:none}}
+
+/* Approved dashboard shell treatment: navy institutional header on mobile, light glass accent on desktop. */
+.erp-dashboard-topbar{
+  background: linear-gradient(180deg, var(--color-sidebar-bg) 0%, color-mix(in srgb, var(--color-primary-dark) 92%, var(--color-primary) 8%) 100%);
+  border-bottom: 1px solid rgba(255,255,255,.14);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 38, 92, .14);
+}
+.erp-dashboard-mobile-nav{
+  background: color-mix(in srgb, hsl(var(--card)) 94%, transparent);
+  border-top: 1px solid hsl(var(--border));
+  box-shadow: 0 -8px 24px rgba(16,24,40,.10);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+@media(min-width:1024px){
+  .erp-dashboard-topbar{
+    background: color-mix(in srgb, hsl(var(--card)) 94%, transparent);
+    border-bottom-color: hsl(var(--border));
+    color: hsl(var(--foreground));
+    box-shadow: none;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+@media(prefers-reduced-motion:reduce){.erp-dashboard-topbar,.erp-dashboard-mobile-nav{backdrop-filter:none;-webkit-backdrop-filter:none}}
 
 
 .erp-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}

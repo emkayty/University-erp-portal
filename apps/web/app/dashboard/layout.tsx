@@ -554,6 +554,28 @@ export default function DashboardLayout({
       })),
     [groupedNav],
   );
+  const mobileNavItems = useMemo(() => {
+    const preferred = [
+      "/dashboard",
+      "/dashboard/academic",
+      "/dashboard/results",
+      "/dashboard/fees",
+    ] as const;
+    const preferredItems = preferred
+      .map((href) => nav.find((item) => item.href === href))
+      .filter((item): item is (typeof ALL_NAV)[number] => Boolean(item));
+    return preferredItems.length >= 3 ? preferredItems : nav.slice(0, 4);
+  }, [nav]);
+  const mobileMoreActive = Boolean(
+    current && !mobileNavItems.some((item) => item.href === current.href),
+  );
+  const mobileLabel = (href: string, label: string) =>
+    ({
+      "/dashboard": "Home",
+      "/dashboard/academic": "Academic",
+      "/dashboard/results": "Results",
+      "/dashboard/fees": "Fees",
+    })[href] ?? label;
   const title = current?.label ?? "Dashboard";
   const initials = user
     ? getInitials(user.email.split("@")[0]?.replace(/[._-]/g, " ") ?? "")
@@ -596,7 +618,7 @@ export default function DashboardLayout({
       <aside
         id="uniportal-navigation"
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-border bg-card transition-transform duration-200 lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col border-r border-white/10 bg-[--color-sidebar-bg] text-white transition-transform duration-200 lg:translate-x-0",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -606,7 +628,7 @@ export default function DashboardLayout({
             className="flex items-center gap-3"
             aria-label={`${branding?.institutionName ?? "UniPortal ERP"} home`}
           >
-            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[--color-primary] text-xs font-bold text-white shadow-sm">
+            <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white/15 text-xs font-bold text-white shadow-sm ring-1 ring-white/20">
               {branding?.logoUrl ? (
                 <img
                   src={branding.logoUrl}
@@ -621,7 +643,7 @@ export default function DashboardLayout({
               <span className="block max-w-[170px] truncate text-sm font-bold">
                 {branding?.institutionName ?? "UniPortal ERP"}
               </span>
-              <span className="block text-[11px] text-muted-foreground">
+              <span className="block text-[11px] text-white/65">
                 {branding?.institutionType?.replaceAll("_", " ") ??
                   "University workspace"}
               </span>
@@ -640,7 +662,7 @@ export default function DashboardLayout({
           className="flex-1 overflow-y-auto px-3 py-4"
           aria-label="Main navigation"
         >
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-white/55">
             Workspaces
           </p>
           <div className="space-y-3">
@@ -664,9 +686,9 @@ export default function DashboardLayout({
                     type="button"
                     className={cn(
                       "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
-                      groupActive
-                        ? "bg-[--color-primary]/10 text-[--color-primary]"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        groupActive
+                        ? "bg-white/12 text-white"
+                        : "text-white/72 hover:bg-white/10 hover:text-white",
                     )}
                     aria-expanded={isExpanded}
                     aria-controls={`workspace-items-${group.id}`}
@@ -703,7 +725,7 @@ export default function DashboardLayout({
                   {isExpanded && (
                     <ul
                       id={`workspace-items-${group.id}`}
-                      className="mt-1 space-y-1 border-l border-border pl-3"
+                      className="mt-1 space-y-1 border-l border-white/15 pl-3"
                     >
                       {group.items.map((item) => {
                         const active =
@@ -719,9 +741,9 @@ export default function DashboardLayout({
                               aria-current={active ? "page" : undefined}
                               className={cn(
                                 "group flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                                active
-                                  ? "bg-[--color-primary] font-semibold text-white shadow-sm"
-                                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                  active
+                                  ? "bg-[--color-primary] font-semibold text-white shadow-sm ring-1 ring-white/15"
+                                  : "text-white/72 hover:bg-white/10 hover:text-white",
                               )}
                             >
                               <Icon
@@ -744,20 +766,20 @@ export default function DashboardLayout({
           </div>
         </nav>
 
-        <div className="border-t border-border p-3">
-          <div className="flex items-center gap-3 rounded-xl bg-muted/60 p-3">
+        <div className="border-t border-white/10 p-3">
+          <div className="flex items-center gap-3 rounded-xl bg-white/10 p-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[--color-primary]/10 text-xs font-bold text-[--color-primary]">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold">
+                <p className="truncate text-xs font-semibold text-white">
                 {user?.email ?? "—"}
               </p>
-              <p className="truncate text-[11px] text-muted-foreground">
-                {roleLabel(user?.primaryRole ?? effectiveRoles[0])}
+              <p className="truncate text-[11px] text-white/75">
+                {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
               </p>
               {scopeLabel(user?.staffScope) ? (
-                <p className="truncate text-[10px] text-muted-foreground/80">
+                <p className="truncate text-[10px] text-white/60">
                   {scopeLabel(user?.staffScope)}
                 </p>
               ) : null}
@@ -767,7 +789,7 @@ export default function DashboardLayout({
               disabled={loggingOut}
               title="Sign out"
               aria-label="Sign out"
-              className="rounded-lg p-2 text-muted-foreground hover:bg-background hover:text-foreground disabled:opacity-50"
+              className="rounded-lg p-2 text-white/70 hover:bg-white/10 hover:text-white disabled:opacity-50"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -776,9 +798,9 @@ export default function DashboardLayout({
       </aside>
 
       <div className="min-h-screen lg:pl-[280px]">
-        <header className="glass-accent sticky top-0 z-30 flex h-16 items-center gap-3 border-x-0 border-t-0 px-4 sm:px-6">
+        <header className="erp-dashboard-topbar sticky top-0 z-30 flex h-16 items-center gap-3 border-x-0 border-t-0 px-4 sm:px-6">
           <button
-            className="touch-target inline-flex items-center justify-center rounded-lg hover:bg-muted lg:hidden"
+            className="touch-target inline-flex items-center justify-center rounded-lg hover:bg-white/10 lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
             aria-expanded={mobileOpen}
@@ -786,8 +808,24 @@ export default function DashboardLayout({
           >
             <Menu className="h-5 w-5" />
           </button>
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center gap-2 lg:hidden"
+            aria-label={`${branding?.institutionName ?? "UniPortal ERP"} home`}
+          >
+            <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white/15 text-[10px] font-bold text-white ring-1 ring-white/20">
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt="" className="h-full w-full object-contain p-1" />
+              ) : (
+                "UP"
+              )}
+            </span>
+            <span className="hidden max-w-[92px] truncate text-xs font-bold text-white min-[380px]:block">
+              {branding?.institutionName ?? "UniPortal ERP"}
+            </span>
+          </Link>
           <div className="min-w-0 flex-1">
-            <p className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+            <p className="hidden min-w-0 items-center gap-1 text-[11px] text-muted-foreground lg:flex">
               <span className="shrink-0">UniPortal</span>
               <ChevronRight className="h-3 w-3 shrink-0" aria-hidden="true" />
               <span className="truncate">
@@ -803,30 +841,72 @@ export default function DashboardLayout({
                 </>
               ) : null}
             </p>
-            <h1 className="truncate text-sm font-semibold sm:text-base">
+            <h1 className="truncate text-sm font-semibold text-white sm:text-base lg:text-foreground">
               {title}
             </h1>
           </div>
           <DashboardCommandPalette
-            role={user?.primaryRole ?? effectiveRoles[0] ?? "STUDENT"}
+            role={effectiveRoles[0] ?? user?.primaryRole ?? "STUDENT"}
             items={commandItems}
             groups={commandGroups}
           />
           <Link
             href="/dashboard/notifications"
-            className="touch-target inline-flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+            className="touch-target inline-flex items-center justify-center rounded-lg text-white hover:bg-white/10 lg:text-muted-foreground lg:hover:bg-muted"
             aria-label="Open notifications"
           >
             <Bell className="h-5 w-5" aria-hidden="true" />
           </Link>
-          <span className="hidden rounded-full bg-[--color-primary]/10 px-2.5 py-1 text-[11px] font-semibold text-[--color-primary] sm:inline-flex">
-            {roleLabel(user?.primaryRole ?? effectiveRoles[0])}
+          <span className="hidden rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white sm:inline-flex lg:bg-[--color-primary]/10 lg:text-[--color-primary]">
+            {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
           </span>
         </header>
 
-        <main className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
+        <main className="mx-auto w-full max-w-[1600px] p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-8">
           {children}
         </main>
+
+        <nav
+          className="erp-dashboard-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 lg:hidden"
+          aria-label="Mobile navigation"
+        >
+          {mobileNavItems.map((item) => {
+            const active = current?.href === item.href;
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[10px] font-semibold transition-colors",
+                  active
+                    ? "text-[--color-primary]"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="h-5 w-5" aria-hidden="true" />
+                <span className="max-w-full truncate">{mobileLabel(item.href, item.label)}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open more navigation"
+            aria-current={mobileMoreActive ? "page" : undefined}
+            className={cn(
+              "flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[10px] font-semibold transition-colors",
+              mobileMoreActive
+                ? "text-[--color-primary]"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Menu className="h-5 w-5" aria-hidden="true" />
+            <span>More</span>
+          </button>
+        </nav>
       </div>
     </div>
   );
