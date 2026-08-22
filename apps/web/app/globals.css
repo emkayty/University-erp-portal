@@ -334,22 +334,25 @@
   min-width: 0;
 }
 .erp-workspace-page > *{min-width:0}
-.erp-workspace-page > header:not(.erp-workspace-header){
+.erp-greeting-card{display:block;padding:1.5rem 1.75rem}
+.erp-greeting-card > *{min-width:0}
+.erp-greeting-card .enterprise-eyebrow{line-height:1.45}
+.erp-workspace-page > header:not(.erp-workspace-header):not(.erp-greeting-card){
   display:flex;
   align-items:flex-end;
   justify-content:space-between;
   gap:1rem;
   padding:0.25rem 0.125rem 0;
 }
-.erp-workspace-page > header:not(.erp-workspace-header) h1,
-.erp-workspace-page > header:not(.erp-workspace-header) h2{
+.erp-workspace-page > header:not(.erp-workspace-header):not(.erp-greeting-card) h1,
+.erp-workspace-page > header:not(.erp-workspace-header):not(.erp-greeting-card) h2{
   margin:0;
   color:hsl(var(--foreground));
   font-size:clamp(1.125rem,1.7vw,1.45rem);
   font-weight:700;
   letter-spacing:-.02em;
 }
-.erp-workspace-page > header:not(.erp-workspace-header) p{
+.erp-workspace-page > header:not(.erp-workspace-header):not(.erp-greeting-card) p{
   margin:.35rem 0 0;
   max-width:70ch;
   color:hsl(var(--muted-foreground));
@@ -407,6 +410,17 @@
   background: color-mix(in srgb, var(--color-primary) 3%, hsl(var(--card)) 97%);
   box-shadow: 0 8px 22px rgba(16,24,40,.045);
 }
+.erp-clearance-item{
+  border-color: color-mix(in srgb, var(--color-primary) 12%, hsl(var(--border)));
+  background: color-mix(in srgb, var(--color-primary) 2%, hsl(var(--card)) 98%);
+  transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.erp-clearance-item:hover{
+  border-color: color-mix(in srgb, var(--color-primary) 28%, hsl(var(--border)));
+  background: color-mix(in srgb, var(--color-primary) 4%, hsl(var(--card)) 96%);
+  box-shadow: 0 6px 18px rgba(16,24,40,.045);
+}
+.erp-status-pill{font-weight:700;letter-spacing:.02em}
 /* Keep the established card surface contract; opt into scrolling only on table wrappers. */
 .erp-data-surface{
   border-color: hsl(var(--border));
@@ -424,7 +438,8 @@
 @media(max-width:640px){
   .erp-workspace-header{border-radius: .875rem; padding: 1rem}
   .erp-workspace-page{--erp-page-gap: 1rem;--erp-page-radius:.875rem}
-  .erp-workspace-page > header:not(.erp-workspace-header){align-items:flex-start;flex-direction:column;gap:.5rem;padding-inline:0}
+  .erp-workspace-page > header:not(.erp-workspace-header):not(.erp-greeting-card){align-items:flex-start;flex-direction:column;gap:.5rem;padding-inline:0}
+  .erp-greeting-card{border-radius:.875rem;padding:1.25rem}
 }
 
 /* Approved dashboard shell treatment: navy institutional header on mobile, light glass accent on desktop. */
