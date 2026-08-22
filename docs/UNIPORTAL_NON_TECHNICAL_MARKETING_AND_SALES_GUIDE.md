@@ -146,7 +146,7 @@ The dashboard is organized into hierarchical workspaces rather than a flat list 
 
 ### Pillar 4: Configurable institutional identity
 
-The institution can configure branding, policies, feature flags, matriculation-number formats, sequence scope, and identity-card design. Identity cards can use a built-in template or approved external artwork, and active cards can be generated in a controlled five-card-per-A4-sheet-pair duplex PDF workflow.[3]
+The institution can configure branding, policies, feature flags, matriculation-number formats, sequence scope, and identity-card design. Identity cards can use a built-in template or approved external artwork, and active cards can be generated in a controlled one-page A4 PDF workflow with five horizontal front/back card pairs.[3]
 
 **Business value:** the product can look and operate like the institution without hard-coding every institutional decision into the software.
 
@@ -495,11 +495,11 @@ Yes, for future matriculations, through the institution settings path. Supported
 
 ### “Can we use our own identity-card design?”
 
-Yes. The institution can use the built-in branded template or configure approved front/back artwork from controlled storage or an allow-listed host. The bulk renderer supports five ATM-sized ID-1 cards per A4 sheet pair, with matching front and back pages for short-edge duplex printing. The institution should approve artwork and test physical alignment before production card stock.[3]
+Yes. The institution can use the built-in branded template or configure approved front/back artwork from controlled storage or an allow-listed host. The bulk renderer supports five ATM-sized ID-1 front/back pairs per A4 page, with each card’s front and back positioned side-by-side in one of five vertical rows. The institution should approve artwork and test physical alignment before production card stock.[3]
 
 ### “Can we print hundreds of identity cards?”
 
-The current bulk workflow accepts selected active cards in a controlled batch, with an API limit of 500 cards per request. The PDF is designed for five-card-per-A4-sheet-pair duplex printing. Large production runs should be scheduled, monitored, and reconciled with the card register and audit log.
+The current bulk workflow accepts selected active cards in a controlled batch, with an API limit of 500 cards per request. The PDF is designed for five-card front/back-pair printing on one A4 page. Large production runs should be scheduled, monitored, and reconciled with the card register and audit log.
 
 ### “Can staff access all active students?”
 

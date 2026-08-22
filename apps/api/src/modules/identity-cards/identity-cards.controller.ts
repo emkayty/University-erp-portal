@@ -44,7 +44,7 @@ export class IdentityCardsController {
 
   @Post('bulk-pdf')
   @Roles('SUPER_ADMIN', 'REGISTRAR', 'HR_MANAGER')
-  @ApiOperation({ summary: 'Generate a controlled A4 five-up duplex PDF with matching front/back pages for selected active identity cards' })
+  @ApiOperation({ summary: 'Generate a controlled A4 PDF with five horizontal front/back identity-card pairs for selected active identity cards' })
   async bulkPdf(@Body() dto: BulkIdentityCardPdfDto, @CurrentUser() user: JwtPayload, @Res() res: import('express').Response) {
     const result = await this.service.bulkPdf(dto, user.sub);
     res.setHeader('Content-Type', 'application/pdf');

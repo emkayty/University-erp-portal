@@ -41,8 +41,8 @@ function makeCard(index: number) {
   };
 }
 
-describe('IdentityCardPdfService five-up duplex layout', () => {
-  it('creates one front/back A4 pair for five cards', async () => {
+describe('IdentityCardPdfService five-row front/back layout', () => {
+  it('creates one A4 page with five front/back rows for five cards', async () => {
     const service = new IdentityCardPdfService(
       { get: () => 'http://localhost:3000' } as never,
       { presignGet: jest.fn() } as never,
@@ -54,12 +54,11 @@ describe('IdentityCardPdfService five-up duplex layout', () => {
     );
     const pdf = await PDFDocument.load(buffer);
 
-    expect(pdf.getPageCount()).toBe(2);
+    expect(pdf.getPageCount()).toBe(1);
     expect(pdf.getPage(0).getSize()).toMatchObject({ width: 595.28, height: 841.89 });
-    expect(pdf.getPage(1).getSize()).toMatchObject({ width: 595.28, height: 841.89 });
   });
 
-  it('starts a second front/back pair after the fifth card', async () => {
+  it('starts a second A4 page after the fifth card', async () => {
     const service = new IdentityCardPdfService(
       { get: () => 'http://localhost:3000' } as never,
       { presignGet: jest.fn() } as never,
@@ -71,7 +70,7 @@ describe('IdentityCardPdfService five-up duplex layout', () => {
     );
     const pdf = await PDFDocument.load(buffer);
 
-    expect(pdf.getPageCount()).toBe(4);
+    expect(pdf.getPageCount()).toBe(2);
   });
 });
 

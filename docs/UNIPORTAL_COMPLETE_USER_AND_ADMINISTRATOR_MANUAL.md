@@ -574,11 +574,11 @@ Exam marks retain timetable provenance. Absence semantics and exception categori
 4. Select **Download selected PDF**.
 5. Save the returned PDF as a controlled institutional record.
 6. Print on A4 at 100% scale with no fit-to-page adjustment.
-7. Select short-edge duplex printing.
+7. Preserve the A4 page orientation.
 8. Test on plain paper before card stock.
 9. Cut using the card outlines or approved finishing process.
 
-The renderer creates five ID-1/ATM-sized cards per A4 sheet pair. Each sheet pair has one front page with five centered card positions and a matching back page for the same five cards, with mirrored positioning for short-edge duplex printing. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
+The renderer creates five complete ID-1/ATM-sized front/back card pairs on one A4 page. Each row contains the front and matching back side-by-side, producing five vertical rows and ten card faces on the page. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
 
 ### 8.20 Research
 
@@ -805,9 +805,9 @@ The system does not accept arbitrary remote image fetching. An unavailable appro
 
 A card may show the holder name, student matriculation or staff employee identifier, programme or designation, department, card number, serial number, expiry, approved photo, and an opaque QR verification link. The public verification response must not disclose private contact data, address, date of birth, NIN, BVN, or medical details.
 
-### 11.4 A4 five-card duplex print standard
+### 11.4 A4 five-card front/back print standard
 
-The bulk renderer uses ISO/IEC 7810 ID-1 dimensions: 85.60 mm by 53.98 mm. Five cards are arranged as one centered column by five rows on each A4 side. Each batch uses a front page and corresponding back page for the same five cards, with mirrored positioning for short-edge duplex printing. Print at 100% scale, disable fit-to-page, and test alignment before card stock.[6][7]
+The bulk renderer uses ISO/IEC 7810 ID-1 dimensions: 85.60 mm by 53.98 mm. Five cards are arranged in five vertical rows, with each front positioned beside its matching back horizontally. One A4 page therefore contains ten card faces representing five complete cards. Print at 100% scale, disable fit-to-page, preserve page orientation, and test alignment before card stock.[6][7]
 
 ---
 
@@ -1138,7 +1138,7 @@ Confirm timetable, venues, invigilators, candidate generation, attendance covera
 
 ### 18.5 Identity-card print checklist
 
-Confirm the template, approved artwork, current branding, active-card selection, card expiry policy, photo quality, PDF count, A4 settings, short-edge duplex, plain-paper proof, cutting alignment, and audit export record.
+Confirm the template, approved artwork, current branding, active-card selection, card expiry policy, photo quality, PDF count, A4 settings, front/back row alignment, plain-paper proof, cutting alignment, and audit export record.
 
 ### 18.6 Privacy/security checklist
 
