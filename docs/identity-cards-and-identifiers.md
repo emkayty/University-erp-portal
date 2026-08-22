@@ -16,7 +16,7 @@ An institution may create artwork in a third-party design tool and configure app
 
 ## Bulk PDF print specification
 
-Authorized Registrar, Super Admin, and HR Manager users can select active cards in the card register and download a controlled PDF. The PDF uses ISO/IEC 7810 ID-1 dimensions (85.60 mm by 53.98 mm), arranged as **two columns by five rows**, or ten cards per A4 sheet. It creates a front page and a corresponding mirrored back page for each ten-card batch. The back page is mirrored across the columns for short-edge duplex printing.
+Authorized Registrar, Super Admin, and HR Manager users can select active cards in the card register and download a controlled PDF. The PDF uses ISO/IEC 7810 ID-1 dimensions (85.60 mm by 53.98 mm). It creates a front page and a corresponding back page for each **five-card batch**: five centered card positions are printed on the front, and the same five positions are repeated on the back for short-edge duplex printing. Each front/back page pair therefore produces five physical cards.
 
 For reliable physical output, print at 100% scale with no “fit to page” adjustment, use A4 paper, select short-edge duplex, and test alignment with plain paper before using card stock. The API limits one request to 500 active cards and records the export in the audit trail. Revoked, replaced, expired, and suspended cards are not accepted for bulk printing.
 

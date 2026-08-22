@@ -66,7 +66,7 @@ export class IdentityCardsService {
       action: AuditAction.EXPORT,
       targetTable: 'identity_cards',
       targetId: actorId,
-      metadata: { type: 'IDENTITY_CARD_BULK_PDF', count: ordered.length, layout: 'A4_10_UP_DUPLEX_SHORT_EDGE' },
+      metadata: { type: 'IDENTITY_CARD_BULK_PDF', count: ordered.length, layout: 'A4_5_UP_DUPLEX_SHORT_EDGE' },
     }, actorId);
     return { buffer, filename: `uniportal-identity-cards-${date}.pdf`, count: ordered.length };
   }

@@ -95,7 +95,7 @@ The decision is not simply whether the university likes the interface. The decis
 |     4 | Make the executive dashboard tangible.    | Show attention queue, flow, readiness, and governance.                         |
 |     5 | Make the student experience tangible.     | Show readiness, next actions, degree audit, and responsive design.             |
 |     6 | Make large-cohort grading tangible.       | Show authorized offerings, assurance, autosave, CSV, and pagination.           |
-|     7 | Make Registry operations tangible.        | Show active-student access, identifiers, identity cards, and ten-up A4 output. |
+|     7 | Make Registry operations tangible.        | Show active-student access, identifiers, identity cards, and five-card-per-A4-sheet-pair duplex output. |
 |     8 | Explain governance and evidence.          | Connect workflows to policy, audit, authority, and trust.                      |
 |     9 | Summarize institutional outcomes.         | Help each stakeholder identify their value case.                               |
 |    10 | Explain product differentiation.          | Position UniPortal against fragmented or generic systems.                      |
@@ -219,7 +219,7 @@ The decision is not simply whether the university likes the interface. The decis
 1. The active-student directory is records-scoped and shows the current result window, not an unbounded export.
 2. The institution can configure matriculation formats using approved tokens such as institution, faculty, department, programme, year, entry year, and padded sequence.
 3. The identity-card register supports selection of active cards and a controlled A4 PDF workflow.
-4. The preview shows ten ATM/ID-1-size cards per sheet and a mirrored short-edge duplex back page.
+4. The preview represents five ATM/ID-1-size card positions per A4 sheet pair: one front page and one matching back page for the same five cards, prepared for short-edge duplex printing.
 
 **Policy point.** Identifier changes apply to future issuance and should not silently renumber historical students. Artwork, card fields, expiry, and physical printing must be institutionally approved.
 
@@ -316,7 +316,7 @@ The following values are explicitly illustrative:
 | Executive command centre | 6,240 active students; 1,842 applications in review; 87% financial clearance; 94% results ready; 15 gradebooks needing completion; 3 data-quality reviews; 11 fee-waiver requests. |
 | Student journey          | Amina Yusuf; B.Sc. Computer Science; 82% journey readiness; 92 of 120 credits; 6 current courses; CGPA 3.72.                                                                       |
 | Assessment               | CSC 305 Data Structures; 2025/2026; Section A; 347 enrolled; 332 marks saved; 15 need review; 95.7% completeness; 3 review signals; no out-of-range marks.                         |
-| Registry and identity    | Fictional student names, identifiers, programme, level, active-card status, records-scope directory, 2,146 illustrative active-directory total, ten-up A4 ID-1 card preview.       |
+| Registry and identity    | Fictional student names, identifiers, programme, level, active-card status, records-scope directory, 2,146 illustrative active-directory total, five-card-per-A4-sheet-pair ID-1 card preview.       |
 
 ### 5.2 Accuracy rules for a live demo
 
@@ -333,7 +333,7 @@ Before demonstrating with live institutional data, the presenter must:
 
 ### 5.3 What is accurate about the visual design
 
-The mockups use the implemented UniPortal design direction: deep blue primary colour, restrained gold accent, pale-blue surfaces, grouped workspace navigation, role chips, attention cards, responsive presentation, Results Assurance, active-student search, configurable identity-card policy, and a ten-up A4 card-printing concept. The screens are visual demonstrations, not screenshots of a live database or a promise that every displayed sample metric already exists in the current environment.
+The mockups use the implemented UniPortal design direction: deep blue primary colour, restrained gold accent, pale-blue surfaces, grouped workspace navigation, role chips, attention cards, responsive presentation, Results Assurance, active-student search, configurable identity-card policy, and a five-card-per-A4-sheet-pair duplex card-printing concept. The screens are visual demonstrations, not screenshots of a live database or a promise that every displayed sample metric already exists in the current environment.
 
 ### 5.4 What must be verified in the actual software
 

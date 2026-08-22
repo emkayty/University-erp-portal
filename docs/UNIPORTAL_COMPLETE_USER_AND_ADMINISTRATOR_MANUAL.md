@@ -578,7 +578,7 @@ Exam marks retain timetable provenance. Absence semantics and exception categori
 8. Test on plain paper before card stock.
 9. Cut using the card outlines or approved finishing process.
 
-The renderer creates ten ID-1/ATM-sized cards per A4 sheet pair: two columns by five rows, with mirrored back-page positioning for short-edge duplex printing. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
+The renderer creates five ID-1/ATM-sized cards per A4 sheet pair. Each sheet pair has one front page with five centered card positions and a matching back page for the same five cards, with mirrored positioning for short-edge duplex printing. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
 
 ### 8.20 Research
 
@@ -805,9 +805,9 @@ The system does not accept arbitrary remote image fetching. An unavailable appro
 
 A card may show the holder name, student matriculation or staff employee identifier, programme or designation, department, card number, serial number, expiry, approved photo, and an opaque QR verification link. The public verification response must not disclose private contact data, address, date of birth, NIN, BVN, or medical details.
 
-### 11.4 A4 ten-up print standard
+### 11.4 A4 five-card duplex print standard
 
-The bulk renderer uses ISO/IEC 7810 ID-1 dimensions: 85.60 mm by 53.98 mm. Ten cards are arranged on an A4 sheet as two columns by five rows. Each batch uses a front page and corresponding mirrored back page for short-edge duplex printing. Print at 100% scale, disable fit-to-page, use short-edge duplex, and test alignment before card stock.[6][7]
+The bulk renderer uses ISO/IEC 7810 ID-1 dimensions: 85.60 mm by 53.98 mm. Five cards are arranged as one centered column by five rows on each A4 side. Each batch uses a front page and corresponding back page for the same five cards, with mirrored positioning for short-edge duplex printing. Print at 100% scale, disable fit-to-page, and test alignment before card stock.[6][7]
 
 ---
 

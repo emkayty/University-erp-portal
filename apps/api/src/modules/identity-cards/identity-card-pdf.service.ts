@@ -9,10 +9,12 @@ const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
 const CARD_WIDTH = 242.65; // 85.60 mm / ISO/IEC 7810 ID-1
 const CARD_HEIGHT = 152.99; // 53.98 mm / ISO/IEC 7810 ID-1
-const COLUMN_GAP = 5;
+const SHEET_CARD_CAPACITY = 5;
+const CARD_COLUMNS = 1;
+const CARD_ROWS = 5;
 const ROW_GAP = 5;
-const COLUMN_MARGIN = (A4_WIDTH - CARD_WIDTH * 2 - COLUMN_GAP) / 2;
-const ROW_MARGIN = (A4_HEIGHT - CARD_HEIGHT * 5 - ROW_GAP * 4) / 2;
+const COLUMN_MARGIN = (A4_WIDTH - CARD_WIDTH * CARD_COLUMNS) / 2;
+const ROW_MARGIN = (A4_HEIGHT - CARD_HEIGHT * CARD_ROWS - ROW_GAP * (CARD_ROWS - 1)) / 2;
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024;
 const MAX_CARDS = 500;
 
@@ -86,14 +88,14 @@ export class IdentityCardPdfService {
     const media = await this.loadMedia(pdf, renderable, settings);
     const origin = this.resolveFrontendOrigin();
 
-    for (let pageStart = 0; pageStart < renderable.length; pageStart += 10) {
-      const pageCards = renderable.slice(pageStart, pageStart + 10);
+    for (let pageStart = 0; pageStart < renderable.length; pageStart += SHEET_CARD_CAPACITY) {
+      const pageCards = renderable.slice(pageStart, pageStart + SHEET_CARD_CAPACITY);
       const front = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
       pageCards.forEach((card, index) => {
         const position = this.position(index);
         this.drawCard(front, card, position.x, position.y, false, settings, regularFont, boldFont, media, origin);
       });
-      this.drawSheetLabel(front, `FRONT - cards ${pageStart + 1}-${pageStart + pageCards.length}`, regularFont);
+      this.drawSheetLabel(front, `FRONT - cards ${pageStart + 1}-${pageStart + pageCards.length} - 5-up`, regularFont);
 
       const back = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
       pageCards.forEach((card, index) => {
@@ -102,7 +104,7 @@ export class IdentityCardPdfService {
         const mirroredX = A4_WIDTH - position.x - CARD_WIDTH;
         this.drawCard(back, card, mirroredX, position.y, true, settings, regularFont, boldFont, media, origin);
       });
-      this.drawSheetLabel(back, `BACK - cards ${pageStart + 1}-${pageStart + pageCards.length} - flip short edge`, regularFont);
+      this.drawSheetLabel(back, `BACK - cards ${pageStart + 1}-${pageStart + pageCards.length} - 5-up - flip short edge`, regularFont);
     }
 
     return Buffer.from(await pdf.save());
@@ -126,10 +128,10 @@ export class IdentityCardPdfService {
   }
 
   private position(index: number): { x: number; y: number } {
-    const column = index % 2;
-    const row = Math.floor(index / 2);
+    const column = index % CARD_COLUMNS;
+    const row = Math.floor(index / CARD_COLUMNS);
     return {
-      x: COLUMN_MARGIN + column * (CARD_WIDTH + COLUMN_GAP),
+      x: COLUMN_MARGIN + column * CARD_WIDTH,
       y: A4_HEIGHT - ROW_MARGIN - CARD_HEIGHT - row * (CARD_HEIGHT + ROW_GAP),
     };
   }
