@@ -343,10 +343,13 @@ export default function AdmissionsPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-foreground">Admissions</h2>
-        <div className="flex gap-2">
+    <div className="erp-workspace-page space-y-4">
+      <header className="erp-page-header flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">Admissions operations</p>
+          <h2 className="mt-1 text-xl font-semibold text-foreground">Admissions</h2>
+        </div>
+        <div className="erp-control-rail flex gap-2 rounded-xl border p-2">
           <button type="button"
             onClick={() => setTab("applications")}
             className={cn(
@@ -370,7 +373,7 @@ export default function AdmissionsPage() {
             Cycles
           </button>
         </div>
-      </div>
+      </header>
 
       {actionError && (
         <div

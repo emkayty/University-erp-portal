@@ -362,7 +362,7 @@ export default function AssessmentPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="erp-workspace-page space-y-6">
       <ConfirmAction
         open={finalizeConfirmationOpen}
         title="Finalize complete marks"
@@ -388,8 +388,8 @@ export default function AssessmentPage() {
           });
         }}
       />
-      <header>
-        <p className="text-sm text-muted-foreground">
+      <header className="erp-page-header">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">
           Assessment and gradebook control
         </p>
         <h1 className="text-2xl font-semibold">Assessment Workspace</h1>
@@ -442,7 +442,7 @@ export default function AssessmentPage() {
         </div>
       )}
 
-      <Card>
+      <Card className="erp-control-rail">
         <CardContent className="space-y-4 pt-5">
           <form onSubmit={load} className="flex flex-col gap-3 sm:flex-row">
             <label className="sr-only" htmlFor="course-offering-select">
@@ -821,7 +821,7 @@ export default function AssessmentPage() {
             <Metric label="Finalized" value={data.summary.finalized ?? 0} />
             <Metric label="Unfinalized" value={data.summary.unfinalized ?? 0} />
           </div>
-          <Card className="overflow-hidden">
+          <Card className="erp-data-surface overflow-hidden">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -866,7 +866,7 @@ export default function AssessmentPage() {
             </CardContent>
           </Card>
           {data.assurance && (
-            <Card>
+            <Card className="erp-data-surface">
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -898,7 +898,7 @@ export default function AssessmentPage() {
               </CardContent>
             </Card>
           )}
-          <Card>
+          <Card className="erp-data-surface">
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

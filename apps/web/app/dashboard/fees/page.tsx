@@ -150,10 +150,13 @@ export default function FeesPage() {
     parseFloat(fee.amount) - parseFloat(fee.waiverAmount) - parseFloat(fee.amountPaid);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-semibold text-foreground">Fees & Payments</h2>
-        <div className="flex gap-2">
+    <div className="erp-workspace-page space-y-4">
+      <header className="erp-page-header flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">Finance operations</p>
+          <h2 className="mt-1 text-xl font-semibold text-foreground">Fees & Payments</h2>
+        </div>
+        <div className="erp-control-rail flex gap-2 rounded-xl border p-2">
           {isStudent && (
             <button type="button" onClick={() => setTab('my')} className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors', tab==='my'?'bg-[--color-primary] text-white':'bg-muted text-muted-foreground hover:text-foreground')}>My Fees</button>
           )}
@@ -166,7 +169,7 @@ export default function FeesPage() {
             </button>
           )}
         </div>
-      </div>
+      </header>
 
       {actionError && <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-[--color-danger]">{actionError}</div>}
       {actionMsg    && <div role="status" className="rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700 dark:bg-green-950/20">{actionMsg}</div>}

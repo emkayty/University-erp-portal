@@ -30,7 +30,7 @@ function KpiTile({
   label: string; value: string | number; sub?: string; trend?: 'up' | 'down' | 'neutral'; color?: string;
 }) {
   return (
-    <Card>
+    <Card className="erp-data-surface">
       <CardContent className="pt-5 pb-4">
         <p className={cn('text-3xl font-bold tracking-tight', color)}>{value}</p>
         <p className="mt-1 text-xs font-medium text-foreground">{label}</p>
@@ -82,9 +82,9 @@ export default function AnalyticsPage() {
   const dashboardLoading = kpiLoading || hodLoading || auditLoading || qualityLoading;
 
   return (
-    <div className="space-y-4">
+    <div className="erp-workspace-page space-y-4">
       {/* Header */}
-      <div className="glass-accent rounded-2xl p-4 sm:p-5">
+      <div className="erp-page-header glass-accent rounded-2xl p-4 sm:p-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <p className="enterprise-eyebrow">Decision workspace</p>
@@ -98,7 +98,7 @@ export default function AnalyticsPage() {
           </div>
 
           {visibleTabs.length > 1 && (
-            <div className="flex gap-2 flex-wrap">
+            <div className="erp-control-rail flex gap-2 flex-wrap rounded-xl border p-2">
               {visibleTabs.map((t) => (
                 <button key={t.k} type="button" onClick={() => setTab(t.k)}
                   className={cn('rounded-md px-3 py-1.5 text-sm font-medium transition-colors',

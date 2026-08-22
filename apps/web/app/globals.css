@@ -322,6 +322,53 @@
 @media(max-width:560px){.erp-user-copy{display:none}.erp-topbar{height:58px}.erp-brand{padding-bottom:14px}}
 @media(prefers-reduced-motion:reduce){.erp-sidebar{transition:none}}
 
+/* Shared page treatment: preserve information architecture while giving important workspaces the same premium hierarchy. */
+.erp-workspace-page{
+  --erp-page-gap: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--erp-page-gap);
+}
+.erp-page-header{
+  position: relative;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, hsl(var(--card)) 92%), hsl(var(--card)) 68%);
+  box-shadow: 0 12px 30px rgba(16,24,40,.06);
+}
+.erp-page-header::after{
+  content: "";
+  position: absolute;
+  top: -5rem;
+  right: -3rem;
+  width: 12rem;
+  height: 12rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  pointer-events: none;
+}
+.erp-page-header > *{position: relative; z-index: 1}
+.erp-page-header h1,.erp-page-header h2{letter-spacing: -.02em}
+.erp-control-rail{
+  border-color: color-mix(in srgb, var(--color-primary) 18%, hsl(var(--border)));
+  background: color-mix(in srgb, var(--color-primary) 3%, hsl(var(--card)) 97%);
+  box-shadow: 0 8px 22px rgba(16,24,40,.045);
+}
+.erp-data-surface{
+  overflow: hidden;
+  border-color: hsl(var(--border));
+  box-shadow: 0 8px 22px rgba(16,24,40,.045);
+}
+.erp-data-surface thead{background: color-mix(in srgb, var(--color-primary) 6%, hsl(var(--muted)) 94%)}
+.erp-data-surface tbody tr{transition: background-color .16s ease}
+.erp-data-surface tbody tr:hover{background: color-mix(in srgb, var(--color-primary) 4%, transparent)}
+@media(max-width:640px){
+  .erp-page-header{border-radius: .875rem; padding: 1rem}
+  .erp-workspace-page{--erp-page-gap: 1rem}
+}
+
 /* Approved dashboard shell treatment: navy institutional header on mobile, light glass accent on desktop. */
 .erp-dashboard-topbar{
   background: linear-gradient(180deg, var(--color-sidebar-bg) 0%, color-mix(in srgb, var(--color-primary-dark) 92%, var(--color-primary) 8%) 100%);

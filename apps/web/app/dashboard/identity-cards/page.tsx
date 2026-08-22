@@ -125,14 +125,14 @@ export default function IdentityCardsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <header>
+    <div className="erp-workspace-page space-y-6">
+      <header className="erp-page-header">
         <p className="enterprise-eyebrow">Identity and access</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Identity Cards</h2>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">A secure digital credential for everyday access, with a print-ready card surface for institutional hardcopy issuance. Personal data is kept to the minimum needed for verification.</p>
       </header>
 
-      <Card className="enterprise-surface">
+      <Card className="erp-data-surface enterprise-surface">
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -148,7 +148,7 @@ export default function IdentityCardsPage() {
       </Card>
 
       {canAdmin && <>
-        <Card className="enterprise-surface">
+        <Card className="erp-control-rail enterprise-surface">
           <CardHeader><CardTitle>Issue or replace a card</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -161,7 +161,7 @@ export default function IdentityCardsPage() {
           </CardContent>
         </Card>
 
-        <Card className="enterprise-surface">
+        <Card className="erp-data-surface enterprise-surface">
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><CardTitle>Card register</CardTitle><p className="mt-1 text-sm text-muted-foreground">Search and manage issued credentials. Destructive status changes require a reason.</p></div><Input className="sm:max-w-xs" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, ID or card number" aria-label="Search identity cards" /></div>
             <div className="flex flex-wrap items-center gap-2 pt-3"><Button type="button" variant="outline" size="sm" onClick={() => setSelectedCardIds(allActiveSelected ? [] : activeCards.map((card) => card.id))} disabled={!activeCards.length}>{allActiveSelected ? 'Clear active selection' : 'Select all active'}</Button><Button type="button" size="sm" onClick={() => void downloadSelectedCards()} loading={bulkPdf.isPending} disabled={!selectedCardIds.length}>Download selected PDF ({selectedCardIds.length})</Button><p className="text-xs text-muted-foreground">A4 duplex: 10 ATM-size cards per sheet pair; print back pages by flipping on the short edge.</p></div>

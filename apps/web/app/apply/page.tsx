@@ -1294,9 +1294,9 @@ export default function ApplyPage() {
   const selectClass =
     "mt-1 flex min-h-11 w-full rounded-md border bg-background px-3 text-sm";
   return (
-    <main className="min-h-screen bg-muted/30 px-4 py-8 sm:py-10">
+    <main className="erp-public-page min-h-screen bg-muted/30 px-4 py-8 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
+        <header className="erp-page-header rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="enterprise-eyebrow">UniPortal Admissions</p>
@@ -1343,7 +1343,7 @@ export default function ApplyPage() {
           </ol>
         </nav>
         <section
-          className="rounded-lg border bg-muted/30 p-4"
+          className="erp-control-rail rounded-xl border bg-muted/30 p-4"
           aria-labelledby="draft-heading"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -1401,7 +1401,7 @@ export default function ApplyPage() {
             {error}
           </div>
         )}
-        <Card>
+        <Card className="erp-data-surface">
           <CardHeader>
             <CardTitle>Application details</CardTitle>
           </CardHeader>
