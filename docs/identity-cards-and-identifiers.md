@@ -25,3 +25,13 @@ For reliable physical output, print at 100% scale with no “fit to page” adju
 Staff with an effective `records` scope can use the dedicated active-student directory. The server enforces the active status, applies department and faculty scope constraints from the effective authorization context, and supports search by matriculation number, name, or email, level filtering, and pagination. The interface presents only operational student fields and links to the separately authorized profile view; sensitive identifiers such as NIN are not included in the directory response.
 
 Registrar, Super Admin, HOD, Dean, and Bursar workflows continue to use the existing student list permissions. Student self-service does not issue an all-students query.
+
+## References
+
+[1]: https://github.com/Hopding/pdf-lib "pdf-lib — PDF document creation and modification for JavaScript"
+
+[2]: https://github.com/soldair/node-qrcode "node-qrcode — QR code generation for Node.js and browsers"
+
+[3]: https://www.iso.org/standard/70486.html "ISO/IEC 7810:2019 — Identification cards: Physical characteristics"
+
+The renderer uses the document-composition and image-embedding capabilities described in [1], QR generation from [2], and the ID-1 physical dimensions specified by [3].
