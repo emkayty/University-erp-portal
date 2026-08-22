@@ -61,12 +61,25 @@ type Programme = {
   department: { name: string; faculty: { name: string } };
 };
 type ExamAuthority = { id: string; code: string; name: string };
+type ExamIdentifierGuidance = {
+  format: string;
+  hint: string;
+  placeholder: string;
+  inputMode: "text" | "numeric";
+};
+type ExamFormatGuidance = {
+  candidateCategories: string[];
+  candidateNumber: ExamIdentifierGuidance;
+  examinationNumber: ExamIdentifierGuidance;
+  centreNumber: ExamIdentifierGuidance;
+};
 type ExamType = {
   id: string;
   authorityId: string;
   code: string;
   name: string;
   candidateLabel?: string | null;
+  guidance?: ExamFormatGuidance;
 };
 type AdmissionDetails = {
   highestQualification: string;
@@ -174,10 +187,44 @@ const initial: FormState = {
   supportConsentAccepted: false,
 };
 const grades = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+const nigeriaRelationshipOptions = [
+  "Father",
+  "Mother",
+  "Stepfather",
+  "Stepmother",
+  "Guardian",
+  "Grandfather",
+  "Grandmother",
+  "Brother",
+  "Sister",
+  "Uncle",
+  "Aunt",
+  "Cousin",
+  "Spouse",
+  "Child",
+  "Other relative",
+  "Family friend",
+  "Community leader",
+  "Employer",
+  "Sponsor representative",
+  "Other",
+];
 type SittingMeta = {
   authorityId: string;
   examTypeId: string;
   examYear: number;
+  candidateCategory: string;
+  candidateNumber: string;
+  examinationNumber: string;
+  centreNumber: string;
+};
+type OLevelFormRow = {
+  subjectId: string;
+  grade: string;
+  authorityId: string;
+  examTypeId: string;
+  examYear: number;
+  sittingNumber: 1 | 2;
   candidateCategory: string;
   candidateNumber: string;
   examinationNumber: string;
@@ -214,6 +261,52 @@ const emptySittingMeta = (): Record<1 | 2, SittingMeta> => ({
     centreNumber: "",
   },
 });
+
+const defaultExamIdentifierGuidance: ExamIdentifierGuidance = {
+  format: "As printed on the result or certificate",
+  hint: "Enter the identifier exactly as shown. Do not invent separators or remove leading zeroes.",
+  placeholder: "As printed on the result",
+  inputMode: "text",
+};
+
+function examGuidanceForType(type?: ExamType): ExamFormatGuidance {
+  return (
+    type?.guidance ?? {
+      candidateCategories: type?.candidateLabel ? [type.candidateLabel] : [],
+      candidateNumber: defaultExamIdentifierGuidance,
+      examinationNumber: defaultExamIdentifierGuidance,
+      centreNumber: defaultExamIdentifierGuidance,
+    }
+  );
+}
+
+function isRequiredOLevelSubject(subject: Ref) {
+  return (
+    subject.code === "ENG" ||
+    subject.code === "MAT" ||
+    subject.name.trim().toLowerCase() === "english language" ||
+    subject.name.trim().toLowerCase() === "mathematics"
+  );
+}
+
+function makeOLevelFormRow(
+  subjectId: string,
+  sittingNumber: 1 | 2,
+  meta: SittingMeta,
+): OLevelFormRow {
+  return {
+    subjectId,
+    grade: "",
+    authorityId: meta.authorityId,
+    examTypeId: meta.examTypeId,
+    examYear: meta.examYear,
+    sittingNumber,
+    candidateCategory: meta.candidateCategory,
+    candidateNumber: meta.candidateNumber,
+    examinationNumber: meta.examinationNumber,
+    centreNumber: meta.centreNumber,
+  };
+}
 
 export default function ApplyPage() {
   const [cycles, setCycles] = useState<Cycle[]>([]);
@@ -270,7 +363,7 @@ export default function ApplyPage() {
   const [changeReason, setChangeReason] = useState("");
   const [changeStatus, setChangeStatus] = useState("");
   const [changeBusy, setChangeBusy] = useState(false);
-  const [olevel, setOlevel] = useState([
+  const [olevel, setOlevel] = useState<OLevelFormRow[]>([
     {
       subjectId: "",
       grade: "",
@@ -417,6 +510,32 @@ export default function ApplyPage() {
       ).sort(([a], [b]) => a.localeCompare(b)),
     [filteredSubjects],
   );
+  const requiredOLevelSubjects = useMemo(
+    () => subjects.filter(isRequiredOLevelSubject),
+    [subjects],
+  );
+  useEffect(() => {
+    if (!requiredOLevelSubjects.length) return;
+    setOlevel((rows) => {
+      const nextRows = [...rows];
+      const existing = new Set(nextRows.map((row) => row.subjectId).filter(Boolean));
+      const missing = requiredOLevelSubjects.filter(
+        (subject) => !existing.has(subject.id),
+      );
+      if (!missing.length) return rows;
+      const meta = sittingMeta[1];
+      missing.forEach((subject) => {
+        const nextRow = makeOLevelFormRow(subject.id, 1, meta);
+        const blankIndex = nextRows.findIndex(
+          (row) => !row.subjectId && !row.grade,
+        );
+        if (blankIndex >= 0) nextRows[blankIndex] = nextRow;
+        else nextRows.push(nextRow);
+        existing.add(subject.id);
+      });
+      return nextRows;
+    });
+  }, [olevel, requiredOLevelSubjects, sittingMeta]);
   const set = (key: keyof FormState, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
   function updateSittingMeta(
@@ -501,20 +620,13 @@ export default function ApplyPage() {
       return subject && !existing.has(subject.id) ? [subject] : [];
     });
     if (!available.length) return;
+    const sittingNumber = secondSitting ? 2 : 1;
+    const meta = sittingMeta[sittingNumber];
     setOlevel((rows) => [
       ...rows,
-      ...available.map((subject) => ({
-        subjectId: subject.id,
-        grade: "",
-        authorityId: sittingMeta[secondSitting ? 2 : 1].authorityId,
-        examTypeId: sittingMeta[secondSitting ? 2 : 1].examTypeId,
-        examYear: sittingMeta[secondSitting ? 2 : 1].examYear,
-        sittingNumber: secondSitting ? 2 : 1,
-        candidateCategory: sittingMeta[secondSitting ? 2 : 1].candidateCategory,
-        candidateNumber: sittingMeta[secondSitting ? 2 : 1].candidateNumber,
-        examinationNumber: sittingMeta[secondSitting ? 2 : 1].examinationNumber,
-        centreNumber: sittingMeta[secondSitting ? 2 : 1].centreNumber,
-      })),
+      ...available.map((subject) =>
+        makeOLevelFormRow(subject.id, sittingNumber, meta),
+      ),
     ]);
   }
 
@@ -2139,7 +2251,7 @@ export default function ApplyPage() {
                     </div>
                     <div>
                       <Label>Relationship</Label>
-                      <Input
+                      <select
                         value={guardian.relationship}
                         onChange={(e) =>
                           setGuardian((g) => ({
@@ -2147,7 +2259,23 @@ export default function ApplyPage() {
                             relationship: e.target.value,
                           }))
                         }
-                      />
+                        className={selectClass}
+                      >
+                        <option value="">Select relationship</option>
+                        {nigeriaRelationshipOptions.map((relationship) => (
+                          <option key={relationship} value={relationship}>
+                            {relationship}
+                          </option>
+                        ))}
+                        {guardian.relationship &&
+                          !nigeriaRelationshipOptions.includes(
+                            guardian.relationship,
+                          ) && (
+                            <option value={guardian.relationship}>
+                              {guardian.relationship} (saved value)
+                            </option>
+                          )}
+                      </select>
                     </div>
                     <div>
                       <Label>Phone</Label>
@@ -2239,7 +2367,7 @@ export default function ApplyPage() {
                       </div>
                       <div>
                         <Label>Relationship or role</Label>
-                        <Input
+                        <select
                           value={sponsor.relationship}
                           disabled={sponsor.sameAsGuardian}
                           onChange={(e) =>
@@ -2248,8 +2376,23 @@ export default function ApplyPage() {
                               relationship: e.target.value,
                             }))
                           }
-                          placeholder="Parent, employer, scholarship officer…"
-                        />
+                          className={selectClass}
+                        >
+                          <option value="">Select relationship or role</option>
+                          {nigeriaRelationshipOptions.map((relationship) => (
+                            <option key={relationship} value={relationship}>
+                              {relationship}
+                            </option>
+                          ))}
+                          {sponsor.relationship &&
+                            !nigeriaRelationshipOptions.includes(
+                              sponsor.relationship,
+                            ) && (
+                              <option value={sponsor.relationship}>
+                                {sponsor.relationship} (saved value)
+                              </option>
+                            )}
+                        </select>
                       </div>
                       <div>
                         <Label>Phone</Label>
@@ -2337,7 +2480,7 @@ export default function ApplyPage() {
                     </div>
                     <div>
                       <Label>Relationship</Label>
-                      <Input
+                      <select
                         value={emergencyContact.relationship}
                         onChange={(e) =>
                           setEmergencyContact((c) => ({
@@ -2345,7 +2488,23 @@ export default function ApplyPage() {
                             relationship: e.target.value,
                           }))
                         }
-                      />
+                        className={selectClass}
+                      >
+                        <option value="">Select relationship</option>
+                        {nigeriaRelationshipOptions.map((relationship) => (
+                          <option key={relationship} value={relationship}>
+                            {relationship}
+                          </option>
+                        ))}
+                        {emergencyContact.relationship &&
+                          !nigeriaRelationshipOptions.includes(
+                            emergencyContact.relationship,
+                          ) && (
+                            <option value={emergencyContact.relationship}>
+                              {emergencyContact.relationship} (saved value)
+                            </option>
+                          )}
+                      </select>
                     </div>
                     <div>
                       <Label>Phone</Label>
@@ -2784,6 +2943,10 @@ export default function ApplyPage() {
                         const meta = sittingMeta[sittingNumber];
                         const types =
                           examTypesByAuthority[meta.authorityId] ?? [];
+                        const selectedType = types.find(
+                          (type) => type.id === meta.examTypeId,
+                        );
+                        const guidance = examGuidanceForType(selectedType);
                         return (
                           <div
                             key={sittingNumber}
@@ -2810,6 +2973,9 @@ export default function ApplyPage() {
                                       authorityId,
                                       examTypeId: "",
                                       candidateCategory: "",
+                                      candidateNumber: "",
+                                      examinationNumber: "",
+                                      centreNumber: "",
                                     });
                                     loadExamTypes(authorityId);
                                   }}
@@ -2833,6 +2999,10 @@ export default function ApplyPage() {
                                   onChange={(e) =>
                                     updateSittingMeta(sittingNumber, {
                                       examTypeId: e.target.value,
+                                      candidateCategory: "",
+                                      candidateNumber: "",
+                                      examinationNumber: "",
+                                      centreNumber: "",
                                     })
                                   }
                                   className={selectClass}
@@ -2864,18 +3034,47 @@ export default function ApplyPage() {
                               </div>
                               <div>
                                 <Label>Candidate category (optional)</Label>
-                                <Input
+                                <select
                                   value={meta.candidateCategory}
                                   onChange={(e) =>
                                     updateSittingMeta(sittingNumber, {
                                       candidateCategory: e.target.value,
                                     })
                                   }
-                                  placeholder="School candidate, private…"
-                                />
+                                  className={selectClass}
+                                  disabled={!meta.examTypeId}
+                                >
+                                  <option value="">
+                                    {meta.examTypeId
+                                      ? guidance.candidateCategories.length
+                                        ? "Select candidate category"
+                                        : "No category specified"
+                                      : "Select exam type first"}
+                                  </option>
+                                  {guidance.candidateCategories.map((category) => (
+                                    <option key={category} value={category}>
+                                      {category}
+                                    </option>
+                                  ))}
+                                  {meta.candidateCategory &&
+                                    !guidance.candidateCategories.includes(
+                                      meta.candidateCategory,
+                                    ) && (
+                                      <option value={meta.candidateCategory}>
+                                        {meta.candidateCategory} (saved value)
+                                      </option>
+                                    )}
+                                </select>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {selectedType?.candidateLabel
+                                    ? `Recorded as: ${selectedType.candidateLabel}.`
+                                    : "Choose an examination type to see its categories."}
+                                </p>
                               </div>
                               <div>
-                                <Label>Candidate number (optional)</Label>
+                                <Label>
+                                  Candidate number (optional)
+                                </Label>
                                 <Input
                                   value={meta.candidateNumber}
                                   onChange={(e) =>
@@ -2883,11 +3082,25 @@ export default function ApplyPage() {
                                       candidateNumber: e.target.value,
                                     })
                                   }
-                                  placeholder="As printed on result slip"
+                                  placeholder={
+                                    guidance.candidateNumber.placeholder
+                                  }
+                                  inputMode={guidance.candidateNumber.inputMode}
+                                  maxLength={50}
+                                  autoComplete="off"
+                                  aria-describedby={`candidate-number-hint-${sittingNumber}`}
                                 />
+                                <p
+                                  id={`candidate-number-hint-${sittingNumber}`}
+                                  className="mt-1 text-xs leading-5 text-muted-foreground"
+                                >
+                                  {guidance.candidateNumber.format}. {guidance.candidateNumber.hint}
+                                </p>
                               </div>
                               <div>
-                                <Label>Examination number (optional)</Label>
+                                <Label>
+                                  Certificate examination number (optional)
+                                </Label>
                                 <Input
                                   value={meta.examinationNumber}
                                   onChange={(e) =>
@@ -2895,8 +3108,22 @@ export default function ApplyPage() {
                                       examinationNumber: e.target.value,
                                     })
                                   }
-                                  placeholder="Certificate exam number"
+                                  placeholder={
+                                    guidance.examinationNumber.placeholder
+                                  }
+                                  inputMode={
+                                    guidance.examinationNumber.inputMode
+                                  }
+                                  maxLength={50}
+                                  autoComplete="off"
+                                  aria-describedby={`examination-number-hint-${sittingNumber}`}
                                 />
+                                <p
+                                  id={`examination-number-hint-${sittingNumber}`}
+                                  className="mt-1 text-xs leading-5 text-muted-foreground"
+                                >
+                                  {guidance.examinationNumber.format}. {guidance.examinationNumber.hint}
+                                </p>
                               </div>
                               <div className="sm:col-span-2">
                                 <Label>
@@ -2909,8 +3136,18 @@ export default function ApplyPage() {
                                       centreNumber: e.target.value,
                                     })
                                   }
-                                  placeholder="Centre number on the result"
+                                  placeholder={guidance.centreNumber.placeholder}
+                                  inputMode={guidance.centreNumber.inputMode}
+                                  maxLength={50}
+                                  autoComplete="off"
+                                  aria-describedby={`centre-number-hint-${sittingNumber}`}
                                 />
+                                <p
+                                  id={`centre-number-hint-${sittingNumber}`}
+                                  className="mt-1 text-xs leading-5 text-muted-foreground"
+                                >
+                                  {guidance.centreNumber.format}. {guidance.centreNumber.hint}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -2938,44 +3175,65 @@ export default function ApplyPage() {
                       size="sm"
                       onClick={quickAddCommonSubjects}
                     >
-                      Quick-add common subjects to{" "}
+                      Add common subjects to{" "}
                       {secondSitting ? "2nd" : "1st"} sitting
                     </Button>
                     <span className="self-center text-xs text-muted-foreground">
-                      English, Mathematics, sciences, Economics, Government and
-                      Literature when available in the institution catalogue.
+                      English Language and Mathematics are included automatically;
+                      add sciences, Economics, Government and Literature when
+                      available in the institution catalogue.
                     </span>
                   </div>
                   <div className="mt-4 space-y-3">
-                    {olevel.map((row, index) => (
-                      <div
-                        key={`${row.sittingNumber}-${index}`}
-                        className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]"
-                      >
-                        <select
-                          value={row.subjectId}
-                          onChange={(e) =>
-                            setOlevel((rows) =>
-                              rows.map((item, itemIndex) =>
-                                itemIndex === index
-                                  ? { ...item, subjectId: e.target.value }
-                                  : item,
-                              ),
-                            )
-                          }
-                          className={selectClass}
+                    {olevel.map((row, index) => {
+                      const selectedSubject = subjects.find(
+                        (subject) => subject.id === row.subjectId,
+                      );
+                      const isPinnedSubject = selectedSubject
+                        ? isRequiredOLevelSubject(selectedSubject)
+                        : false;
+                      return (
+                        <div
+                          key={`${row.sittingNumber}-${index}`}
+                          className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto]"
                         >
-                          <option value="">Select subject</option>
-                          {groupedSubjects.map(([category, items]) => (
-                            <optgroup key={category} label={category}>
-                              {items.map((subject) => (
-                                <option key={subject.id} value={subject.id}>
-                                  {subject.name}
-                                </option>
+                          <div>
+                            <select
+                              value={row.subjectId}
+                              disabled={isPinnedSubject}
+                              onChange={(e) =>
+                                setOlevel((rows) =>
+                                  rows.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, subjectId: e.target.value }
+                                      : item,
+                                  ),
+                                )
+                              }
+                              className={selectClass}
+                              aria-label={
+                                isPinnedSubject
+                                  ? `${selectedSubject?.name ?? "Required subject"} is required`
+                                  : "Select O-Level subject"
+                              }
+                            >
+                              <option value="">Select subject</option>
+                              {groupedSubjects.map(([category, items]) => (
+                                <optgroup key={category} label={category}>
+                                  {items.map((subject) => (
+                                    <option key={subject.id} value={subject.id}>
+                                      {subject.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
                               ))}
-                            </optgroup>
-                          ))}
-                        </select>
+                            </select>
+                            {isPinnedSubject && (
+                              <p className="mt-1 text-xs text-primary">
+                                Required core subject — enter the grade only.
+                              </p>
+                            )}
+                          </div>
                         <select
                           value={row.grade}
                           onChange={(e) =>
@@ -2994,25 +3252,32 @@ export default function ApplyPage() {
                             <option key={grade}>{grade}</option>
                           ))}
                         </select>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setOlevel((rows) =>
-                              rows.length > 1
-                                ? rows.filter(
-                                    (_, itemIndex) => itemIndex !== index,
-                                  )
-                                : rows,
-                            )
-                          }
-                          aria-label="Remove subject row"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    ))}
+                          {!isPinnedSubject ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                setOlevel((rows) =>
+                                  rows.length > 1
+                                    ? rows.filter(
+                                        (_, itemIndex) => itemIndex !== index,
+                                      )
+                                    : rows,
+                                )
+                              }
+                              aria-label="Remove subject row"
+                            >
+                              Remove
+                            </Button>
+                          ) : (
+                            <span className="self-center text-xs font-medium text-muted-foreground">
+                              Required
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   <Button
                     type="button"

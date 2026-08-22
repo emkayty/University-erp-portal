@@ -64,6 +64,124 @@ const NIN_CONSENT_VERSION = "2026-08-18";
 const SUPPORT_CONSENT_VERSION = "2026-08-18";
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 
+export type PublicExamIdentifierGuidance = {
+  format: string;
+  hint: string;
+  placeholder: string;
+  inputMode: "text" | "numeric";
+};
+
+export type PublicExamFormatGuidance = {
+  candidateCategories: string[];
+  candidateNumber: PublicExamIdentifierGuidance;
+  examinationNumber: PublicExamIdentifierGuidance;
+  centreNumber: PublicExamIdentifierGuidance;
+};
+
+const PRINTED_IDENTIFIER_GUIDANCE: PublicExamIdentifierGuidance = {
+  format: "As printed on the result or certificate",
+  hint: "Enter the identifier exactly as shown. Do not invent separators or remove leading zeroes.",
+  placeholder: "As printed on the result",
+  inputMode: "text",
+};
+
+const WAEC_CANDIDATE_NUMBER_GUIDANCE: PublicExamIdentifierGuidance = {
+  format: "3 digits for the candidate part",
+  hint: "For WAEC results, the candidate part is the final 3 digits of the examination number.",
+  placeholder: "e.g. 001",
+  inputMode: "numeric",
+};
+
+const WAEC_EXAMINATION_NUMBER_GUIDANCE: PublicExamIdentifierGuidance = {
+  format: "10 digits from 1999; 8 digits before 1999",
+  hint: "WAEC describes the examination number as centre number plus candidate number: 7 + 3 digits from 1999, or 5 + 3 digits before 1999.",
+  placeholder: "e.g. 4123456789",
+  inputMode: "numeric",
+};
+
+const WAEC_CENTRE_NUMBER_GUIDANCE: PublicExamIdentifierGuidance = {
+  format: "7 digits from 1999; 5 digits before 1999",
+  hint: "Enter the centre portion exactly as printed on the WAEC record; historical records may use the shorter pre-1999 form.",
+  placeholder: "e.g. 4123456",
+  inputMode: "numeric",
+};
+
+const NABTEB_CANDIDATE_NUMBER_GUIDANCE: PublicExamIdentifierGuidance = {
+  format: "Usually 8 digits; confirm against the result",
+  hint: "NABTEB publishes an 8-digit candidate-identification example, but the result document is the source of truth for the submitted value.",
+  placeholder: "e.g. 38001178",
+  inputMode: "numeric",
+};
+
+const EXAM_FORMAT_GUIDANCE: Record<
+  string,
+  PublicExamFormatGuidance
+> = {
+  "WAEC:WASSCE_SCHOOL": {
+    candidateCategories: ["School Candidate"],
+    candidateNumber: WAEC_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: WAEC_EXAMINATION_NUMBER_GUIDANCE,
+    centreNumber: WAEC_CENTRE_NUMBER_GUIDANCE,
+  },
+  "WAEC:WASSCE_PRIVATE": {
+    candidateCategories: ["Private Candidate"],
+    candidateNumber: WAEC_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: WAEC_EXAMINATION_NUMBER_GUIDANCE,
+    centreNumber: WAEC_CENTRE_NUMBER_GUIDANCE,
+  },
+  "NECO:SSCE_INTERNAL": {
+    candidateCategories: ["Internal / School Candidate"],
+    candidateNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    examinationNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+  "NECO:SSCE_EXTERNAL": {
+    candidateCategories: ["External / Private Candidate"],
+    candidateNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    examinationNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+  "NABTEB:NTC": {
+    candidateCategories: ["Candidate"],
+    candidateNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+  "NABTEB:NBC": {
+    candidateCategories: ["Candidate"],
+    candidateNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+  "NABTEB:ANTC": {
+    candidateCategories: ["Candidate"],
+    candidateNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+  "NABTEB:ANBC": {
+    candidateCategories: ["Candidate"],
+    candidateNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    examinationNumber: NABTEB_CANDIDATE_NUMBER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  },
+};
+
+export function getPublicExamFormatGuidance(
+  authorityCode: string,
+  examTypeCode: string,
+  candidateLabel?: string | null,
+): PublicExamFormatGuidance {
+  const configured = EXAM_FORMAT_GUIDANCE[`${authorityCode}:${examTypeCode}`];
+  if (configured) return configured;
+  return {
+    candidateCategories: candidateLabel ? [candidateLabel] : [],
+    candidateNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    examinationNumber: PRINTED_IDENTIFIER_GUIDANCE,
+    centreNumber: PRINTED_IDENTIFIER_GUIDANCE,
+  };
+}
+
 type PreSubmitPhotoProof = {
   idempotencyKey: string;
   key: string;
@@ -476,7 +594,11 @@ export class AdmissionsService {
   }
 
   async listReferenceExamTypes(authorityId: string) {
-    return this.prisma.examinationType.findMany({
+    const authority = await this.prisma.examinationAuthority.findUnique({
+      where: { id: authorityId },
+      select: { code: true },
+    });
+    const types = await this.prisma.examinationType.findMany({
       where: { authorityId, isActive: true },
       orderBy: { name: "asc" },
       select: {
@@ -487,6 +609,14 @@ export class AdmissionsService {
         candidateLabel: true,
       },
     });
+    return types.map((type) => ({
+      ...type,
+      guidance: getPublicExamFormatGuidance(
+        authority?.code ?? "",
+        type.code,
+        type.candidateLabel,
+      ),
+    }));
   }
 
   async listReferenceSubjects() {
