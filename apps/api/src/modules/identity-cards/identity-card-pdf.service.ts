@@ -13,6 +13,8 @@ const SHEET_CARD_CAPACITY = 5;
 const CARD_ROWS = 5;
 const COLUMN_GAP = 5;
 const ROW_GAP = 5;
+const CUT_GUIDE_OFFSET = 2.5;
+const CUT_MARK_LENGTH = 7;
 const COLUMN_MARGIN = (A4_WIDTH - CARD_WIDTH * 2 - COLUMN_GAP) / 2;
 const ROW_MARGIN = (A4_HEIGHT - CARD_HEIGHT * CARD_ROWS - ROW_GAP * (CARD_ROWS - 1)) / 2;
 const MAX_MEDIA_BYTES = 2 * 1024 * 1024;
@@ -93,8 +95,11 @@ export class IdentityCardPdfService {
       const page = pdf.addPage([A4_WIDTH, A4_HEIGHT]);
       pageCards.forEach((card, index) => {
         const position = this.position(index);
+        const backX = position.x + CARD_WIDTH + COLUMN_GAP;
         this.drawCard(page, card, position.x, position.y, false, settings, regularFont, boldFont, media, origin);
-        this.drawCard(page, card, position.x + CARD_WIDTH + COLUMN_GAP, position.y, true, settings, regularFont, boldFont, media, origin);
+        this.drawCard(page, card, backX, position.y, true, settings, regularFont, boldFont, media, origin);
+        this.drawCutGuides(page, position.x, position.y);
+        this.drawCutGuides(page, backX, position.y);
       });
       this.drawSheetLabel(page, `FRONT + BACK - cards ${pageStart + 1}-${pageStart + pageCards.length} - 5 rows`, regularFont);
     }
@@ -129,6 +134,27 @@ export class IdentityCardPdfService {
 
   private drawSheetLabel(page: PDFPage, label: string, font: Awaited<ReturnType<PDFDocument['embedFont']>>): void {
     page.drawText(label, { x: 12, y: 8, size: 5.5, font, color: rgb(0.35, 0.35, 0.35) });
+  }
+
+  private drawCutGuides(page: PDFPage, x: number, y: number): void {
+    const guideColor = rgb(0.48, 0.55, 0.64);
+    const guideX = x - CUT_GUIDE_OFFSET;
+    const guideY = y - CUT_GUIDE_OFFSET;
+    const guideWidth = CARD_WIDTH + CUT_GUIDE_OFFSET * 2;
+    const guideHeight = CARD_HEIGHT + CUT_GUIDE_OFFSET * 2;
+    page.drawRectangle({ x: guideX, y: guideY, width: guideWidth, height: guideHeight, borderColor: guideColor, borderWidth: 0.45, opacity: 0.85 });
+
+    const mark = CUT_MARK_LENGTH;
+    const top = guideY + guideHeight;
+    const right = guideX + guideWidth;
+    page.drawLine({ start: { x: guideX - mark, y: top }, end: { x: guideX, y: top }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: guideX, y: top }, end: { x: guideX, y: top + mark }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: right, y: top }, end: { x: right + mark, y: top }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: right, y: top }, end: { x: right, y: top + mark }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: guideX - mark, y: guideY }, end: { x: guideX, y: guideY }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: guideX, y: guideY - mark }, end: { x: guideX, y: guideY }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: right, y: guideY }, end: { x: right + mark, y: guideY }, thickness: 0.6, color: guideColor, opacity: 0.9 });
+    page.drawLine({ start: { x: right, y: guideY - mark }, end: { x: right, y: guideY }, thickness: 0.6, color: guideColor, opacity: 0.9 });
   }
 
   private drawCard(

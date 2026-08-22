@@ -578,7 +578,7 @@ Exam marks retain timetable provenance. Absence semantics and exception categori
 8. Test on plain paper before card stock.
 9. Cut using the card outlines or approved finishing process.
 
-The renderer creates five complete ID-1/ATM-sized front/back card pairs on one A4 page. Each row contains the front and matching back side-by-side, producing five vertical rows and ten card faces on the page. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
+The renderer creates five complete ID-1/ATM-sized front/back card pairs on one A4 page. Each row contains the front and matching back side-by-side, producing five vertical rows and ten card faces on the page. Light cut-boundary boxes and corner crop marks surround every face to support clean trimming. Student fields come from the Student record, while staff fields come from the Staff record; the card-specific number, serial, expiry, artwork, and verification data come from the IdentityCard and InstitutionSettings records. The API accepts only active cards and limits a batch to 500 cards. Suspended, expired, revoked, or replaced cards are not accepted for bulk printing.[6]
 
 ### 8.20 Research
 
@@ -1138,7 +1138,7 @@ Confirm timetable, venues, invigilators, candidate generation, attendance covera
 
 ### 18.5 Identity-card print checklist
 
-Confirm the template, approved artwork, current branding, active-card selection, card expiry policy, photo quality, PDF count, A4 settings, front/back row alignment, plain-paper proof, cutting alignment, and audit export record.
+Confirm the template, approved artwork, current branding, active-card selection, card expiry policy, photo quality, PDF count, A4 settings, front/back row alignment, cut-boundary visibility, plain-paper proof, cutting alignment, and audit export record.
 
 ### 18.6 Privacy/security checklist
 
