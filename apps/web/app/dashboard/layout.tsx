@@ -564,7 +564,10 @@ export default function DashboardLayout({
     const preferredItems = preferred
       .map((href) => nav.find((item) => item.href === href))
       .filter((item): item is (typeof ALL_NAV)[number] => Boolean(item));
-    return preferredItems.length >= 3 ? preferredItems : nav.slice(0, 4);
+    const supplementaryItems = nav.filter(
+      (item) => !preferred.includes(item.href as (typeof preferred)[number]),
+    );
+    return [...preferredItems, ...supplementaryItems].slice(0, 4);
   }, [nav]);
   const mobileMoreActive = Boolean(
     current && !mobileNavItems.some((item) => item.href === current.href),
@@ -576,6 +579,13 @@ export default function DashboardLayout({
       "/dashboard/results": "Results",
       "/dashboard/fees": "Fees",
     })[href] ?? label;
+  const effectiveStaffScope = effectiveScopes.length
+    ? {
+        scopes: effectiveScopes,
+        deptId: user?.staffScope?.deptId,
+        facultyId: user?.staffScope?.facultyId,
+      }
+    : user?.staffScope;
   const title = current?.label ?? "Dashboard";
   const initials = user
     ? getInitials(user.email.split("@")[0]?.replace(/[._-]/g, " ") ?? "")
@@ -778,9 +788,9 @@ export default function DashboardLayout({
               <p className="truncate text-[11px] text-white/75">
                 {roleLabel(effectiveRoles[0] ?? user?.primaryRole)}
               </p>
-              {scopeLabel(user?.staffScope) ? (
+              {scopeLabel(effectiveStaffScope) ? (
                 <p className="truncate text-[10px] text-white/60">
-                  {scopeLabel(user?.staffScope)}
+                  {scopeLabel(effectiveStaffScope)}
                 </p>
               ) : null}
             </div>
@@ -867,7 +877,10 @@ export default function DashboardLayout({
         </main>
 
         <nav
-          className="erp-dashboard-mobile-nav fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 lg:hidden"
+          className="erp-dashboard-mobile-nav fixed inset-x-0 bottom-0 z-40 grid lg:hidden"
+          style={{
+            gridTemplateColumns: `repeat(${Math.min(mobileNavItems.length + 1, 5)}, minmax(0, 1fr))`,
+          }}
           aria-label="Mobile navigation"
         >
           {mobileNavItems.map((item) => {
