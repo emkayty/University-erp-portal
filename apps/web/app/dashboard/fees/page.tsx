@@ -150,8 +150,8 @@ export default function FeesPage() {
     parseFloat(fee.amount) - parseFloat(fee.waiverAmount) - parseFloat(fee.amountPaid);
 
   return (
-    <div className="erp-workspace-page space-y-4">
-      <header className="erp-page-header flex items-center justify-between flex-wrap gap-3">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">Finance operations</p>
           <h2 className="mt-1 text-xl font-semibold text-foreground">Fees & Payments</h2>

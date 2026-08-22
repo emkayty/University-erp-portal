@@ -49,8 +49,8 @@ export default function AcademicJourneyPage() {
   if (!isStudent) {
     const roles = effectiveRolesOf(user).join(", ");
     return (
-      <main className="space-y-4 p-4 md:p-6">
-        <Card className="p-6">
+      <main className="erp-workspace-page p-4 md:p-6">
+        <Card className="erp-workspace-header p-6">
           <p className="text-sm text-muted-foreground">Academic operations</p>
           <h1 className="mt-1 text-2xl font-semibold">
             Academic Life is student self-service
@@ -98,9 +98,9 @@ export default function AcademicJourneyPage() {
 
   const p = data.progress;
   return (
-    <main className="space-y-6 p-4 md:p-6">
-      <section>
-        <p className="text-sm text-muted-foreground">Academic command center</p>
+    <main className="erp-workspace-page p-4 md:p-6">
+      <section className="erp-workspace-header">
+        <p className="enterprise-eyebrow">Academic command centre</p>
         <h1 className="text-2xl font-semibold tracking-tight">
           My Academic Journey
         </h1>

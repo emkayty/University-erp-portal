@@ -84,8 +84,8 @@ export default function CourseOfferingsPage() {
   }
 
   return (
-    <div className="erp-workspace-page space-y-6">
-      <header className="erp-page-header">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header">
         <p className="enterprise-eyebrow">Academic operations</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Course Offerings</h2>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Create the semester teaching instance of a course, assign an active lecturer, and move the offering through its controlled academic lifecycle.</p>

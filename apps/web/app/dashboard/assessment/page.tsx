@@ -362,7 +362,7 @@ export default function AssessmentPage() {
   );
 
   return (
-    <div className="erp-workspace-page space-y-6">
+    <div className="erp-workspace-page">
       <ConfirmAction
         open={finalizeConfirmationOpen}
         title="Finalize complete marks"
@@ -388,7 +388,7 @@ export default function AssessmentPage() {
           });
         }}
       />
-      <header className="erp-page-header">
+      <header className="erp-workspace-header">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">
           Assessment and gradebook control
         </p>

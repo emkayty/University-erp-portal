@@ -82,9 +82,9 @@ export default function AnalyticsPage() {
   const dashboardLoading = kpiLoading || hodLoading || auditLoading || qualityLoading;
 
   return (
-    <div className="erp-workspace-page space-y-4">
+    <div className="erp-workspace-page">
       {/* Header */}
-      <div className="erp-page-header glass-accent rounded-2xl p-4 sm:p-5">
+      <div className="erp-workspace-header glass-accent rounded-2xl p-4 sm:p-5">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <p className="enterprise-eyebrow">Decision workspace</p>

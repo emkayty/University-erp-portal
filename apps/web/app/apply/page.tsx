@@ -1296,7 +1296,7 @@ export default function ApplyPage() {
   return (
     <main className="erp-public-page min-h-screen bg-muted/30 px-4 py-8 sm:py-10">
       <div className="mx-auto max-w-6xl space-y-6">
-        <header className="erp-page-header rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
+        <header className="erp-workspace-header rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="enterprise-eyebrow">UniPortal Admissions</p>

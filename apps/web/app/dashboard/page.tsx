@@ -1195,7 +1195,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1440px] space-y-6 pb-10">
+    <div className="erp-workspace-page mx-auto w-full max-w-[1440px] pb-10">
       <header className="glass-accent rounded-3xl p-5 sm:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">

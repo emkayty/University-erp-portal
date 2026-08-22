@@ -125,8 +125,8 @@ export default function IdentityCardsPage() {
   };
 
   return (
-    <div className="erp-workspace-page space-y-6">
-      <header className="erp-page-header">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header">
         <p className="enterprise-eyebrow">Identity and access</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight">Identity Cards</h2>
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">A secure digital credential for everyday access, with a print-ready card surface for institutional hardcopy issuance. Personal data is kept to the minimum needed for verification.</p>

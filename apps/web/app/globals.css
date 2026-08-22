@@ -329,7 +329,7 @@
   flex-direction: column;
   gap: var(--erp-page-gap);
 }
-.erp-page-header{
+.erp-workspace-header{
   position: relative;
   overflow: hidden;
   border: 1px solid hsl(var(--border));
@@ -338,7 +338,7 @@
   background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, hsl(var(--card)) 92%), hsl(var(--card)) 68%);
   box-shadow: 0 12px 30px rgba(16,24,40,.06);
 }
-.erp-page-header::after{
+.erp-workspace-header::after{
   content: "";
   position: absolute;
   top: -5rem;
@@ -349,23 +349,30 @@
   background: color-mix(in srgb, var(--color-accent) 15%, transparent);
   pointer-events: none;
 }
-.erp-page-header > *{position: relative; z-index: 1}
-.erp-page-header h1,.erp-page-header h2{letter-spacing: -.02em}
+.erp-workspace-header > *{position: relative; z-index: 1}
+.erp-workspace-header h1,.erp-workspace-header h2{letter-spacing: -.02em}
 .erp-control-rail{
+  min-width: 0;
   border-color: color-mix(in srgb, var(--color-primary) 18%, hsl(var(--border)));
   background: color-mix(in srgb, var(--color-primary) 3%, hsl(var(--card)) 97%);
   box-shadow: 0 8px 22px rgba(16,24,40,.045);
 }
+/* Keep the established card surface contract; opt into scrolling only on table wrappers. */
 .erp-data-surface{
-  overflow: hidden;
   border-color: hsl(var(--border));
   box-shadow: 0 8px 22px rgba(16,24,40,.045);
 }
 .erp-data-surface thead{background: color-mix(in srgb, var(--color-primary) 6%, hsl(var(--muted)) 94%)}
 .erp-data-surface tbody tr{transition: background-color .16s ease}
 .erp-data-surface tbody tr:hover{background: color-mix(in srgb, var(--color-primary) 4%, transparent)}
+.erp-data-surface.erp-scroll-surface{
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+.erp-data-surface.erp-scroll-surface:focus-visible{outline: none; box-shadow: var(--erp-focus-ring)}
 @media(max-width:640px){
-  .erp-page-header{border-radius: .875rem; padding: 1rem}
+  .erp-workspace-header{border-radius: .875rem; padding: 1rem}
   .erp-workspace-page{--erp-page-gap: 1rem}
 }
 

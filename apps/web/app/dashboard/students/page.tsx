@@ -264,9 +264,9 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="erp-workspace-page space-y-4">
+    <div className="erp-workspace-page">
       {/* Header */}
-      <header className="erp-page-header flex items-center justify-between flex-wrap gap-3">
+      <header className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">Academic records</p>
           <h2 className="mt-1 text-xl font-semibold text-foreground">

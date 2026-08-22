@@ -260,8 +260,8 @@ export default function ResultsPage() {
   ].filter(Boolean) as Array<{ key: string; label: string }>;
 
   return (
-    <div className="erp-workspace-page space-y-4">
-      <header className="erp-page-header flex items-center justify-between flex-wrap gap-3">
+    <div className="erp-workspace-page">
+      <header className="erp-workspace-header flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[--color-primary]">Academic records</p>
           <h2 className="mt-1 text-xl font-semibold text-foreground">Results</h2>
@@ -372,7 +372,7 @@ export default function ResultsPage() {
               No results yet for the selected period.
             </p>
           ) : (
-                    <div className="erp-data-surface overflow-x-auto rounded-xl border border-border">
+                    <div className="erp-data-surface erp-scroll-surface overflow-x-auto rounded-xl border border-border">
               <table className="min-w-[620px] w-full text-sm">
                 <thead className="bg-muted">
                   <tr>
@@ -507,7 +507,7 @@ export default function ResultsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="erp-data-surface overflow-x-auto rounded-xl border border-border">
+                  <div className="erp-data-surface erp-scroll-surface overflow-x-auto rounded-xl border border-border">
                     <table className="min-w-[620px] w-full text-sm">
                       <thead className="bg-muted">
                         <tr>
@@ -918,7 +918,7 @@ export default function ResultsPage() {
                       semester.
                     </p>
                   ) : (
-                    <div className="erp-data-surface overflow-x-auto rounded-xl border border-border">
+                    <div className="erp-data-surface erp-scroll-surface overflow-x-auto rounded-xl border border-border">
                       <table className="w-full text-sm">
                         <thead className="bg-muted">
                           <tr>
