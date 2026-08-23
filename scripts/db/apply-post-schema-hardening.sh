@@ -115,6 +115,29 @@ else
   echo "RLS policy baseline already present; retaining existing policy definitions."
 fi
 
+# Keep the academic attempt invariant explicit even when the RLS marker already
+# exists or when a prior partial run created the column but not its constraint.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'student_results' AND column_name = 'attemptNumber'
+  ) THEN
+    RAISE EXCEPTION 'student_results.attemptNumber is required before hardening';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'student_results'::regclass
+      AND conname = 'ck_student_result_attempt_number_positive'
+  ) THEN
+    ALTER TABLE student_results
+      ADD CONSTRAINT ck_student_result_attempt_number_positive
+      CHECK ("attemptNumber" >= 1);
+  END IF;
+END $$;
+SQL
+
 # Fresh partition conversion replaces the payments and payslips parent relations.
 # Policies are relation-owned in PostgreSQL, so the new parents need their
 # explicit policy contract restored on every hardening run. This block is

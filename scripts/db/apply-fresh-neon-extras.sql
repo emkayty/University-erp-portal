@@ -78,11 +78,6 @@ CREATE INDEX IF NOT EXISTS "idx_role_delegations_delegator_active"
 -- Academic lifecycle checks and governed partial uniqueness.
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_student_result_attempt_number_positive') THEN
-    ALTER TABLE "student_results"
-      ADD CONSTRAINT "ck_student_result_attempt_number_positive"
-      CHECK ("attemptNumber" >= 1);
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_course_equivalency_not_self') THEN
     ALTER TABLE "course_equivalencies"
       ADD CONSTRAINT "ck_course_equivalency_not_self"

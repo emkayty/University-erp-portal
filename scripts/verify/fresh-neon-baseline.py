@@ -31,6 +31,7 @@ checks = {
     "payment and payslip RLS remain enabled": 'ALTER TABLE payments ENABLE ROW LEVEL SECURITY;' in HARDENING and 'ALTER TABLE payslips ENABLE ROW LEVEL SECURITY;' in HARDENING,
     "partition hotfix preserves generated not-null metadata": 'conname NOT LIKE \'%_not_null\'' in PARTITIONS,
     "partition helper requires empty parents": "Fresh Neon partition baseline requires payments to be empty" in PARTITIONS and "Fresh Neon partition baseline requires payslips to be empty" in PARTITIONS,
+    "student-result attempt constraint is ensured idempotently": 'ck_student_result_attempt_number_positive' in HARDENING and 'student_results.attemptNumber is required before hardening' in HARDENING,
     "historical receipt contract is represented": 'payment_receipt_claims' in MIGRATION and 'model PaymentReceiptClaim' in SCHEMA,
     "app role is explicitly non-bypass": 'NOINHERIT' in ROLES and 'rolbypassrls IS DISTINCT FROM false' in ROLES,
     "system role is explicitly bypass": 'BYPASSRLS' in ROLES and 'rolbypassrls IS DISTINCT FROM true' in ROLES,
