@@ -198,6 +198,11 @@ export class UsersService {
     if (input.roleName === RoleName.SUPER_ADMIN) await this.direct.$transaction(applyGrant);
     else await applyGrant(this.prisma as unknown as Prisma.TransactionClient);
 
+    // Role grants and scope changes must not remain hidden behind the
+    // effective-authorization cache. Invalidate only after the grant transaction
+    // has completed so a subsequent request cannot observe a pre-commit miss.
+    await this.authorization?.invalidateUser(input.userId);
+
     await this.audit.log({
       action: AuditAction.ROLE_GRANTED, targetTable: 'user_roles', targetId: input.userId,
       newValues: { roleName: input.roleName },

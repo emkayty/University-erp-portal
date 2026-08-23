@@ -124,7 +124,15 @@ export class AuthorizationService {
       const hasInstitutionalOverride = context.roles.some((role) =>
         role === RoleName.SUPER_ADMIN || role === RoleName.REGISTRAR || role === RoleName.VC,
       );
-      if (!scopeAllowed && !hasInstitutionalOverride) {
+      // A mixed route may intentionally support a student's own resource and
+      // a scoped staff operator on the same endpoint. Apply staff scopes only
+      // when a non-student role from the route was actually matched. This keeps
+      // the clinic self-service path reachable without weakening health-scope
+      // enforcement for STAFF; service-level ownership remains mandatory.
+      const matchedScopedRole = requiredRoles?.some((role) =>
+        role !== RoleName.STUDENT && context.roles.includes(role),
+      ) ?? !requiredRoles?.length;
+      if (matchedScopedRole && !scopeAllowed && !hasInstitutionalOverride) {
         throw new ForbiddenException({
           code: 'RBAC_SCOPE_FORBIDDEN',
           message: `This action requires staff scope: ${requiredScopes.join(' or ')}`,

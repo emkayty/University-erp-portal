@@ -25,7 +25,7 @@ describe('HostelService', () => {
       student: { findUniqueOrThrow: jest.fn().mockResolvedValue({ gender: 'MALE' }) },
       roomAllocation: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'allocation-1', roomId: 'room-1', studentId: 'student-1', status: AllocationStatus.ACTIVE }), findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'allocation-1', roomId: 'room-1', status: AllocationStatus.ACTIVE }), update: jest.fn().mockResolvedValue({}) },
     };
-    prisma = { $transaction: jest.fn((fn: (client: any) => unknown) => fn(tx)), room: { findUniqueOrThrow: jest.fn() }, student: { findUniqueOrThrow: jest.fn() }, roomAllocation: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) } };
+    prisma = { $transaction: jest.fn((fn: (client: any) => unknown) => fn(tx)), room: { findUniqueOrThrow: jest.fn() }, student: { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() }, roomAllocation: { findUnique: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) } };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({ providers: [HostelService, { provide: PrismaService, useValue: prisma }, { provide: AuditService, useValue: audit }] }).compile();
     service = module.get(HostelService);
@@ -58,5 +58,17 @@ describe('HostelService', () => {
     tx.room.updateMany.mockResolvedValue({ count: 0 });
     await expect(service.vacateRoom('allocation-1', 'actor-1')).rejects.toBeInstanceOf(ConflictException);
     expect(tx.roomAllocation.update).not.toHaveBeenCalled();
+  });
+
+  it('resolves User.id to Student.id for self-allocation lookup', async () => {
+    const allocation = { id: 'allocation-1', studentId: 'student-1', academicYear: '2025/2026' };
+    prisma.student.findUnique.mockResolvedValue({ id: 'student-1' });
+    prisma.roomAllocation.findFirst.mockResolvedValue(allocation);
+
+    await expect(service.getMyAllocation('user-1', '2025/2026')).resolves.toEqual(allocation);
+    expect(prisma.student.findUnique).toHaveBeenCalledWith({ where: { userId: 'user-1' }, select: { id: true } });
+    expect(prisma.roomAllocation.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { studentId: 'student-1', academicYear: '2025/2026', status: AllocationStatus.ACTIVE },
+    }));
   });
 });

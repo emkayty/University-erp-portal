@@ -138,4 +138,16 @@ export class HostelService {
       include: { room: { include: { hostelBlock: true } } },
     });
   }
+
+  /** Resolve the authenticated User.id to the linked Student.id before a
+   * self-service allocation lookup. User and Student identifiers are separate
+   * UUID domains and must never be passed interchangeably. */
+  async getMyAllocation(userId: string, academicYear: string) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!student) return null;
+    return this.getStudentAllocation(student.id, academicYear);
+  }
 }

@@ -537,7 +537,10 @@ export class StudentsService {
       }
     } else if (feePolicy === FeeClearancePolicy.ANNUAL_CLEARANCE) {
       const annualFees = await this.prisma.forRequest(this.rlsContext).studentFee.findMany({ where: { studentId, academicYear: targetYear }, select: { status: true } });
-      if (annualFees.some((fee) => ['PENDING', 'PARTIAL', 'OVERDUE'].includes(fee.status)) || (annualFees.length === 0 && !student.feeCleared)) {
+      // A legacy Student.feeCleared boolean is not sufficient proof for a
+      // different academic year. Annual policy requires a current-year fee
+      // record, and every such record must be settled or waived.
+      if (annualFees.length === 0 || annualFees.some((fee) => ['PENDING', 'PARTIAL', 'OVERDUE'].includes(fee.status))) {
         throw new UnprocessableEntityException({ code: 'BUSINESS_RULE_FEE_UNPAID', message: 'Annual fee clearance is required before course registration.' });
       }
     }

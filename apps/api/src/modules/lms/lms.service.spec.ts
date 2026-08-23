@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { LmsService } from './lms.service';
 import { PrismaService } from '../../database/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
@@ -16,7 +16,7 @@ describe('LmsService enrolment boundaries', () => {
     lmsDiscussionPost: { findFirst: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
     quizQuestion: { create: jest.fn(), findMany: jest.fn() },
     quizAttempt: { count: jest.fn(), create: jest.fn(), findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
-    assessmentMark: { upsert: jest.fn() },
+    assessmentMark: { findUnique: jest.fn(), upsert: jest.fn() },
     $executeRaw: jest.fn(),
     $transaction: jest.fn((fn: (tx: any) => unknown) => fn(prisma)),
   };
@@ -80,8 +80,25 @@ describe('LmsService enrolment boundaries', () => {
   it('grades an existing submission and records audit evidence', async () => {
     prisma.lmsSubmission.findUnique.mockResolvedValue({ id: 'submission-1', studentId: 'student-1', content: { courseOfferingId: 'offering-1', assessmentComponent: null } });
     prisma.lmsSubmission.update.mockResolvedValue({ id: 'submission-1', status: 'GRADED', score: 85 });
-    await expect(service.gradeSubmission('submission-1', { score: 85, feedback: 'Good work' }, 'staff-1')).resolves.toEqual({ id: 'submission-1', status: 'GRADED', score: 85 });
+    await expect(service.gradeSubmission('submission-1', { score: 85, feedback: 'Good Work' }, 'staff-1')).resolves.toEqual({ id: 'submission-1', status: 'GRADED', score: 85 });
     expect(audit.log).toHaveBeenCalled();
+  });
+
+  it('rejects grading when the linked assessment mark is finalized', async () => {
+    prisma.lmsSubmission.findUnique.mockResolvedValue({
+      id: 'submission-finalized',
+      studentId: 'student-1',
+      content: {
+        courseOfferingId: 'offering-1',
+        assessmentComponent: { id: 'component-1', maxScore: 100, scheme: { courseOfferingId: 'offering-1', status: 'ACTIVE' } },
+      },
+    });
+    prisma.assessmentMark.findUnique.mockResolvedValue({ status: 'FINALIZED' });
+
+    await expect(service.gradeSubmission('submission-finalized', { score: 85 }, 'staff-1'))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.lmsSubmission.update).not.toHaveBeenCalled();
+    expect(prisma.assessmentMark.upsert).not.toHaveBeenCalled();
   });
 
   it('rejects cross-offering discussion parents', async () => {

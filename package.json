@@ -29,6 +29,7 @@
     "verify:production": "bash scripts/verify/production-certification.sh",
     "verify:cert-stack": "bash scripts/verify/start-certification-stack.sh",
     "p1:verify-academic-integrity": "python3 scripts/verify/p1-academic-integrity.py",
+    "p1:verify-fresh-neon-baseline": "python3 scripts/verify/fresh-neon-baseline.py",
     "p2:verify-operational-contract": "python3 scripts/verify/p2-operational-contract.py",
     "p4:verify-rules": "! grep -R --line-number --exclude='*.spec.ts' -E 'eval\\(|new Function\\(' apps/api/src/intelligence",
     "p5:static-audit": "python3 tests/p5/static_security_audit.py",

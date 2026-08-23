@@ -91,4 +91,17 @@ describe('UsersService super-admin cap transaction', () => {
     expect(h.direct.$transaction).toHaveBeenCalledTimes(1);
     expect(h.tx.userRole.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ userId: 'user-2', roleName: RoleName.SUPER_ADMIN }) }));
   });
+
+  it('invalidates the target authorization cache after a successful role grant', async () => {
+    const h = makeHarness(1);
+    const invalidateUser = jest.fn().mockResolvedValue(undefined);
+    (h.service as any).authorization = {
+      assertRoleGrantAllowed: jest.fn().mockResolvedValue(undefined),
+      invalidateUser,
+    };
+
+    await h.service.grantRole({ userId: 'user-2', roleName: RoleName.SUPER_ADMIN, actorId: 'actor-1' });
+
+    expect(invalidateUser).toHaveBeenCalledWith('user-2');
+  });
 });

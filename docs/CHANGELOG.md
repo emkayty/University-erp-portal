@@ -1,5 +1,14 @@
 # UniPortal ERP Changelog
 
+## 2026-08-23 — Forensic audit remediation tranche
+
+- Restored explicit payment and payslip RLS policies after fresh partition-parent replacement, and added an offline fresh-baseline contract verifier for policies, receipt claims, role attributes and partition safeguards.
+- Restored the payment receipt-claim StudentFee foreign key and global receipt-reference/index contract in the fresh-Neon extras path.
+- Added fail-closed verification to production database-role bootstrap for login, least privilege, NOINHERIT, CONNECT and the `uniportal_system` BYPASSRLS contract.
+- Corrected mixed student/staff clinic scope evaluation, role-grant authorization-cache invalidation, hostel User.id → Student.id self-allocation resolution, search SQL/schema aliases and department-scope enforcement, examination attendance metrics, LMS finalized-mark protection, annual fee-year clearance, and library inventory/return ownership races.
+- Added targeted regressions for all implemented application fixes; API tests, workspace tests, type-check, lint, API/web builds and existing security/governance gates pass in the sandbox.
+- No Neon write, schema deployment, seed, role bootstrap, provider call or destructive Docker operation was performed during this implementation tranche. Disposable PostgreSQL rehearsal and explicit Neon reauthorization remain required before deployment.
+
 ## 2026-08-13 — Academic integrity hardening
 
 - Added canonical `StudentResult.attemptNumber` and deterministic repeat-course ordering.

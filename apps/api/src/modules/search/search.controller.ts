@@ -20,15 +20,19 @@ export class SearchController {
   @Get('global')
   async globalSearch(@Query('q') q: string, @CurrentUser() user: JwtPayload) {
     const role = user.role;
-    const deptId = user.staffScope?.deptId;
-
-    const includeStudents = ['REGISTRAR','HOD','STAFF','SUPER_ADMIN','VC','HR_MANAGER','BURSAR'].includes(role);
-    const includeStaff    = ['HR_MANAGER','REGISTRAR','SUPER_ADMIN','VC'].includes(role);
+    const effectiveRoles = user.roles ?? [role];
+    const studentSearchRoles = new Set(['REGISTRAR', 'HOD', 'STAFF', 'SUPER_ADMIN', 'VC', 'HR_MANAGER', 'BURSAR']);
+    const staffSearchRoles = new Set(['HR_MANAGER', 'REGISTRAR', 'SUPER_ADMIN', 'VC']);
+    const includeStudents = effectiveRoles.some((effectiveRole) => studentSearchRoles.has(effectiveRole));
+    const includeStaff = effectiveRoles.some((effectiveRole) => staffSearchRoles.has(effectiveRole));
+    const departmentId = includeStudents
+      ? await this.search.resolveDepartmentScope(user)
+      : undefined;
 
     return this.search.globalSearch(q ?? '', {
       includeStudents,
       includeStaff,
-      departmentId: role === 'HOD' ? deptId : undefined,
+      departmentId,
     });
   }
 
@@ -38,12 +42,14 @@ export class SearchController {
    */
   @Roles('STAFF','HOD','REGISTRAR','SUPER_ADMIN','VC','HR_MANAGER','BURSAR')
   @Get('students')
-  searchStudents(
+  async searchStudents(
     @Query('q') q: string,
-    @Query('status') status?: string,
-    @Query('departmentId') departmentId?: string,
+    @Query('status') status: string | undefined,
+    @Query('departmentId') departmentId: string | undefined,
+    @CurrentUser() user: JwtPayload,
   ) {
-    return this.search.searchStudents(q ?? '', { status, departmentId });
+    const scopedDepartmentId = await this.search.resolveDepartmentScope(user, departmentId);
+    return this.search.searchStudents(q ?? '', { status, departmentId: scopedDepartmentId });
   }
 
   /**
@@ -52,8 +58,9 @@ export class SearchController {
    */
   @Roles('HR_MANAGER','REGISTRAR','SUPER_ADMIN','VC')
   @Get('staff')
-  searchStaff(@Query('q') q: string, @Query('departmentId') departmentId?: string) {
-    return this.search.searchStaff(q ?? '', { departmentId });
+  async searchStaff(@Query('q') q: string, @Query('departmentId') departmentId: string | undefined, @CurrentUser() user: JwtPayload) {
+    const scopedDepartmentId = await this.search.resolveDepartmentScope(user, departmentId);
+    return this.search.searchStaff(q ?? '', { departmentId: scopedDepartmentId });
   }
 
   /**

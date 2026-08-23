@@ -88,6 +88,33 @@ describe('AuthorizationService', () => {
     )).resolves.toBeDefined();
   });
 
+  it('allows a student-only effective role on a mixed self-service scope route', async () => {
+    const h = makeHarness();
+    h.prisma.userRole.findMany.mockResolvedValue([
+      { roleName: RoleName.STUDENT, staffScope: null },
+    ]);
+
+    await expect(h.service.assertRouteAccess(
+      { sub: 'student-user' } as any,
+      [RoleName.STAFF, RoleName.STUDENT, RoleName.SUPER_ADMIN],
+      ['health'],
+    )).resolves.toBeDefined();
+  });
+
+  it('still requires health scope when a staff role matches a mixed route', async () => {
+    const h = makeHarness();
+    h.prisma.userRole.findMany.mockResolvedValue([
+      { roleName: RoleName.STAFF, staffScope: { scopes: ['library'] } },
+      { roleName: RoleName.STUDENT, staffScope: null },
+    ]);
+
+    await expect(h.service.assertRouteAccess(
+      { sub: 'staff-user' } as any,
+      [RoleName.STAFF, RoleName.STUDENT, RoleName.SUPER_ADMIN],
+      ['health'],
+    )).rejects.toMatchObject({ response: expect.objectContaining({ code: 'RBAC_SCOPE_FORBIDDEN' }) });
+  });
+
   it('rejects self role grants', async () => {
     const h = makeHarness();
     await expect(h.service.assertRoleGrantAllowed({

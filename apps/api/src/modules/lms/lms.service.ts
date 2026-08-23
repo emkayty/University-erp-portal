@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { AuditAction, Prisma } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
@@ -315,12 +315,25 @@ export class LmsService {
       if (dto.score > Number(component.maxScore)) throw new BadRequestException(`Score cannot exceed ${component.maxScore}.`);
     }
     const result = await this.prisma.$transaction(async (tx) => {
+      let assessmentMark = null;
+      if (component) {
+        const existingMark = await tx.assessmentMark.findUnique({
+          where: { uq_assessment_mark_student_component: { studentId: existing.studentId, componentId: component.id } },
+          select: { status: true },
+        });
+        if (existingMark?.status === 'FINALIZED') {
+          throw new ConflictException('Finalized assessment marks require a controlled amendment workflow.');
+        }
+      }
+
       const updated = await tx.lmsSubmission.update({ where: { id }, data: { score: dto.score, feedback: dto.feedback ?? null, status: 'GRADED', gradedAt: new Date(), gradedById: actorId } });
-      const assessmentMark = component ? await tx.assessmentMark.upsert({
-        where: { uq_assessment_mark_student_component: { studentId: existing.studentId, componentId: component.id } },
-        create: { studentId: existing.studentId, courseOfferingId: existing.content.courseOfferingId, componentId: component.id, score: dto.score, enteredById: actorId },
-        update: { score: dto.score, enteredById: actorId, version: { increment: 1 } },
-      }) : null;
+      if (component) {
+        assessmentMark = await tx.assessmentMark.upsert({
+          where: { uq_assessment_mark_student_component: { studentId: existing.studentId, componentId: component.id } },
+          create: { studentId: existing.studentId, courseOfferingId: existing.content.courseOfferingId, componentId: component.id, score: dto.score, enteredById: actorId },
+          update: { score: dto.score, enteredById: actorId, version: { increment: 1 } },
+        });
+      }
       return { updated, assessmentMark };
     });
     await this.audit.log({ action: AuditAction.UPDATE, targetTable: 'lms_submissions', targetId: id, newValues: { status: result.updated.status, score: dto.score, assessmentMarkId: result.assessmentMark?.id ?? null } }, actorId);

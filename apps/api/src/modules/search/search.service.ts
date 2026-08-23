@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import type { JwtPayload } from '@uniportal/types';
 import { PrismaService } from '../../database/prisma.service';
 
 export interface SearchResult {
@@ -16,6 +17,40 @@ export class SearchService {
   private readonly MAX_RESULTS = 20;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Resolve a caller-supplied department filter against the caller's effective
+   * institutional scope. HOD scope is derived from the linked Staff row when
+   * the JWT has no staffScope payload; this prevents a query parameter from
+   * becoming an authorization boundary on direct search routes.
+   */
+  async resolveDepartmentScope(user: JwtPayload, requestedDepartmentId?: string): Promise<string | undefined> {
+    const roles = new Set(user.roles ?? [user.role]);
+    let allowedDepartmentId = user.staffScope?.deptId;
+    if (roles.has('HOD') && !allowedDepartmentId) {
+      const staff = await this.prisma.staff.findUnique({
+        where: { userId: user.sub },
+        select: { departmentId: true },
+      });
+      allowedDepartmentId = staff?.departmentId;
+    }
+
+    const isDepartmentRestricted = roles.has('HOD') || Boolean(user.staffScope?.deptId);
+    if (!isDepartmentRestricted) return requestedDepartmentId;
+    if (!allowedDepartmentId) {
+      throw new ForbiddenException({
+        code: 'RBAC_SCOPE_FORBIDDEN',
+        message: 'A department-scoped search requires a valid department assignment.',
+      });
+    }
+    if (requestedDepartmentId && requestedDepartmentId !== allowedDepartmentId) {
+      throw new ForbiddenException({
+        code: 'RBAC_SCOPE_FORBIDDEN',
+        message: 'You may only search records within your assigned department.',
+      });
+    }
+    return allowedDepartmentId;
+  }
 
   // ── Student Search (staff / hod / registrar only) ─────────────────────────
 
@@ -39,13 +74,13 @@ export class SearchService {
     }[]>`
       SELECT
         s.id,
-        s."matricNo",
-        s."firstName",
-        s."lastName",
+        s."matricNo" AS matric_no,
+        s."firstName" AS first_name,
+        s."lastName" AS last_name,
         s.email,
         s.level,
         s.status,
-        s.cgpa::TEXT,
+        s.cgpa::TEXT AS cgpa,
         p.name AS programme_name,
         d.name AS department_name
       FROM students s
@@ -92,21 +127,21 @@ export class SearchService {
     }[]>`
       SELECT
         s.id,
-        s.staff_id,
-        s."firstName",
-        s."lastName",
+        s."employeeNo" AS staff_id,
+        s."firstName" AS first_name,
+        s."lastName" AS last_name,
         s.email,
-        s.job_title,
-        s.employment_status,
+        s.designation AS job_title,
+        s."employmentStatus"::TEXT AS employment_status,
         d.name AS department_name
       FROM staff s
       JOIN departments d ON d.id = s."departmentId"
       WHERE s."deletedAt" IS NULL
         AND (
           (s."firstName" || ' ' || s."lastName") ILIKE ${term}
-          OR s.staff_id ILIKE ${term}
+          OR s."employeeNo" ILIKE ${term}
           OR s.email    ILIKE ${term}
-          OR s.job_title ILIKE ${term}
+          OR s.designation ILIKE ${term}
         )
         ${opts.departmentId ? this.prisma.$queryRaw`AND s."departmentId" = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
       ORDER BY s."lastName" ASC, s."firstName" ASC
@@ -145,17 +180,17 @@ export class SearchService {
         c.id,
         c.code,
         c.title,
-        c.credit_units,
-        c.ccmas_category,
+        c."creditUnits" AS credit_units,
+        c."ccmasCategory"::TEXT AS ccmas_category,
         d.name AS department_name
       FROM courses c
-      JOIN departments d ON d.id = c.department_id
-      WHERE c.is_active = TRUE
+      JOIN departments d ON d.id = c."departmentId"
+      WHERE c."isActive" = TRUE
         AND (
           c.code  ILIKE ${term}
           OR c.title ILIKE ${term}
         )
-        ${opts.departmentId ? this.prisma.$queryRaw`AND c.department_id = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
+        ${opts.departmentId ? this.prisma.$queryRaw`AND c."departmentId" = ${opts.departmentId}::UUID` : this.prisma.$queryRaw``}
       ORDER BY c.code ASC
       LIMIT ${limit}
     `;
@@ -191,11 +226,11 @@ export class SearchService {
         isbn,
         title,
         author,
-        category,
-        available_copies,
-        total_copies
+        category::TEXT AS category,
+        "availableCopies" AS available_copies,
+        "totalCopies" AS total_copies
       FROM library_items
-      WHERE deleted_at IS NULL
+      WHERE "isActive" = TRUE
         AND (
           title  ILIKE ${term}
           OR author ILIKE ${term}

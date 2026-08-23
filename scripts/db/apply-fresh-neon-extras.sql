@@ -11,6 +11,29 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 CREATE EXTENSION IF NOT EXISTS "vector";
 
+-- Manual/TSA/GIFMIS receipt claims remain unpartitioned so receipt references
+-- are globally unique across all monthly payment partitions. Prisma owns the
+-- current table shape; this block restores the migration-only FK and index
+-- contract and fails closed if existing rows violate the FK.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'payment_receipt_claims'::regclass
+      AND conname = 'payment_receipt_claims_student_fee_id_fkey'
+  ) THEN
+    ALTER TABLE "payment_receipt_claims"
+      ADD CONSTRAINT "payment_receipt_claims_student_fee_id_fkey"
+      FOREIGN KEY ("studentFeeId") REFERENCES "student_fees"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END
+$$;
+CREATE UNIQUE INDEX IF NOT EXISTS "payment_receipt_claims_receipt_reference_key"
+  ON "payment_receipt_claims" ("receiptReference");
+CREATE INDEX IF NOT EXISTS "idx_payment_receipt_claim_payment"
+  ON "payment_receipt_claims" ("paymentId");
+
 -- Authorization governance checks and indexes.
 DO $$
 BEGIN

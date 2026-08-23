@@ -115,6 +115,48 @@ else
   echo "RLS policy baseline already present; retaining existing policy definitions."
 fi
 
+# Fresh partition conversion replaces the payments and payslips parent relations.
+# Policies are relation-owned in PostgreSQL, so the new parents need their
+# explicit policy contract restored on every hardening run. This block is
+# intentionally idempotent and runs even when the broader student policy marker
+# already exists.
+psql "$MIGRATE_DATABASE_URL" --set=ON_ERROR_STOP=1 <<'SQL'
+DROP POLICY IF EXISTS payment_read ON payments;
+DROP POLICY IF EXISTS payment_insert ON payments;
+DROP POLICY IF EXISTS payment_update ON payments;
+CREATE POLICY payment_read ON payments FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','BURSAR','REGISTRAR')
+  OR "studentId" IN (SELECT id FROM students WHERE "userId"::text = current_setting('app.current_user_id', true))
+);
+CREATE POLICY payment_insert ON payments FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','BURSAR','REGISTRAR')
+  OR (current_setting('app.current_role', true) = 'STUDENT' AND "studentId" IN (
+    SELECT id FROM students WHERE "userId"::text = current_setting('app.current_user_id', true)
+  ))
+);
+CREATE POLICY payment_update ON payments FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','BURSAR','REGISTRAR')
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','BURSAR','REGISTRAR')
+);
+
+DROP POLICY IF EXISTS payslip_read ON payslips;
+DROP POLICY IF EXISTS payslip_manage ON payslips;
+DROP POLICY IF EXISTS payslip_update ON payslips;
+CREATE POLICY payslip_read ON payslips FOR SELECT USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','HR_MANAGER','BURSAR')
+  OR "staffId" IN (SELECT id FROM staff WHERE "userId"::text = current_setting('app.current_user_id', true))
+);
+CREATE POLICY payslip_manage ON payslips FOR INSERT WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','HR_MANAGER','BURSAR')
+);
+CREATE POLICY payslip_update ON payslips FOR UPDATE USING (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','HR_MANAGER','BURSAR')
+) WITH CHECK (
+  current_setting('app.current_role', true) IN ('SUPER_ADMIN','HR_MANAGER','BURSAR')
+);
+SQL
+
 # Notification tables are created by the Prisma schema rather than the historic
 # migration chain. Keep their request-identity policies in this supported
 # post-schema hardening path as well as in migration 0052, so db-push and

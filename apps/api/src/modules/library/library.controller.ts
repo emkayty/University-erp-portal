@@ -45,7 +45,7 @@ export class LibraryController {
   @Patch('loans/:id/return')
   @Roles('STUDENT','STAFF','HOD','REGISTRAR','SUPER_ADMIN')
   async returnItem(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() u: JwtPayload) {
-    return { success: true, data: await this.svc.returnItem(id, u.sub) };
+    return { success: true, data: await this.svc.returnItem(id, u.sub, u.role) };
   }
 
   @Patch('loans/:id/renew')

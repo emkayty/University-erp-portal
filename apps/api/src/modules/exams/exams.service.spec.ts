@@ -289,6 +289,23 @@ describe('ExamsService', () => {
       expect(report.attendance.missing).toBe(1);
       expect(report.attendance.attendancePct).toBe(50);
     });
+
+    it('does not count ABSENT or NO_SHOW rows as attended', async () => {
+      prisma.examTimetable.findUniqueOrThrow.mockResolvedValue({ id: 'tt-2' });
+      prisma.examCandidate.findMany.mockResolvedValue([
+        { eligibility: 'ELIGIBLE' }, { eligibility: 'ELIGIBLE' }, { eligibility: 'ELIGIBLE' },
+      ]);
+      prisma.examAttendance.findMany.mockResolvedValue([
+        { status: 'PRESENT' }, { status: 'ABSENT' }, { status: 'NO_SHOW' },
+      ]);
+
+      const report = await svc.getExamReport('tt-2');
+
+      expect(report.attendance.byStatus).toEqual({ PRESENT: 1, ABSENT: 1, NO_SHOW: 1 });
+      expect(report.attendance.present).toBe(1);
+      expect(report.attendance.missing).toBe(2);
+      expect(report.attendance.attendancePct).toBe(33);
+    });
   });
 
   // ── recordAttendance() ─────────────────────────────────────────────────────

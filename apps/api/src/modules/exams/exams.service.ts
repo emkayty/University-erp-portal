@@ -302,10 +302,22 @@ export class ExamsService {
     const examScope = await this.prisma.examTimetable.findUniqueOrThrow({ where: { id: examTimetableId }, select: { courseOfferingId: true } });
     if (actorId) await this.offeringAuthorization.assertOfferingAccess(examScope.courseOfferingId, actorId, actorRole, examTimetableId);
     const [exam,candidates,attendance]=await Promise.all([this.prisma.examTimetable.findUniqueOrThrow({where:{id:examTimetableId}}),this.prisma.examCandidate.findMany({where:{examTimetableId}}),this.prisma.examAttendance.findMany({where:{examTimetableId}})]);
-    const byStatus=attendance.reduce<Record<string,number>>((a,x)=>(a[x.status]=(a[x.status]??0)+1,a),{});
-    const eligible = candidates.filter(x=>x.eligibility==='ELIGIBLE');
-    const present = attendance.filter(x => ['PRESENT', 'LATE'].includes(x.status)).length;
-    return {exam, candidates:{total:candidates.length,eligible:eligible.length},attendance:{total:attendance.length,byStatus,present,missing:eligible.length-attendance.length,attendancePct:eligible.length ? Math.round((attendance.length / eligible.length) * 100) : 0}};
+    const byStatus = attendance.reduce<Record<string, number>>((counts, record) => {
+      counts[record.status] = (counts[record.status] ?? 0) + 1;
+      return counts;
+    }, {});
+    const eligible = candidates.filter((candidate) => candidate.eligibility === 'ELIGIBLE');
+    // Attendance is a participation measure, not merely the presence of an
+    // attendance row. ABSENT and NO_SHOW are recorded outcomes and must not
+    // inflate the percentage or hide eligible candidates who did not attend.
+    const present = attendance.filter((record) => ['PRESENT', 'LATE'].includes(record.status)).length;
+    const missing = Math.max(eligible.length - present, 0);
+    const attendancePct = eligible.length ? Math.round((present / eligible.length) * 100) : 0;
+    return {
+      exam,
+      candidates: { total: candidates.length, eligible: eligible.length },
+      attendance: { total: attendance.length, byStatus, present, missing, attendancePct },
+    };
   }
 
   // ── Attendance ─────────────────────────────────────────────────────────────

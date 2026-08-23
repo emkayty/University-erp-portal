@@ -1,5 +1,5 @@
 import {
-  BadRequestException, ConflictException,
+  BadRequestException, ConflictException, ForbiddenException,
   Injectable, Logger, NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -117,19 +117,36 @@ export class LibraryService {
     if (dueDate <= new Date()) throw new BadRequestException('Due date must be in the future');
 
     const loan = await this.prisma.$transaction(async (tx) => {
-      const l = await tx.libraryLoan.create({
+      // Recheck all borrower invariants inside the transaction. The preflight
+      // reads above keep common failures fast; these checks close the race
+      // between concurrent requests for the same user or item.
+      const [recheckedActiveLoans, recheckedDuplicate] = await Promise.all([
+        tx.libraryLoan.count({ where: { userId, status: { in: [LoanStatus.ACTIVE, LoanStatus.OVERDUE] } } }),
+        tx.libraryLoan.findFirst({ where: { userId, libraryItemId: dto.libraryItemId, status: { in: [LoanStatus.ACTIVE, LoanStatus.OVERDUE] } } }),
+      ]);
+      if (recheckedActiveLoans >= MAX_ACTIVE_LOANS) {
+        throw new UnprocessableEntityException({ code: 'BUSINESS_RULE_INVALID_STATE', message: `Maximum of ${MAX_ACTIVE_LOANS} books can be borrowed at a time` });
+      }
+      if (recheckedDuplicate) {
+        throw new ConflictException({ code: 'DUPLICATE_RESOURCE', message: 'You already have an active loan for this item' });
+      }
+
+      const reserved = await tx.libraryItem.updateMany({
+        where: { id: dto.libraryItemId, availableCopies: { gt: 0 } },
+        data: { availableCopies: { decrement: 1 } },
+      });
+      if (reserved.count !== 1) {
+        throw new UnprocessableEntityException({ code: 'BUSINESS_RULE_INVALID_STATE', message: `No copies of "${item.title}" are currently available` });
+      }
+
+      return tx.libraryLoan.create({
         data: {
           libraryItemId: dto.libraryItemId,
           userId,
           dueDate,
-          status:        LoanStatus.ACTIVE,
+          status: LoanStatus.ACTIVE,
         },
       });
-      await tx.libraryItem.update({
-        where: { id: dto.libraryItemId },
-        data:  { availableCopies: { decrement: 1 } },
-      });
-      return l;
     });
 
     await this.audit.log({
@@ -140,9 +157,12 @@ export class LibraryService {
     return loan;
   }
 
-  async returnItem(loanId: string, userId: string) {
+  async returnItem(loanId: string, userId: string, actorRole = 'STUDENT') {
     const loan = await this.prisma.libraryLoan.findUniqueOrThrow({ where: { id: loanId } });
 
+    if (!['STAFF', 'HOD', 'REGISTRAR', 'SUPER_ADMIN'].includes(actorRole) && loan.userId !== userId) {
+      throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'You may only return your own library loans' });
+    }
     if (loan.status === LoanStatus.RETURNED) {
       throw new ConflictException({ code: 'DUPLICATE_RESOURCE', message: 'This loan has already been returned' });
     }
@@ -155,13 +175,20 @@ export class LibraryService {
     const fine = overdueDays * FINE_PER_DAY;
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.libraryLoan.update({
-        where: { id: loanId },
-        data:  { status: LoanStatus.RETURNED, returnedAt: returnDate, fineAmount: fine },
+      const transitioned = await tx.libraryLoan.updateMany({
+        where: {
+          id: loanId,
+          status: { in: [LoanStatus.ACTIVE, LoanStatus.OVERDUE] },
+          ...(!['STAFF', 'HOD', 'REGISTRAR', 'SUPER_ADMIN'].includes(actorRole) ? { userId } : {}),
+        },
+        data: { status: LoanStatus.RETURNED, returnedAt: returnDate, fineAmount: fine },
       });
+      if (transitioned.count !== 1) {
+        throw new ConflictException({ code: 'DUPLICATE_RESOURCE', message: 'This loan was already returned or is no longer yours' });
+      }
       await tx.libraryItem.update({
         where: { id: loan.libraryItemId },
-        data:  { availableCopies: { increment: 1 } },
+        data: { availableCopies: { increment: 1 } },
       });
     });
 

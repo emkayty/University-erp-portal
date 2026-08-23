@@ -125,7 +125,7 @@ describe('StudentsService', () => {
         update: jest.fn().mockResolvedValue({ id: 'grad-1', status: 'GRADUATED' }),
       },
       degreeAudit: { findFirst: jest.fn().mockResolvedValue({ id: 'audit-1', status: 'ELIGIBLE' }) },
-      studentFee: { findMany: jest.fn().mockResolvedValue([]) },
+      studentFee: { findMany: jest.fn().mockResolvedValue([{ status: 'PAID' }]) },
       semester: { findFirst: jest.fn().mockResolvedValue({ id: 'sem-1', academicYear: '2025/2026', semesterNumber: 2, classStartDate: new Date('2026-01-10'), status: 'COMPLETED' }) },
       // P0-2/P1-2 FIX (this pass — see docs/CHANGELOG.md):
       // StudentsService now calls forRequest()/runExclusive() instead of
@@ -292,16 +292,24 @@ describe('StudentsService', () => {
     });
 
     it('requires a semester fee record when semester clearance policy is enabled', async () => {
-      prisma.institutionSettings.findFirst.mockResolvedValue({ minCreditUnitsPerSem: 15, maxCreditUnitsPerSem: 24, requireAdmissionClearance: false, feeClearancePolicy: 'SEMESTER_REQUIRED' });
+      prisma.institutionSettings.findFirst.mockResolvedValue({ minCreditUnitsPerSem: 0, maxCreditUnitsPerSem: 24, requireAdmissionClearance: false, feeClearancePolicy: 'SEMESTER_REQUIRED' });
       prisma.courseOffering.findMany.mockResolvedValueOnce([makeOffering('off-1', 'csc-301', 3)]);
+      prisma.studentFee.findMany.mockResolvedValueOnce([]);
       await expect(svc.registerCourses('stu-1', { courseOfferingIds: ['off-1'] }, 'actor'))
         .rejects.toThrow('semester-specific fee clearance');
     });
 
-    it('blocks registration when feeCleared=false', async () => {
+    it('blocks registration when feeCleared=false and the current year has no fee record', async () => {
       prisma.student.findUniqueOrThrow.mockResolvedValueOnce(makeStudent({ feeCleared: false }));
+      prisma.studentFee.findMany.mockResolvedValueOnce([]);
       await expect(svc.registerCourses('stu-1', dto, 'stu-1'))
         .rejects.toThrow('Annual fee clearance'); // P0-13 fix: was asserting on the internal `code` field, which NestJS's HttpException.message never contains (verified directly) — see docs/CHANGELOG.md
+    });
+
+    it('blocks annual registration when the target year has no fee row even if the legacy flag is true', async () => {
+      prisma.studentFee.findMany.mockResolvedValueOnce([]);
+      await expect(svc.registerCourses('stu-1', dto, 'stu-1'))
+        .rejects.toThrow('Annual fee clearance');
     });
 
     it('blocks registration when student is SUSPENDED', async () => {

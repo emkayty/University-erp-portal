@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, UnprocessableEntityException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { LoanStatus } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
@@ -35,13 +35,14 @@ describe('LibraryService', () => {
         findMany:          jest.fn().mockResolvedValue([]),
         count:             jest.fn().mockResolvedValue(0),
         update:            jest.fn().mockResolvedValue(makeItem()),
+        updateMany:        jest.fn().mockResolvedValue({ count: 1 }),
       },
       libraryLoan: {
         findFirst:         jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn().mockResolvedValue(makeLoan()),
         create:            jest.fn().mockResolvedValue(makeLoan()),
         update:            jest.fn().mockResolvedValue(makeLoan()),
-        updateMany:        jest.fn().mockResolvedValue({ count: 0 }),
+        updateMany:        jest.fn().mockResolvedValue({ count: 1 }),
         count:             jest.fn().mockResolvedValue(0),
         findMany:          jest.fn().mockResolvedValue([]),
       },
@@ -84,7 +85,8 @@ describe('LibraryService', () => {
       expect(prisma.libraryLoan.create).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ libraryItemId: 'item-1', userId: 'user-1', status: 'ACTIVE' }),
       }));
-      expect(prisma.libraryItem.update).toHaveBeenCalledWith(expect.objectContaining({
+      expect(prisma.libraryItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'item-1', availableCopies: { gt: 0 } }),
         data: { availableCopies: { decrement: 1 } },
       }));
     });
@@ -116,7 +118,8 @@ describe('LibraryService', () => {
       const result = await svc.returnItem('loan-1', 'user-1');
       expect(result.overdueDays).toBe(0);
       expect(result.fineAmount).toBe(0);
-      expect(prisma.libraryLoan.update).toHaveBeenCalledWith(expect.objectContaining({
+      expect(prisma.libraryLoan.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'loan-1', status: { in: [LoanStatus.ACTIVE, LoanStatus.OVERDUE] } }),
         data: expect.objectContaining({ status: LoanStatus.RETURNED }),
       }));
       expect(prisma.libraryItem.update).toHaveBeenCalledWith(expect.objectContaining({
@@ -135,6 +138,12 @@ describe('LibraryService', () => {
     it('rejects returning an already-returned loan', async () => {
       prisma.libraryLoan.findUniqueOrThrow.mockResolvedValueOnce(makeLoan({ status: LoanStatus.RETURNED }));
       await expect(svc.returnItem('loan-1', 'user-1')).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a student attempting to return another user\'s loan', async () => {
+      prisma.libraryLoan.findUniqueOrThrow.mockResolvedValueOnce(makeLoan({ userId: 'other-user' }));
+      await expect(svc.returnItem('loan-1', 'user-1', 'STUDENT')).rejects.toThrow(ForbiddenException);
+      expect(prisma.libraryLoan.updateMany).not.toHaveBeenCalled();
     });
   });
 
