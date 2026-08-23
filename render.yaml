@@ -1,3 +1,8 @@
+# Render staging blueprint.
+# The legacy API resource name is retained to avoid an implicit resource rename,
+# but it runs only the API process. The worker is a separate singleton service.
+# Schema deployment and seed execution are explicit maintenance actions; they are
+# intentionally not run during normal service startup or deploy hooks.
 services:
   - type: web
     name: uniportal-api-worker-test
@@ -6,17 +11,20 @@ services:
     plan: free
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
-    dockerCommand: /app/scripts/start-api-worker.sh
-    preDeployCommand: pnpm db:seed
+    dockerCommand: /app/scripts/start-api.sh
     healthCheckPath: /api/health/live
     maxShutdownDelaySeconds: 120
     envVars:
       - key: NODE_ENV
         value: staging
+      - key: PROCESS_ROLE
+        value: api
       - key: RENDER_MANAGED_DB
         value: "true"
       - key: RUN_DB_SCHEMA
-        value: "true"
+        value: "false"
+      - key: RUN_DB_SEED
+        value: "false"
       - key: DATABASE_ADMIN_URL
         fromDatabase:
           name: uniportal-db-test
@@ -30,11 +38,7 @@ services:
           name: uniportal-db-test
           property: database
       - key: DATABASE_AUTO_BOOTSTRAP_ROLES
-        value: "true"
-      - key: DATABASE_APP_PASSWORD
-        sync: false
-      - key: DATABASE_SYSTEM_PASSWORD
-        sync: false
+        value: "false"
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -54,6 +58,54 @@ services:
         value: "true"
       - key: TRUST_PROXY_HOPS
         value: "1"
+
+  - type: worker
+    name: uniportal-worker-test
+    runtime: docker
+    region: frankfurt
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: /app/scripts/start-worker.sh
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: NODE_ENV
+        value: staging
+      - key: PROCESS_ROLE
+        value: worker
+      - key: RENDER_MANAGED_DB
+        value: "true"
+      - key: RUN_DB_SCHEMA
+        value: "false"
+      - key: RUN_DB_SEED
+        value: "false"
+      - key: DATABASE_ADMIN_URL
+        fromDatabase:
+          name: uniportal-db-test
+          property: connectionString
+      - key: MIGRATE_DATABASE_URL
+        fromDatabase:
+          name: uniportal-db-test
+          property: connectionString
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: uniportal-db-test
+          property: database
+      - key: DATABASE_AUTO_BOOTSTRAP_ROLES
+        value: "false"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: uniportal-redis-test
+          property: connectionString
+      - key: JWT_PRIVATE_KEY_B64
+        sync: false
+      - key: JWT_PUBLIC_KEY_B64
+        sync: false
+      - key: ENCRYPTION_KEY_HEX
+        sync: false
+      - key: LOG_LEVEL
+        value: info
 
   - type: keyvalue
     name: uniportal-redis-test

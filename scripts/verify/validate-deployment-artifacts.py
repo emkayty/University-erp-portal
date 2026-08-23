@@ -33,11 +33,22 @@ def main() -> None:
     render = read_yaml("render.yaml")
     services = {service["name"]: service for service in render["services"]}
     databases = {database["name"]: database for database in render["databases"]}
-    require({"uniportal-api", "uniportal-worker", "uniportal-redis"} <= services.keys(), "Render topology is incomplete")
-    require(services["uniportal-api"]["healthCheckPath"] == "/api/health/live", "Render API probe must use public liveness")
-    require(services["uniportal-worker"]["type"] == "worker", "Render worker must be a background worker")
-    require(services["uniportal-redis"]["persistenceMode"] != "off", "Render Redis must persist BullMQ data")
-    require("uniportal-db" in databases, "Render database is missing")
+    api = services.get("uniportal-api") or services.get("uniportal-api-worker-test")
+    worker = services.get("uniportal-worker") or services.get("uniportal-worker-test")
+    redis = services.get("uniportal-redis") or services.get("uniportal-redis-test")
+    database = databases.get("uniportal-db") or databases.get("uniportal-db-test")
+    require(api is not None and worker is not None and redis is not None, "Render topology is incomplete")
+    require(api["type"] == "web", "Render API must be a web service")
+    require(api["healthCheckPath"] == "/api/health/live", "Render API probe must use public liveness")
+    require(api.get("dockerCommand") == "/app/scripts/start-api.sh", "Render API must run the API-only entrypoint")
+    require(api.get("preDeployCommand") is None, "Render API must not seed during deploy")
+    api_env = {entry["key"]: entry.get("value") for entry in api.get("envVars", [])}
+    require(api_env.get("RUN_DB_SCHEMA") == "false", "Render API must not run schema deployment during startup")
+    require(api_env.get("RUN_DB_SEED") == "false", "Render API must not seed during startup")
+    require(worker["type"] == "worker", "Render worker must be a background worker")
+    require(worker.get("dockerCommand") == "/app/scripts/start-worker.sh", "Render worker must use the worker entrypoint")
+    require(redis.get("persistenceMode") != "off", "Render Redis must persist BullMQ data")
+    require(database is not None, "Render database is missing")
 
     local = read_yaml("docker-compose.local.yml")
     local_services = local["services"]
