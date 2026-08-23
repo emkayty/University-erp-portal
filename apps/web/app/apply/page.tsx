@@ -187,6 +187,14 @@ const initial: FormState = {
   supportConsentAccepted: false,
 };
 const grades = ["A1", "B2", "B3", "C4", "C5", "C6", "D7", "E8", "F9"];
+const APPLICATION_STAGES = [
+  { number: 1, title: "Plan", description: "Route & identity" },
+  { number: 2, title: "Details", description: "Programme & contacts" },
+  { number: 3, title: "Evidence", description: "Education & support" },
+  { number: 4, title: "Review", description: "Consent & submit" },
+] as const;
+type ApplicationStage = (typeof APPLICATION_STAGES)[number]["number"];
+
 const nigeriaRelationshipOptions = [
   "Father",
   "Mother",
@@ -349,6 +357,8 @@ export default function ApplyPage() {
   const [draftToken, setDraftToken] = useState("");
   const [draftStatus, setDraftStatus] = useState("");
   const [draftBusy, setDraftBusy] = useState(false);
+  const [stage, setStage] = useState<ApplicationStage>(1);
+  const [highestStage, setHighestStage] = useState<ApplicationStage>(1);
   const [changeType, setChangeType] = useState<"CORRECTION" | "WITHDRAWAL">(
     "CORRECTION",
   );
@@ -781,6 +791,11 @@ export default function ApplyPage() {
           setSittingMeta(p.sittingMeta as Record<1 | 2, SittingMeta>);
         if (typeof p.secondSitting === "boolean")
           setSecondSitting(p.secondSitting);
+        if (typeof p.draftStage === "number" && p.draftStage >= 1 && p.draftStage <= 4) {
+          const restoredStage = p.draftStage as ApplicationStage;
+          setStage(restoredStage);
+          setHighestStage(restoredStage);
+        }
         setDraftStatus(
           "A saved draft was restored on this device. Sensitive fields such as NIN and support details were not stored in the draft.",
         );
@@ -808,6 +823,66 @@ export default function ApplyPage() {
     fields: Record<string, string>;
     maxSizeBytes: number;
   };
+  function validateStage(targetStage: ApplicationStage): string | null {
+    if (targetStage === 1) {
+      if (!form.admissionCycleId) return "Select an admission cycle before continuing.";
+      if (!form.firstName.trim() || !form.lastName.trim()) return "Enter the candidate's first and last name before continuing.";
+      if (!form.dateOfBirth || !form.gender || !form.countryOfOriginId) return "Complete the required identity fields before continuing.";
+      if (!form.phone.trim() || !form.email.trim()) return "Enter a mobile number and email address before continuing.";
+      if (form.nin && !form.ninConsentAccepted) return "Acknowledge the NIN privacy notice or leave the NIN blank before continuing.";
+      if (originCountry?.iso2 === "NG" && (!form.stateOfOriginId || !form.lgaOfOriginId)) return "Select the Nigerian state and LGA of origin before continuing.";
+      return null;
+    }
+    if (targetStage === 2) {
+      if (!form.programmeChoice1Id) return "Select the first programme choice before continuing.";
+      if (selectedCycle?.admissionType === "UTME" && !form.jambRegNo.trim()) return "Enter the JAMB registration number before continuing.";
+      if (selectedCycle?.admissionType === "DE" || selectedCycle?.admissionType === "POSTGRADUATE") {
+        if (!form.admissionDetails.highestQualification.trim() || !form.admissionDetails.awardingInstitution.trim()) return "Complete the qualification and awarding-institution fields before continuing.";
+        if (selectedCycle.admissionType === "DE" && !form.admissionDetails.graduationYear.trim()) return "Enter the graduation year before continuing.";
+      }
+      if (selectedCycle?.admissionType === "TRANSFER" && (!form.admissionDetails.previousInstitution.trim() || !form.admissionDetails.previousProgramme.trim() || !form.admissionDetails.transferReason.trim())) return "Complete the transfer details before continuing.";
+      if (selectedCycle?.admissionType === "INTERNATIONAL" && (!form.admissionDetails.travelDocumentStatus || !form.admissionDetails.englishProficiencyStatus)) return "Complete the international applicant details before continuing.";
+      if (["SANDWICH", "REMEDIAL"].includes(selectedCycle?.admissionType ?? "") && !form.admissionDetails.studyPreference.trim()) return "Enter your study preference before continuing.";
+      if (!address.line1.trim() || !address.city.trim() || !address.countryId) return "Complete the required residential address fields before continuing.";
+      if (sponsor.sponsorType !== "SELF_FUNDED" && !sponsor.sameAsGuardian && !sponsor.fullName.trim() && !sponsor.organization.trim()) return "Provide the sponsor's name or sponsoring organisation before continuing.";
+      if (sponsor.sponsorType !== "SELF_FUNDED" && sponsor.sameAsGuardian && !guardian.fullName.trim()) return "Enter the parent/guardian details before reusing them as sponsor.";
+      return null;
+    }
+    if (targetStage === 3) {
+      if (form.supportRequested && !form.supportConsentAccepted) return "Confirm the accessibility-support contact consent before continuing.";
+      if (!passportPhoto || !photoProof || photoUploading) return "Choose a passport photograph and wait until it is verified before continuing.";
+      return null;
+    }
+    return null;
+  }
+
+  function scrollToFormTop() {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.requestAnimationFrame(() =>
+      window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" }),
+    );
+  }
+
+  function goToStage(targetStage: ApplicationStage) {
+    if (targetStage > highestStage) return;
+    setStage(targetStage);
+    setError("");
+    scrollToFormTop();
+  }
+
+  function nextStage() {
+    const validationError = validateStage(stage);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    const next = Math.min(4, stage + 1) as ApplicationStage;
+    setStage(next);
+    setHighestStage((current) => Math.max(current, next) as ApplicationStage);
+    setError("");
+    scrollToFormTop();
+  }
+
   async function saveDraft() {
     setDraftBusy(true);
     setDraftStatus("Saving a secure draft…");
@@ -833,6 +908,7 @@ export default function ApplyPage() {
         olevel,
         sittingMeta,
         secondSitting,
+        draftStage: stage,
       };
       const saved = await apiClient.post<{
         draftToken: string;
@@ -891,6 +967,11 @@ export default function ApplyPage() {
         setSittingMeta(p.sittingMeta as Record<1 | 2, SittingMeta>);
       if (typeof p.secondSitting === "boolean")
         setSecondSitting(p.secondSitting);
+      if (typeof p.draftStage === "number" && p.draftStage >= 1 && p.draftStage <= 4) {
+        const restoredStage = p.draftStage as ApplicationStage;
+        setStage(restoredStage);
+        setHighestStage(restoredStage);
+      }
       window.localStorage.setItem(
         "uniportal.admissions.draftToken",
         d.draftToken,
@@ -973,6 +1054,15 @@ export default function ApplyPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    for (const previousStage of [1, 2, 3] as const) {
+      const stageError = validateStage(previousStage);
+      if (stageError) {
+        setStage(previousStage);
+        setHighestStage((current) => Math.max(current, previousStage) as ApplicationStage);
+        setError(stageError);
+        return;
+      }
+    }
     if (TURNSTILE_SITE_KEY && !humanVerificationToken) {
       setError("Complete the human verification challenge before submitting.");
       return;
@@ -1426,25 +1516,38 @@ export default function ApplyPage() {
           aria-label="Application progress"
         >
           <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              ["1", "Plan", "Cycle & choices"],
-              ["2", "Tell us about you", "Identity & contact"],
-              ["3", "Add evidence", "Education & results"],
-              ["4", "Review", "Consent & submit"],
-            ].map(([number, title, description]) => (
-              <li key={number} className="flex items-start gap-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[--color-primary]/10 text-xs font-bold text-[--color-primary]">
-                  {number}
-                </span>
-                <span>
-                  <strong className="block text-xs">{title}</strong>
-                  <span className="text-[11px] leading-4 text-muted-foreground">
-                    {description}
-                  </span>
-                </span>
-              </li>
-            ))}
+            {APPLICATION_STAGES.map((item) => {
+              const isCurrent = stage === item.number;
+              const isComplete = item.number < stage;
+              const isAvailable = item.number <= highestStage;
+              return (
+                <li key={item.number}>
+                  <button
+                    type="button"
+                    className={`flex min-h-11 w-full items-start gap-2 rounded-lg p-2 text-left transition-colors ${isCurrent ? "bg-background/80 ring-1 ring-primary/30" : "hover:bg-background/50"}`}
+                    aria-current={isCurrent ? "step" : undefined}
+                    aria-label={`${item.number}. ${item.title}: ${item.description}`}
+                    disabled={!isAvailable || isCurrent}
+                    onClick={() => goToStage(item.number)}
+                  >
+                    <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${isCurrent ? "bg-primary text-primary-foreground" : isComplete ? "bg-emerald-100 text-emerald-700" : "bg-primary/10 text-primary"}`}>
+                      {isComplete ? "✓" : item.number}
+                    </span>
+                    <span>
+                      <strong className="block text-xs">{item.title}</strong>
+                      <span className="text-[11px] leading-4 text-muted-foreground">
+                        {item.description}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
+          <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground" aria-live="polite">
+            <span>Stage {stage} of {APPLICATION_STAGES.length}: {APPLICATION_STAGES[stage - 1]?.title}</span>
+            <span>{Math.round((stage / APPLICATION_STAGES.length) * 100)}% of the journey</span>
+          </div>
         </nav>
         <section
           className="erp-control-rail rounded-xl border bg-muted/30 p-4"
@@ -1530,6 +1633,8 @@ export default function ApplyPage() {
               </p>
             ) : (
               <form onSubmit={submit} className="space-y-7">
+                {stage === 1 && (
+                  <div className="space-y-7">
                 <section className="scroll-mt-24 grid gap-4 md:grid-cols-2">
                   <div>
                     <Label>Admission cycle</Label>
@@ -1556,7 +1661,7 @@ export default function ApplyPage() {
                     />
                   </div>
                 </section>
-                {selectedCycle?.applicationFeeRequired && (
+                {stage === 1 && selectedCycle?.applicationFeeRequired && (
                   <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                     <h2 className="font-semibold">Application fee</h2>
                     <p className="mt-1 text-sm">
@@ -1786,6 +1891,10 @@ export default function ApplyPage() {
                     </div>
                   </div>
                 </section>
+                  </div>
+                )}
+                {stage === 2 && (
+                  <div className="space-y-7">
                 <section className="scroll-mt-24">
                   <h2 className="mb-3 font-semibold">Programme choices</h2>
                   <div className="grid gap-4 md:grid-cols-3">
@@ -2537,6 +2646,10 @@ export default function ApplyPage() {
                     </div>
                   </div>
                 </section>
+                  </div>
+                )}
+                {stage === 3 && (
+                  <div className="space-y-7">
                 <section>
                   <div className="mb-3 flex items-center justify-between">
                     <div>
@@ -3299,7 +3412,10 @@ export default function ApplyPage() {
                     Add another subject
                   </Button>
                 </section>
-
+                  </div>
+                )}
+                {stage === 4 && (
+                  <div className="space-y-7">
                 <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                   <h2 className="font-semibold">
                     Candidate agreement, privacy notice, and terms
@@ -3467,8 +3583,16 @@ export default function ApplyPage() {
                     onChange={(e) => setWebsite(e.target.value)}
                   />
                 </label>
-                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
-                  <p className="text-xs text-muted-foreground sm:mr-auto">
+                <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={() => goToStage(3)}
+                  >
+                    Back to evidence
+                  </Button>
+                  <p className="text-xs text-muted-foreground sm:mr-auto sm:px-3">
                     Your photograph must show “verified and ready” before
                     submission.
                   </p>
@@ -3487,6 +3611,28 @@ export default function ApplyPage() {
                     {reviewing ? "Confirm and submit" : "Review application"}
                   </Button>
                 </div>
+                  </div>
+                )}
+                {stage < 4 && (
+                  <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    {stage > 1 ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={() => goToStage((stage - 1) as ApplicationStage)}
+                      >
+                        Back
+                      </Button>
+                    ) : <span />}
+                    <p className="text-xs text-muted-foreground sm:px-3">
+                      Your progress is kept in this form. Save a secure draft if you need to leave the page.
+                    </p>
+                    <Button type="button" className="w-full sm:w-auto" onClick={nextStage}>
+                      Continue to {APPLICATION_STAGES.find((item) => item.number === stage + 1)?.title ?? "Review"}
+                    </Button>
+                  </div>
+                )}
               </form>
             )}
           </CardContent>
