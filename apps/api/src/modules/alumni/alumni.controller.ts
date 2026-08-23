@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { Public, CurrentUser, FeatureFlag, Roles } from '../../common/decorators';
+import { Public, CurrentUser, FeatureFlag, Roles, SelfScoped } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtPayload } from '@uniportal/types';
 import { AlumniService } from './alumni.service';
@@ -21,16 +21,19 @@ export class AlumniController {
     return this.alumni.getAlumni(query);
   }
 
+  @SelfScoped()
   @Get('me')
   getMyProfile(@CurrentUser() user: JwtPayload) {
     return this.alumni.getMyAlumniProfile(user.sub);
   }
 
+  @SelfScoped()
   @Get(':id')
   getAlumniById(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.alumni.getAlumniById(id, user.sub, user.role);
   }
 
+  @SelfScoped()
   @Patch(':id')
   updateProfile(
     @Param('id', ParseUUIDPipe) id: string,
@@ -77,6 +80,7 @@ export class AlumniController {
   }
 
   // ── Donations ─────────────────────────────────────────────────────────────
+  @SelfScoped()
   @Post('donations')
   donate(@Body() dto: CreateDonationDto, @CurrentUser() user: JwtPayload) {
     return this.alumni.createDonation(dto, user.sub);

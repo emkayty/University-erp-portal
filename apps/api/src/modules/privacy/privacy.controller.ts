@@ -4,7 +4,7 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { JwtPayload, StaffScopeAttribute } from '@uniportal/types';
 
-import { CurrentUser, Roles, StaffScopes } from '../../common/decorators';
+import { Authenticated, CurrentUser, Roles, StaffScopes } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { ErasureRequestDto, PersonDsrIntakeDto, RectifyUserDto, RestrictProcessingDto } from './dto/privacy.dto';
 import { PrivacyService } from './privacy.service';
@@ -41,6 +41,7 @@ export class PrivacyController {
   constructor(private readonly privacy: PrivacyService) {}
 
   @ApiOperation({ summary: 'Right of Access (SAR) — subject or DPO only' })
+  @Authenticated()
   @Get('sar/:userId')
   requestAccess(@Param('userId') userId: string, @CurrentUser() user: JwtPayload) {
     this.assertSelfOrDpo(userId, user);
@@ -60,6 +61,7 @@ export class PrivacyController {
   }
 
   @ApiOperation({ summary: 'Right to Rectification — subject only' })
+  @Authenticated()
   @Post('rectify/:userId')
   rectify(
     @Param('userId') userId: string,
@@ -84,6 +86,7 @@ export class PrivacyController {
   }
 
   @ApiOperation({ summary: 'Right to Data Portability — subject or DPO only' })
+  @Authenticated()
   @Get('export/:userId')
   exportData(@Param('userId') userId: string, @CurrentUser() user: JwtPayload) {
     this.assertSelfOrDpo(userId, user);

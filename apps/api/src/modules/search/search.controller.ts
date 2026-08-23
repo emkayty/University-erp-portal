@@ -1,5 +1,5 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { Authenticated, CurrentUser, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtPayload } from '@uniportal/types';
 import { SearchService } from './search.service';
@@ -16,6 +16,7 @@ export class SearchController {
    * Staff/HOD/Registrar: + students (dept-scoped for HOD).
    * HR Manager / Super Admin: + staff.
    */
+  @Authenticated()
   @Get('global')
   async globalSearch(@Query('q') q: string, @CurrentUser() user: JwtPayload) {
     const role = user.role;
@@ -59,6 +60,7 @@ export class SearchController {
    * GET /api/v1/search/courses?q=...
    * Course search — all authenticated users.
    */
+  @Authenticated()
   @Get('courses')
   searchCourses(@Query('q') q: string, @Query('departmentId') departmentId?: string) {
     return this.search.searchCourses(q ?? '', { departmentId });
@@ -68,6 +70,7 @@ export class SearchController {
    * GET /api/v1/search/library?q=...
    * Library catalogue search — all authenticated users.
    */
+  @Authenticated()
   @Get('library')
   searchLibrary(@Query('q') q: string) {
     return this.search.searchLibraryItems(q ?? '');

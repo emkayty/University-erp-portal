@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { PATH_METADATA, VERSION_METADATA } from '@nestjs/common/constants';
 import { PaymentProvider } from '@prisma/client';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as ts from 'typescript';
 
 import { AlumniController } from './modules/alumni/alumni.controller';
 import { AuditViewerController } from './modules/audit-viewer/audit-viewer.controller';
@@ -12,10 +15,16 @@ import { SearchController } from './modules/search/search.controller';
 import { TransportController } from './modules/transport/transport.controller';
 import { AuthController } from './modules/auth/auth.controller';
 import { NotificationsController } from './modules/notifications/notifications.controller';
+import { UniversityPoliciesController } from './modules/policies/university-policies.controller';
 import { PrivacyController } from './modules/privacy/privacy.controller';
 import { SecurityController } from './modules/security/security.controller';
 import { SettingsController } from './modules/settings/settings.controller';
-import { IS_PUBLIC_KEY, SKIP_REQUEST_RLS_TRANSACTION_KEY } from './common/decorators';
+import {
+  AUTHENTICATED_ROUTE_KEY,
+  IS_PUBLIC_KEY,
+  SELF_SCOPED_ROUTE_KEY,
+  SKIP_REQUEST_RLS_TRANSACTION_KEY,
+} from './common/decorators';
 
 /**
  * API route-contract regression suite.
@@ -57,6 +66,71 @@ describe('API route contracts', () => {
 
   it('exposes the target user id in the administrative MFA recovery route', () => {
     expect(Reflect.getMetadata(PATH_METADATA, AuthController.prototype.disableMfa)).toBe('mfa/:userId');
+  });
+});
+
+describe('Explicit authenticated-route policy markers', () => {
+  it('marks notification endpoints as self-scoped without weakening the global JWT boundary', () => {
+    expect(Reflect.getMetadata(SELF_SCOPED_ROUTE_KEY, NotificationsController.prototype.list)).toBe(true);
+    expect(Reflect.getMetadata(SELF_SCOPED_ROUTE_KEY, NotificationsController.prototype.markRead)).toBe(true);
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, NotificationsController.prototype.list)).toBeUndefined();
+  });
+
+  it('marks published policy readers as authenticated and acknowledgements as self-scoped', () => {
+    expect(Reflect.getMetadata(AUTHENTICATED_ROUTE_KEY, UniversityPoliciesController.prototype.listPublished)).toBe(true);
+    expect(Reflect.getMetadata(AUTHENTICATED_ROUTE_KEY, UniversityPoliciesController.prototype.getPublished)).toBe(true);
+    expect(Reflect.getMetadata(SELF_SCOPED_ROUTE_KEY, UniversityPoliciesController.prototype.acknowledge)).toBe(true);
+  });
+});
+
+describe('Route authorization policy coverage', () => {
+  it('classifies every controller handler explicitly', () => {
+    const routeDecorators = new Set(['Get', 'Post', 'Put', 'Patch', 'Delete', 'All', 'Options', 'Head']);
+    const policyDecorators = new Set(['Roles', 'StaffScopes', 'Public', 'Authenticated', 'SelfScoped']);
+    const missing: string[] = [];
+    const controllerFiles: string[] = [];
+
+    const visitDirectory = (directory: string) => {
+      for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) visitDirectory(entryPath);
+        else if (entry.name.endsWith('.controller.ts')) controllerFiles.push(entryPath);
+      }
+    };
+    visitDirectory(path.resolve(__dirname));
+
+    const decoratorName = (decorator: ts.Decorator): string => {
+      const expression = decorator.expression;
+      if (ts.isCallExpression(expression)) return expression.expression.getText();
+      return expression.getText();
+    };
+
+    for (const file of controllerFiles) {
+      const source = fs.readFileSync(file, 'utf8');
+      const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      const inspect = (node: ts.Node) => {
+        if (ts.isClassDeclaration(node)) {
+          const classDecorators = ts.canHaveDecorators(node) ? (ts.getDecorators(node) ?? []) : [];
+          const classPolicies = new Set(classDecorators.map(decoratorName));
+          for (const member of node.members) {
+            if (!ts.isMethodDeclaration(member)) continue;
+            const decorators = ts.canHaveDecorators(member) ? (ts.getDecorators(member) ?? []) : [];
+            const hasRoute = decorators.some((decorator) => routeDecorators.has(decoratorName(decorator)));
+            if (!hasRoute) continue;
+            const hasPolicy = [...classPolicies, ...decorators.map(decoratorName)].some((name) => policyDecorators.has(name));
+            if (!hasPolicy) {
+              const method = member.name?.getText() ?? '<anonymous>';
+              const line = sourceFile.getLineAndCharacterOfPosition(member.getStart(sourceFile)).line + 1;
+              missing.push(`${path.relative(path.resolve(__dirname, '..', '..'), file)}:${line} ${method}`);
+            }
+          }
+        }
+        ts.forEachChild(node, inspect);
+      };
+      ts.forEachChild(sourceFile, inspect);
+    }
+
+    expect(missing).toEqual([]);
   });
 });
 

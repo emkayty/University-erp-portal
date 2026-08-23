@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import type { JwtPayload } from '@uniportal/types';
 
-import { CurrentUser, Public, Roles } from '../../common/decorators';
+import { Authenticated, CurrentUser, Public, Roles } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { UpdateFeatureFlagDto, UpdateSettingsDto } from './dto/settings.dto';
 import { SettingsService } from './settings.service';
@@ -26,6 +26,7 @@ export class SettingsController {
    * Authenticated navigation capability state. Only module rollout flags are
    * returned; workflow and experimental flags remain administrator-only.
    */
+  @Authenticated()
   @Get('capabilities')
   @ApiOperation({ summary: 'Get enabled module capabilities for the current session' })
   async getCapabilities() {

@@ -2,7 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, Patch, UseGuards } from '@nestjs
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { JwtPayload } from '@uniportal/types';
 
-import { CurrentUser } from '../../common/decorators';
+import { CurrentUser, SelfScoped } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { EnterpriseInfrastructureService } from '../../enterprise-infrastructure/enterprise-infrastructure.service';
 
@@ -13,11 +13,13 @@ import { EnterpriseInfrastructureService } from '../../enterprise-infrastructure
 export class NotificationsController {
   constructor(private readonly service: EnterpriseInfrastructureService) {}
 
+  @SelfScoped()
   @Get()
   async list(@CurrentUser() user: JwtPayload) {
     return { success: true, data: await this.service.listNotifications(user.sub) };
   }
 
+  @SelfScoped()
   @Patch(':id/read')
   async markRead(
     @Param('id', ParseUUIDPipe) notificationId: string,

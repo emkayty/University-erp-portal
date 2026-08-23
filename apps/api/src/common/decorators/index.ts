@@ -32,6 +32,17 @@ export const STAFF_SCOPES_KEY = 'staffScopes';
 export const StaffScopes = (...scopes: string[]): MethodDecorator & ClassDecorator =>
   SetMetadata(STAFF_SCOPES_KEY, scopes);
 
+// ── @Authenticated() / @SelfScoped() ─────────────────────────────────────────
+// These markers document routes that are protected by the global JWT guard but
+// intentionally do not use role membership as their primary policy. They do
+// not replace JwtAuthGuard or service-level ownership/specialist checks.
+export const AUTHENTICATED_ROUTE_KEY = 'authenticatedRoute';
+export const SELF_SCOPED_ROUTE_KEY = 'selfScopedRoute';
+export const Authenticated = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(AUTHENTICATED_ROUTE_KEY, true);
+export const SelfScoped = (): MethodDecorator & ClassDecorator =>
+  SetMetadata(SELF_SCOPED_ROUTE_KEY, true);
+
 // ── @FeatureFlag() ────────────────────────────────────────────────────────────
 export const FEATURE_FLAG_KEY = 'featureFlag';
 /**

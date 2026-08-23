@@ -2,7 +2,7 @@ import {
   Body, Controller, Delete, Get, Param, ParseUUIDPipe,
   Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
-import { CurrentUser, FeatureFlag, Roles, StaffScopes } from '../../common/decorators';
+import { Authenticated, CurrentUser, FeatureFlag, Roles, SelfScoped, StaffScopes } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtPayload } from '@uniportal/types';
 import { TransportService } from './transport.service';
@@ -45,6 +45,7 @@ export class TransportController {
     return this.transport.createRoute(dto, user.sub);
   }
 
+  @Authenticated()
   @Get('routes')
   getRoutes() { return this.transport.getRoutes(); }
 
@@ -64,6 +65,7 @@ export class TransportController {
     return this.transport.createTrip(dto, user.sub);
   }
 
+  @Authenticated()
   @Get('trips')
   getTrips(@Query() query: GetTripsQueryDto) { return this.transport.getTrips(query); }
 
@@ -83,16 +85,19 @@ export class TransportController {
     return this.transport.getTripBookings(id);
   }
 
+  @SelfScoped()
   @Post('bookings')
   bookSeat(@Body() dto: BookTripDto, @CurrentUser() user: JwtPayload) {
     return this.transport.bookSeat(dto, user.sub);
   }
 
+  @SelfScoped()
   @Delete('bookings/:id')
   cancelBooking(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.transport.cancelBooking(id, user.sub);
   }
 
+  @SelfScoped()
   @Get('bookings/me')
   getMyBookings(@CurrentUser() user: JwtPayload) {
     return this.transport.getUserBookings(user.sub);

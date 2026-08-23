@@ -69,7 +69,12 @@ describe('ClearanceService', () => {
 
       const result = await svc.getStudentClearance('stu-1', 'user-student-1', 'STUDENT');
 
+      expect(result.administrativelyCleared).toBe(false);
       expect(result.eligibleForGraduation).toBe(false);
+      expect(result.checklist[0]).toMatchObject({
+        item: { id: 'item-1', name: 'Fees Clearance' },
+        clearance: { status: 'PENDING' },
+      });
     });
 
     it('is TRUE when every required item is CLEARED or WAIVED', async () => {
@@ -84,6 +89,7 @@ describe('ClearanceService', () => {
 
       const result = await svc.getStudentClearance('stu-1', 'user-student-1', 'STUDENT');
 
+      expect(result.administrativelyCleared).toBe(true);
       expect(result.eligibleForGraduation).toBe(true);
     });
 

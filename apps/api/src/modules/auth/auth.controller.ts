@@ -11,7 +11,7 @@ import { Request, Response } from 'express';
 
 import type { JwtPayload } from '@uniportal/types';
 
-import { CurrentUser, Public, Roles } from '../../common/decorators';
+import { CurrentUser, Public, Roles, SelfScoped } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthService } from './auth.service';
 import {
@@ -145,6 +145,7 @@ export class AuthController {
   }
 
   // ── POST /auth/logout ─────────────────────────────────────────────────────
+  @SelfScoped()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth('access-token')
@@ -160,6 +161,7 @@ export class AuthController {
   }
 
   // ── POST /auth/revoke-all ────────────────────────────────────────────────
+  @SelfScoped()
   @Post('revoke-all')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Revoke all sessions for the current user' })
@@ -186,6 +188,7 @@ export class AuthController {
   }
 
   // ── GET /auth/me ──────────────────────────────────────────────────────────
+  @SelfScoped()
   @Get('me')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Get current authenticated user profile and roles' })
@@ -236,6 +239,7 @@ export class AuthController {
     };
   }
 
+  @SelfScoped()
   @Post('mfa/setup')
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Initiate TOTP MFA setup — returns secret and QR code URI' })
@@ -248,6 +252,7 @@ export class AuthController {
     };
   }
 
+  @SelfScoped()
   @Post('mfa/confirm-setup')
   @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.OK)
@@ -303,6 +308,7 @@ export class AuthController {
     return { success: true, data: { message: 'Password reset successfully. Please log in.' } };
   }
 
+  @SelfScoped()
   @Patch('change-password')
   @ApiBearerAuth('access-token')
   @HttpCode(HttpStatus.OK)

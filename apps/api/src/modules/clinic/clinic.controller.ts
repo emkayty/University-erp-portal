@@ -2,7 +2,7 @@ import {
   Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe,
   Patch, Post, Query, DefaultValuePipe, UseGuards,
 } from '@nestjs/common';
-import { CurrentUser, FeatureFlag, Roles, StaffScopes } from '../../common/decorators';
+import { CurrentUser, FeatureFlag, Roles, SelfScoped, StaffScopes } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtPayload } from '@uniportal/types';
 import { ClinicService } from './clinic.service';
@@ -50,6 +50,7 @@ export class ClinicController {
    * GET /api/v1/clinic/patients/me
    * Get the current user's patient profile.
    */
+  @SelfScoped()
   @Get('patients/me')
   getMyProfile(@CurrentUser() user: JwtPayload) {
     return this.clinic.getPatientByUserId(user.sub);
@@ -87,6 +88,7 @@ export class ClinicController {
    * POST /api/v1/clinic/appointments
    * Book an appointment. Any authenticated user (student or staff) can book.
    */
+  @SelfScoped()
   @Post('appointments')
   bookAppointment(@Body() dto: BookAppointmentDto, @CurrentUser() user: JwtPayload) {
     return this.clinic.bookAppointment(dto, user);

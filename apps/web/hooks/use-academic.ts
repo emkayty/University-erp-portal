@@ -1,4 +1,3 @@
-"use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
@@ -27,6 +26,127 @@ export type GraduationPolicy = {
   effectiveFrom: string;
   effectiveTo?: string | null;
   approvedAt?: string | null;
+};
+
+export type AcademicJourneyAction = {
+  code: string;
+  title: string;
+  reason: string;
+  ownerRole: string;
+  requiresApproval: boolean;
+};
+
+export type AcademicJourneyHistory = {
+  id: string;
+  academicYear: string;
+  level: number;
+  status: string;
+  gpa: number | string | null;
+  cgpa: number | string | null;
+};
+
+export type AcademicJourneyCourse = {
+  id: string;
+  courseId: string;
+  code: string;
+  title: string;
+  credits: number;
+  semester: string;
+};
+
+export type AcademicJourneyResult = {
+  id: string;
+  code: string;
+  title: string;
+  score: number;
+  grade: string;
+  gradePoint: number;
+  credits: number;
+  semester: string;
+  academicYear: string;
+};
+
+export type AcademicPlan = {
+  id: string;
+  status?: string;
+  rationale?: unknown;
+  items?: Array<{
+    id: string;
+    targetPeriod?: string | null;
+    status?: string | null;
+    course?: { code: string; title: string } | null;
+  }>;
+};
+
+export type DegreeAudit = {
+  id: string;
+  status: string;
+  createdAt: string;
+  requirementResults?: unknown;
+};
+
+export type AcademicJourney = {
+  student: {
+    id: string;
+    matricNo: string;
+    firstName: string;
+    lastName: string;
+    level: number;
+    status: string;
+  };
+  programme: {
+    id: string;
+    code: string;
+    name: string;
+    degreeType: string;
+    department: string;
+    faculty: string;
+  };
+  curriculum: {
+    id: string;
+    academicYear: string;
+    version: number;
+    status: string;
+  };
+  progress: {
+    cgpa: number;
+    creditsEarned: number;
+    creditsRequired: number;
+    percent: number;
+    outstandingCourses: number;
+    outstandingRequirementGroups: number;
+  };
+  readiness: {
+    status: "READY" | "ATTENTION" | string;
+    warnings: string[];
+    evidence: {
+      hasDegreeAudit: boolean;
+      hasAcademicPlan: boolean;
+      hasPublishedResults: boolean;
+      currentRegistrationCount: number;
+    };
+  };
+  nextActions: AcademicJourneyAction[];
+  history: AcademicJourneyHistory[];
+  currentCourses: AcademicJourneyCourse[];
+  results: AcademicJourneyResult[];
+  outstanding: Array<{
+    courseId: string;
+    code: string;
+    title: string;
+    creditUnits: number;
+    level: number;
+    semester: string;
+    isCompulsory: boolean;
+  }>;
+  degreeAudit: {
+    id: string;
+    status: string;
+    snapshot: unknown;
+    auditedAt: string;
+  } | null;
+  academicPlan: AcademicPlan | null;
+  graduation: Record<string, unknown> | null;
 };
 
 export function useGraduationPolicies(
@@ -77,13 +197,18 @@ export function useActivateGraduationPolicy() {
   });
 }
 
+export function useAcademicJourney(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: academicKeys.journey,
+    queryFn: () => apiClient.get<AcademicJourney>("/academic/me/journey"),
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useMyDegreeAudit(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...academicKeys.journey, "degree-audit"],
-    queryFn: () =>
-      apiClient.get<Record<string, unknown> | null>(
-        "/academic/me/degree-audit",
-      ),
+    queryFn: () => apiClient.get<DegreeAudit | null>("/academic/me/degree-audit"),
     enabled: options?.enabled ?? true,
   });
 }
@@ -91,8 +216,7 @@ export function useMyDegreeAudit(options?: { enabled?: boolean }) {
 export function useMyAcademicPlan(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...academicKeys.journey, "plan"],
-    queryFn: () =>
-      apiClient.get<Record<string, unknown> | null>("/academic/me/plan"),
+    queryFn: () => apiClient.get<AcademicPlan | null>("/academic/me/plan"),
     enabled: options?.enabled ?? true,
   });
 }

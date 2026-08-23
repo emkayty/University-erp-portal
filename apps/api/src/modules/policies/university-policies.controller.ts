@@ -13,7 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 
 import type { JwtPayload } from "@uniportal/types";
-import { CurrentUser, Roles } from "../../common/decorators";
+import { Authenticated, CurrentUser, Roles, SelfScoped } from "../../common/decorators";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import {
   CreateUniversityPolicyDto,
@@ -32,6 +32,7 @@ import { UniversityPoliciesService } from "./university-policies.service";
 export class UniversityPoliciesController {
   constructor(private readonly svc: UniversityPoliciesService) {}
 
+  @Authenticated()
   @Get("published")
   @ApiOperation({
     summary: "List published university policies available to the current user",
@@ -43,6 +44,7 @@ export class UniversityPoliciesController {
     };
   }
 
+  @Authenticated()
   @Get("published/:id")
   @ApiOperation({
     summary: "Read a published university policy and acknowledgement state",
@@ -54,6 +56,7 @@ export class UniversityPoliciesController {
     };
   }
 
+  @SelfScoped()
   @Post("published/:id/acknowledge")
   @ApiOperation({
     summary:

@@ -2,7 +2,7 @@ import {
   Body, Controller, DefaultValuePipe, Get, Param, ParseIntPipe,
   ParseUUIDPipe, Post, Query, Res, UseGuards,
 } from '@nestjs/common';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { CurrentUser, Roles, SelfScoped } from '../../common/decorators';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import type { JwtPayload } from '@uniportal/types';
 import { ReportsService } from './reports.service';
@@ -34,6 +34,7 @@ export class ReportsController {
    * GET /api/v1/reports/jobs
    * List the current user's report jobs (most recent first).
    */
+  @SelfScoped()
   @Get('jobs')
   getMyJobs(
     @CurrentUser() user: JwtPayload,
@@ -47,11 +48,13 @@ export class ReportsController {
    * GET /api/v1/reports/jobs/:id
    * Poll a single job for status + download URL.
    */
+  @SelfScoped()
   @Get('jobs/:id')
   getJobStatus(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: JwtPayload) {
     return this.reports.getJobStatus(id, user.sub);
   }
 
+  @SelfScoped()
   @Get('jobs/:id/download')
   async downloadReport(
     @Param('id', ParseUUIDPipe) id: string,

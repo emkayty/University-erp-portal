@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,12 +8,14 @@ import { useProgrammes } from "@/hooks/use-curriculum";
 import { effectiveRolesOf, hasEffectiveRole } from "@/lib/authz";
 import { useCurrentUser, useIsLoading } from "@/stores/auth.store";
 import {
+  useAcademicJourney,
   useMyAcademicPlan,
   useMyDegreeAudit,
   useRequestAcademicInterruption,
   useRequestProgrammeTransfer,
   useSubmitAcademicAppeal,
 } from "@/hooks/use-academic";
+import { useStudentClearance } from "@/hooks/use-clearance";
 
 export default function AcademicJourneyPage() {
   const user = useCurrentUser();
@@ -38,11 +38,18 @@ export default function AcademicJourneyPage() {
   const { data: programmes = [] } = useProgrammes();
   const { data: latestDegreeAudit } = useMyDegreeAudit({ enabled: isStudent });
   const { data: academicPlan } = useMyAcademicPlan({ enabled: isStudent });
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["academic", "me", "journey"],
-    queryFn: () => apiClient.get<any>("/academic/me/journey"),
+  const { data, isLoading, error, refetch } = useAcademicJourney({
     enabled: isStudent,
   });
+  const { data: clearance, isLoading: clearanceLoading, isError: clearanceError } =
+    useStudentClearance(data?.student.id ?? "");
+  const clearanceItems = clearance?.checklist ?? [];
+  const clearanceCompleted = clearanceItems.filter(
+    ({ clearance: record }) => record.status === "CLEARED" || record.status === "WAIVED",
+  ).length;
+  const clearanceBlocked = clearanceItems.filter(
+    ({ clearance: record }) => record.status === "BLOCKED",
+  ).length;
 
   if (authLoading)
     return <main className="p-6">Loading your academic access…</main>;
@@ -85,12 +92,23 @@ export default function AcademicJourneyPage() {
     );
   }
   if (isLoading)
-    return <main className="p-6">Loading your academic journey…</main>;
+    return (
+      <main className="erp-workspace-page p-4 md:p-6" aria-busy="true">
+        <Card className="erp-workspace-header p-6">
+          <p className="enterprise-eyebrow">Academic command centre</p>
+          <h1 className="mt-2 text-2xl font-semibold">Loading your academic journey…</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Checking your published academic record and current study plan.</p>
+        </Card>
+      </main>
+    );
   if (error)
     return (
-      <main className="p-6">
-        <Card className="p-6">
-          Unable to load your academic journey. Please try again.
+      <main className="erp-workspace-page p-4 md:p-6">
+        <Card className="erp-workspace-header p-6" role="alert">
+          <p className="enterprise-eyebrow">Academic command centre</p>
+          <h1 className="mt-2 text-2xl font-semibold">Your academic journey is temporarily unavailable</h1>
+          <p className="mt-2 text-sm text-muted-foreground">No academic record was changed. Check your connection and try again.</p>
+          <Button className="mt-5 min-h-11" type="button" onClick={() => void refetch()}>Try again</Button>
         </Card>
       </main>
     );
@@ -151,7 +169,7 @@ export default function AcademicJourneyPage() {
             Recommendations are advisory; approvals remain with authorized academic officers.
           </p>
           <div className="mt-4 space-y-3 text-sm">
-            {data.nextActions?.length ? data.nextActions.map((action: any) => (
+            {data.nextActions?.length ? data.nextActions.map((action) => (
               <div key={action.code} className="rounded-lg border p-3">
                 <div className="flex items-start justify-between gap-3">
                   <strong>{action.title}</strong>
@@ -171,12 +189,12 @@ export default function AcademicJourneyPage() {
           <h2 className="font-semibold">Next actions</h2>
           <div className="mt-4 space-y-3 text-sm">
             {data.outstanding.length ? (
-              data.outstanding.map((c: any) => (
+              data.outstanding.map((c) => (
                 <div key={c.code} className="rounded-xl border p-3">
                   <strong>{c.code}</strong>
                   <div>{c.title}</div>
                   <span className="text-muted-foreground">
-                    {c.credits} credits · carryover
+                    {c.creditUnits} credits · carryover
                   </span>
                 </div>
               ))
@@ -194,8 +212,7 @@ export default function AcademicJourneyPage() {
               <>
                 <div className="font-medium">
                   Status:{" "}
-                  {(latestDegreeAudit as any)?.status ??
-                    data.degreeAudit.status}
+                  {latestDegreeAudit?.status ?? data.degreeAudit?.status}
                 </div>
                 <p className="mt-2 text-muted-foreground">
                   Audit generated from the assigned curriculum and published
@@ -210,11 +227,72 @@ export default function AcademicJourneyPage() {
           </div>
         </Card>
       </section>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card className="erp-data-surface p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Administrative clearance</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                A read-only view of required operational sign-offs. It is not a graduation decision.
+              </p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${clearance?.administrativelyCleared ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+              {clearance?.administrativelyCleared ? "Complete" : "Attention"}
+            </span>
+          </div>
+          {clearanceLoading ? (
+            <p className="mt-4 text-sm text-muted-foreground">Checking clearance records…</p>
+          ) : clearanceError ? (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+              Clearance status is temporarily unavailable; your academic record was not changed.
+            </p>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <Metric label="Completed" value={`${clearanceCompleted}/${clearanceItems.length}`} />
+              <Metric label="Blocked" value={String(clearanceBlocked)} />
+              <Metric label="Required" value={String(clearanceItems.filter(({ item }) => item.isRequiredForGraduation).length)} />
+            </div>
+          )}
+        </Card>
+        <Card className="erp-data-surface p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Published results</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Only results published through the governed academic workflow are shown here.
+              </p>
+            </div>
+            <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">
+              {data.results.length} shown
+            </span>
+          </div>
+          {data.results.length ? (
+            <div className="mt-4 divide-y">
+              {data.results.slice(-5).reverse().map((result) => (
+                <div key={result.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">{result.code} · {result.title}</div>
+                    <div className="text-muted-foreground">{result.semester} · {result.academicYear}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="font-semibold">{result.grade}</div>
+                    <div className="text-xs text-muted-foreground">{result.score} score</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              No published results are available for progress verification yet.
+            </p>
+          )}
+        </Card>
+      </section>
       <Card className="p-5">
         <h2 className="font-semibold">Recommended academic plan</h2>
-        {(academicPlan as any)?.items?.length ? (
+        {academicPlan?.items?.length ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {(academicPlan as any).items.map((item: any) => (
+            {academicPlan.items.map((item) => (
               <div key={item.id} className="rounded-xl border p-4">
                 <div className="font-medium">
                   {item.course?.code ?? "Course"}
@@ -240,7 +318,7 @@ export default function AcademicJourneyPage() {
       <Card className="p-5">
         <h2 className="font-semibold">Current courses</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {data.currentCourses.map((c: any) => (
+          {data.currentCourses.map((c) => (
             <div key={c.id} className="rounded-xl border p-4">
               <div className="font-medium">{c.code}</div>
               <div className="text-sm">{c.title}</div>
@@ -254,7 +332,7 @@ export default function AcademicJourneyPage() {
       <Card className="p-5">
         <h2 className="font-semibold">Academic history</h2>
         <div className="mt-4 divide-y">
-          {data.history.map((h: any) => (
+          {data.history.map((h) => (
             <div
               key={h.id}
               className="flex items-center justify-between py-3 text-sm"
