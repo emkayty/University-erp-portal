@@ -55,12 +55,19 @@ export class PartitionManagerService {
       await this.ensureMonthlyPartitions(target);
     }
 
-    // Also ensure next 2 academic years exist for student_results
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth() + 1;
-    const academicStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
-    await this.ensureAcademicYearPartition(academicStartYear);
-    await this.ensureAcademicYearPartition(academicStartYear + 1);
+    // `student_results` is currently a plain Prisma table in the supported
+    // release baseline. Only attempt academic-year partition DDL when a future
+    // baseline has explicitly converted the parent table to a partitioned
+    // relation; otherwise startup must remain quiet and non-failing.
+    if (await this.isTablePartitioned('student_results')) {
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const academicStartYear = currentMonth >= 9 ? currentYear : currentYear - 1;
+      await this.ensureAcademicYearPartition(academicStartYear);
+      await this.ensureAcademicYearPartition(academicStartYear + 1);
+    } else {
+      this.logger.debug('Skipping academic-year partitions for "student_results" — parent is not partitioned');
+    }
   }
 
   @Cron('30 0 1 * *', { timeZone: 'Africa/Lagos' }) // 00:30 WAT on 1st of each month
