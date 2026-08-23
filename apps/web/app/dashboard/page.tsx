@@ -652,9 +652,9 @@ function SnapshotMetrics({ snapshot }: { snapshot: DashboardSnapshotV1 }) {
           icon={<WalletCards className="h-4 w-4" />}
         />
         <MetricCard
-          label="Graduation clearance"
+          label="Administrative clearance"
           value={d.clearance.allCleared ? "Complete" : "In progress"}
-          detail={`${d.clearance.items.length} clearance items`}
+          detail={`${d.clearance.items.length} administrative items`}
           href="/dashboard/clearance"
           tone={d.clearance.allCleared ? "positive" : "warning"}
           icon={<ShieldCheck className="h-4 w-4" />}
@@ -1014,7 +1014,7 @@ function SmartSummary({
       if (!snapshot.data.student.feeCleared && due > 0)
         return `Your account shows ${formatMoney(due)} outstanding. Review your fee account before registration or other gated services.`;
       if (!snapshot.data.clearance.allCleared)
-        return "Your clearance is still in progress. Review the outstanding items and complete only the steps that apply to you.";
+        return "Your administrative clearance is still in progress. Review the outstanding items and complete only the steps that apply to you.";
       if (overdueLoans)
         return `You have ${overdueLoans} overdue library item${overdueLoans > 1 ? "s" : ""}. Review the loan details to avoid additional fines.`;
       return "You are up to date on the dashboard signals available to you. Check your calendar and academic workspace for what is next.";

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { hasEffectiveRole } from "@/lib/authz";
 import type { StudentResultV1 } from "@uniportal/types";
 import { useCourseOfferings } from "@/hooks/use-curriculum";
+import { StudentPicker } from "@/components/erp/student-picker";
 
 const STATUS_COLORS: Record<string, string> = {
   DRAFT: "badge-neutral",
@@ -571,56 +572,44 @@ export default function ResultsPage() {
               bulk submission.
             </p>
             <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                {
-                  id: "studentId",
-                  label: "Student ID (UUID)",
-                  ph: "xxxxxxxx-xxxx-...",
-                },
-                {
-                  id: "courseOfferingId",
-                  label: "Course Offering ID",
-                  ph: "xxxxxxxx-xxxx-...",
-                },
-                {
-                  id: "score",
-                  label: "Score (0–100)",
-                  ph: "75.5",
-                  type: "number",
-                },
-              ].map(({ id, label, ph, type = "text" }) => (
-                <div key={id} className="space-y-1">
-                  <label
-                    htmlFor={id}
-                    className="text-xs font-medium text-muted-foreground"
-                  >
-                    {label}
-                  </label>
-                  <input
-                    id={id}
-                    type={type}
-                    placeholder={ph}
-                    value={entryForm[id as keyof typeof entryForm]}
-                    onChange={(e) =>
-                      setEntryForm((current) => ({
-                        ...current,
-                        [id]: e.target.value,
-                      }))
-                    }
-                    aria-describedby={`${id}-hint`}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                  {id !== "score" && (
-                    <p
-                      id={`${id}-hint`}
-                      className="text-xs text-muted-foreground"
-                    >
-                      Use the record identifier from the authorised
-                      course-registration workflow.
-                    </p>
-                  )}
-                </div>
-              ))}
+              <StudentPicker
+                value={entryForm.studentId}
+                onChange={(studentId) => setEntryForm((current) => ({ ...current, studentId }))}
+                filters={{ status: "ACTIVE" }}
+                required
+              />
+              <div className="space-y-1">
+                <label htmlFor="courseOfferingId" className="text-xs font-medium text-muted-foreground">
+                  Course Offering ID
+                </label>
+                <input
+                  id="courseOfferingId"
+                  type="text"
+                  placeholder="Paste the authorised course-offering ID"
+                  value={entryForm.courseOfferingId}
+                  onChange={(e) => setEntryForm((current) => ({ ...current, courseOfferingId: e.target.value }))}
+                  aria-describedby="courseOfferingId-hint"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <p id="courseOfferingId-hint" className="text-xs text-muted-foreground">
+                  Use the identifier from the authorised course-offering workflow.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="score" className="text-xs font-medium text-muted-foreground">
+                  Score (0–100)
+                </label>
+                <input
+                  id="score"
+                  type="number"
+                  placeholder="75.5"
+                  value={entryForm.score}
+                  onChange={(e) => setEntryForm((current) => ({ ...current, score: e.target.value }))}
+                  aria-describedby="score-hint"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"
+                />
+                <p id="score-hint" className="text-xs text-muted-foreground">Enter the verified score only.</p>
+              </div>
               <div className="sm:col-span-2 lg:col-span-3">
                 <Button
                   size="sm"

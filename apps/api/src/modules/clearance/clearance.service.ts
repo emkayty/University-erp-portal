@@ -7,6 +7,7 @@ import { AuditAction, RoleName } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { BlockClearanceItemDto, CreateClearanceItemDto, WaiveClearanceItemDto } from './dto/clearance.dto';
+import { evaluateAdministrativeClearance } from './clearance-evaluator';
 
 /**
  * ClearanceModule (spec §15/§13.5) — AUDIT-H3.
@@ -75,7 +76,10 @@ export class ClearanceService {
     }));
 
     const requiredItems = checklist.filter((c) => c.item.isRequiredForGraduation);
-    const administrativelyCleared = requiredItems.every((c) => c.clearance.status === 'CLEARED' || c.clearance.status === 'WAIVED');
+    const evaluation = evaluateAdministrativeClearance(
+      requiredItems.map((item) => item.item.id),
+      checklist.map((item) => ({ clearanceItemId: item.item.id, status: item.clearance.status })),
+    );
 
     // Deep-audit fix (Aug 2026): this was named/returned as
     // `eligibleForGraduation` and treated by callers as a full graduation
@@ -89,7 +93,11 @@ export class ClearanceService {
     // StudentsService.graduate() is the only place that combines both
     // before actually graduating someone. See
     // docs/CHANGELOG.md finding 1.1.
-    return { checklist, administrativelyCleared, eligibleForGraduation: administrativelyCleared };
+    return {
+      checklist,
+      ...evaluation,
+      eligibleForGraduation: evaluation.administrativelyCleared,
+    };
   }
 
   async clearItem(studentId: string, clearanceItemId: string, actorId: string, actorRole: string) {

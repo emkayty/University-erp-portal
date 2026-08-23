@@ -551,9 +551,16 @@ export class ResultsService {
     });
   }
 
-  async getStudentResults(studentId: string, semesterId?: string) {
+  async getStudentResults(studentId: string, semesterId?: string, actorRole?: string) {
     return this.prisma.forRequest(this.rlsContext).studentResult.findMany({
-      where: { studentId, ...(semesterId ? { semesterId } : {}) },
+      // Students receive the public academic projection only. Staff workflows
+      // retain the existing governed visibility so approval/rejection queues do
+      // not lose their internal statuses.
+      where: {
+        studentId,
+        ...(semesterId ? { semesterId } : {}),
+        ...(actorRole === 'STUDENT' ? { status: ResultStatus.SENATE_PUBLISHED } : {}),
+      },
       include: {
         courseOffering: { include: { course: { select: { code: true, title: true } } } },
         semester: { select: { name: true, academicYear: true } },

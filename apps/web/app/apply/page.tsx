@@ -262,6 +262,116 @@ const emptySittingMeta = (): Record<1 | 2, SittingMeta> => ({
   },
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function safeString(value: unknown, fallback = "") {
+  return typeof value === "string" ? value : fallback;
+}
+
+function safeBoolean(value: unknown, fallback = false) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function sanitizeStringObject<T extends Record<string, string>>(current: T, value: unknown): T {
+  if (!isRecord(value)) return current;
+  const next = { ...current };
+  for (const key of Object.keys(current) as Array<keyof T>) {
+    const candidate = value[String(key)];
+    if (typeof candidate === "string") Object.assign(next, { [key]: candidate });
+  }
+  return next;
+}
+
+function sanitizePreviousEducation(value: unknown) {
+  if (!Array.isArray(value)) return null;
+  return value.filter(isRecord).map((entry) => ({
+    institution: safeString(entry.institution),
+    qualification: safeString(entry.qualification),
+    programme: safeString(entry.programme),
+    startYear: safeString(entry.startYear),
+    endYear: safeString(entry.endYear),
+    gradeOrCgpa: safeString(entry.gradeOrCgpa),
+    certificateNo: safeString(entry.certificateNo),
+  }));
+}
+
+function sanitizeSponsor(current: SponsorForm, value: unknown): SponsorForm {
+  if (!isRecord(value)) return current;
+  return {
+    sponsorType: safeString(value.sponsorType, current.sponsorType),
+    sameAsGuardian: safeBoolean(value.sameAsGuardian, current.sameAsGuardian),
+    fullName: safeString(value.fullName),
+    relationship: safeString(value.relationship),
+    phone: safeString(value.phone),
+    email: safeString(value.email),
+    organization: safeString(value.organization),
+    address: safeString(value.address),
+    sponsorshipReference: safeString(value.sponsorshipReference),
+  };
+}
+
+function sanitizeSittingMeta(value: unknown): Record<1 | 2, SittingMeta> | null {
+  if (!isRecord(value)) return null;
+  const fallback = emptySittingMeta();
+  const next = fallback;
+  for (const sittingNumber of [1, 2] as const) {
+    const raw = value[String(sittingNumber)];
+    if (!isRecord(raw)) continue;
+    next[sittingNumber] = {
+      authorityId: safeString(raw.authorityId),
+      examTypeId: safeString(raw.examTypeId),
+      examYear: Number.isInteger(raw.examYear) && Number(raw.examYear) >= 1900 && Number(raw.examYear) <= 2200
+        ? Number(raw.examYear)
+        : fallback[sittingNumber].examYear,
+      candidateCategory: safeString(raw.candidateCategory),
+      candidateNumber: safeString(raw.candidateNumber),
+      examinationNumber: safeString(raw.examinationNumber),
+      centreNumber: safeString(raw.centreNumber),
+    };
+  }
+  return next;
+}
+
+function sanitizeOLevelRow(value: unknown): OLevelFormRow | null {
+  if (!isRecord(value)) return null;
+  const sittingNumber = value.sittingNumber === 2 ? 2 : value.sittingNumber === 1 ? 1 : null;
+  if (!sittingNumber) return null;
+  const rawYear = Number(value.examYear);
+  return {
+    subjectId: safeString(value.subjectId),
+    grade: grades.includes(safeString(value.grade) as (typeof grades)[number]) ? safeString(value.grade) : "",
+    authorityId: safeString(value.authorityId),
+    examTypeId: safeString(value.examTypeId),
+    examYear: Number.isInteger(rawYear) && rawYear >= 1900 && rawYear <= 2200 ? rawYear : new Date().getFullYear(),
+    sittingNumber,
+    candidateCategory: safeString(value.candidateCategory),
+    candidateNumber: safeString(value.candidateNumber),
+    examinationNumber: safeString(value.examinationNumber),
+    centreNumber: safeString(value.centreNumber),
+  };
+}
+
+function sanitizeFormDraft(current: FormState, value: unknown): FormState {
+  if (!isRecord(value)) return current;
+  const next = { ...current };
+  const scalarFields: Array<keyof FormState> = [
+    "firstName", "lastName", "middleName", "dateOfBirth", "gender", "nationality",
+    "countryOfOriginId", "stateOfOriginId", "lgaOfOriginId", "stateOfOrigin", "lga",
+    "phone", "email", "admissionCycleId", "programmeChoice1Id", "programmeChoice2Id",
+    "programmeChoice3Id", "jambRegNo", "jambScore",
+  ];
+  for (const field of scalarFields) {
+    const candidate = value[String(field)];
+    if (typeof candidate === "string") Object.assign(next, { [field]: candidate });
+  }
+  next.admissionDetails = sanitizeStringObject(current.admissionDetails, value.admissionDetails);
+  // Sensitive consent/NIN/support fields are intentionally not restored from
+  // drafts; the applicant must re-enter or reconfirm them in the current form.
+  return next;
+}
+
 const defaultExamIdentifierGuidance: ExamIdentifierGuidance = {
   format: "As printed on the result or certificate",
   hint: "Enter the identifier exactly as shown. Do not invent separators or remove leading zeroes.",
@@ -556,7 +666,8 @@ export default function ApplyPage() {
   }
   function restoreOLevelDraft(value: unknown) {
     if (!Array.isArray(value)) return;
-    const rows = value as typeof olevel;
+    const rows = value.map(sanitizeOLevelRow).filter((row): row is OLevelFormRow => row !== null);
+    if (rows.length === 0) return;
     setOlevel(rows);
     setSittingMeta((current) => {
       const next = { ...current };
@@ -565,18 +676,45 @@ export default function ApplyPage() {
         if (row) {
           next[sittingNumber] = {
             ...next[sittingNumber],
-            authorityId: row.authorityId ?? "",
-            examTypeId: row.examTypeId ?? "",
-            examYear: row.examYear || new Date().getFullYear(),
-            candidateCategory: row.candidateCategory ?? "",
-            candidateNumber: row.candidateNumber ?? "",
-            examinationNumber: row.examinationNumber ?? "",
-            centreNumber: row.centreNumber ?? "",
+            authorityId: row.authorityId,
+            examTypeId: row.examTypeId,
+            examYear: row.examYear,
+            candidateCategory: row.candidateCategory,
+            candidateNumber: row.candidateNumber,
+            examinationNumber: row.examinationNumber,
+            centreNumber: row.centreNumber,
           };
         }
       });
       return next;
     });
+  }
+
+  function restoreDraftPayload(value: unknown) {
+    if (!isRecord(value)) return;
+    setForm((current) => sanitizeFormDraft(current, value));
+
+    const restoredAddress = sanitizeStringObject(address, value.address);
+    if (isRecord(value.address)) setAddress(restoredAddress);
+    const restoredGuardian = sanitizeStringObject(guardian, value.guardian);
+    if (isRecord(value.guardian)) setGuardian(restoredGuardian);
+    const restoredEmergency = sanitizeStringObject(emergencyContact, value.emergencyContact);
+    if (isRecord(value.emergencyContact)) setEmergencyContact(restoredEmergency);
+
+    const restoredEducation = sanitizePreviousEducation(value.previousEducation);
+    if (restoredEducation) setPreviousEducation(restoredEducation);
+    if (isRecord(value.sponsor)) setSponsor(sanitizeSponsor(sponsor, value.sponsor));
+    restoreOLevelDraft(value.olevel);
+
+    const restoredSittingMeta = sanitizeSittingMeta(value.sittingMeta);
+    if (restoredSittingMeta) setSittingMeta(restoredSittingMeta);
+    if (typeof value.secondSitting === "boolean") setSecondSitting(value.secondSitting);
+
+    const restoredStage = APPLICATION_STAGES.find((item) => item.number === value.draftStage)?.number;
+    if (restoredStage) {
+      setStage(restoredStage);
+      setHighestStage(restoredStage);
+    }
   }
   const subjectCountBySitting = useMemo(
     () => ({
@@ -771,31 +909,7 @@ export default function ApplyPage() {
         expiresAt: string;
       }>("/admissions/public/draft/load", { draftToken: stored })
       .then((d) => {
-        const p = d.payload;
-        setForm(
-          (f) =>
-            ({
-              ...f,
-              ...Object.fromEntries(Object.entries(p).filter(([k]) => k in f)),
-            }) as FormState,
-        );
-        if (p.address) setAddress(p.address as typeof address);
-        if (p.guardian) setGuardian(p.guardian as typeof guardian);
-        if (p.emergencyContact)
-          setEmergencyContact(p.emergencyContact as typeof emergencyContact);
-        if (Array.isArray(p.previousEducation))
-          setPreviousEducation(p.previousEducation as typeof previousEducation);
-        if (p.sponsor) setSponsor(p.sponsor as SponsorForm);
-        if (Array.isArray(p.olevel)) restoreOLevelDraft(p.olevel);
-        if (typeof p.sittingMeta === "object" && p.sittingMeta)
-          setSittingMeta(p.sittingMeta as Record<1 | 2, SittingMeta>);
-        if (typeof p.secondSitting === "boolean")
-          setSecondSitting(p.secondSitting);
-        if (typeof p.draftStage === "number" && p.draftStage >= 1 && p.draftStage <= 4) {
-          const restoredStage = p.draftStage as ApplicationStage;
-          setStage(restoredStage);
-          setHighestStage(restoredStage);
-        }
+        restoreDraftPayload(d.payload);
         setDraftStatus(
           "A saved draft was restored on this device. Sensitive fields such as NIN and support details were not stored in the draft.",
         );
@@ -947,31 +1061,7 @@ export default function ApplyPage() {
         payload: Record<string, unknown>;
         expiresAt: string;
       }>("/admissions/public/draft/load", { draftToken: draftToken.trim() });
-      const p = d.payload;
-      setForm(
-        (f) =>
-          ({
-            ...f,
-            ...Object.fromEntries(Object.entries(p).filter(([k]) => k in f)),
-          }) as FormState,
-      );
-      if (p.address) setAddress(p.address as typeof address);
-      if (p.guardian) setGuardian(p.guardian as typeof guardian);
-      if (p.emergencyContact)
-        setEmergencyContact(p.emergencyContact as typeof emergencyContact);
-      if (Array.isArray(p.previousEducation))
-        setPreviousEducation(p.previousEducation as typeof previousEducation);
-      if (p.sponsor) setSponsor(p.sponsor as SponsorForm);
-      if (Array.isArray(p.olevel)) restoreOLevelDraft(p.olevel);
-      if (typeof p.sittingMeta === "object" && p.sittingMeta)
-        setSittingMeta(p.sittingMeta as Record<1 | 2, SittingMeta>);
-      if (typeof p.secondSitting === "boolean")
-        setSecondSitting(p.secondSitting);
-      if (typeof p.draftStage === "number" && p.draftStage >= 1 && p.draftStage <= 4) {
-        const restoredStage = p.draftStage as ApplicationStage;
-        setStage(restoredStage);
-        setHighestStage(restoredStage);
-      }
+      restoreDraftPayload(d.payload);
       window.localStorage.setItem(
         "uniportal.admissions.draftToken",
         d.draftToken,

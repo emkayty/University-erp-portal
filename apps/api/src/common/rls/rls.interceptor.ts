@@ -1,5 +1,5 @@
 import {
-  CallHandler, ExecutionContext, Injectable, NestInterceptor,
+  CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Observable, from } from 'rxjs';
@@ -30,6 +30,12 @@ import { RlsContextService } from './rls-context.service';
  */
 @Injectable()
 export class RlsInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(RlsInterceptor.name);
+  private readonly slowTransactionWarnMs = (() => {
+    const configured = Number(process.env.RLS_TX_WARN_MS ?? 2000);
+    return Number.isFinite(configured) ? Math.max(250, configured) : 2000;
+  })();
+
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
@@ -56,6 +62,8 @@ export class RlsInterceptor implements NestInterceptor {
     const userId = user.sub;
     const role = user.role ?? 'UNKNOWN';
     const deptId = user.staffScope?.deptId ?? '';
+    const requestPath = req.route?.path ?? req.path ?? 'unknown';
+    const startedAt = Date.now();
 
     // Assumes one response per request (true for every REST handler in this
     // API — none return multi-value streams/SSE). If that ever changes,
@@ -69,7 +77,14 @@ export class RlsInterceptor implements NestInterceptor {
             error: reject,
           });
         })),
-      ),
+      ).finally(() => {
+        const durationMs = Date.now() - startedAt;
+        if (durationMs >= this.slowTransactionWarnMs) {
+          this.logger.warn(
+            `Slow request transaction: ${durationMs}ms method=${req.method} path=${requestPath} role=${role}`,
+          );
+        }
+      }),
     );
   }
 }

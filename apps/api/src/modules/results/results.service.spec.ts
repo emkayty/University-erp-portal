@@ -465,4 +465,20 @@ describe('ResultsService', () => {
       expect(key).toBe('stu-shared');
     });
   });
+
+  describe('getStudentResults()', () => {
+    it('filters student self-service to SENATE_PUBLISHED rows', async () => {
+      await svc.getStudentResults('stu-1', undefined, 'STUDENT');
+      expect(prisma.studentResult.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { studentId: 'stu-1', status: ResultStatus.SENATE_PUBLISHED },
+      }));
+    });
+
+    it('retains the existing internal-status projection for governed staff roles', async () => {
+      await svc.getStudentResults('stu-1', 'sem-1', 'REGISTRAR');
+      expect(prisma.studentResult.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { studentId: 'stu-1', semesterId: 'sem-1' },
+      }));
+    });
+  });
 });

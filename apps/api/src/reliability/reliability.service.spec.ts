@@ -32,5 +32,19 @@ describe('ReliabilityService', () => {
       metadata: expect.objectContaining({ operation: 'dead_letter_replay', workerDispatch: true }),
     }), 'admin-1');
   });
+
+  it('reports queue depth and failed-job counts for registered queues', async () => {
+    const queue = {
+      getJobCounts: jest.fn().mockResolvedValue({ waiting: 2, active: 1, completed: 8, failed: 3, delayed: 4, paused: 0 }),
+    };
+    service = new ReliabilityService(outbox, audit, queue as any);
+
+    const snapshot = await service.queueHealth();
+    expect(snapshot.queues[0]).toMatchObject({
+      name: 'notifications', status: 'up', waiting: 2, active: 1, failed: 3,
+    });
+    expect(queue.getJobCounts).toHaveBeenCalledWith('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
+    expect(snapshot.queues.slice(1).every((entry) => entry.status === 'not_registered')).toBe(true);
+  });
 });
 

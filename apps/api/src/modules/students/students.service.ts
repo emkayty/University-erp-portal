@@ -5,13 +5,14 @@ import {
 import { AuditAction, AdmissionType, ApplicantStatus, CalendarStatus, CapsAdmissionStatus, StudentStatus, CourseRegStatus, FeeClearancePolicy, Prisma } from '@prisma/client';
 import { randomInt } from 'crypto';
 
-import { encryptPii, getDegreeClass } from '@uniportal/utils';
+import { encryptPii, getDegreeClass, isPassingResult } from '@uniportal/utils';
 
 import { AuditService } from '../../common/audit/audit.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
 import { PrismaService } from '../../database/prisma.service';
 import { RlsContextService } from '../../common/rls/rls-context.service';
 import { AlumniService } from '../alumni/alumni.service';
+import { evaluateAdministrativeClearance } from '../clearance/clearance-evaluator';
 import { MatricNumberService } from './matric-number.service';
 import { PasswordService } from '../auth/services/password.service';
 import type { MatriculateDto, RegisterCoursesDto, UpdateStudentDto, UpdateStudentStatusDto } from './dto/students.dto';
@@ -563,10 +564,11 @@ export class StudentsService {
     // actual results exist. This is the safe default (restrictive, not permissive).
     let passedResults: Array<{ courseOffering: { courseId: string }; grade: string; gradePoint: any }> = [];
     try {
-      passedResults = await this.prisma.forRequest(this.rlsContext).studentResult.findMany({
-        where:  { studentId, status: 'SENATE_PUBLISHED', grade: { notIn: ['F'] } },
+      const publishedResults = await this.prisma.forRequest(this.rlsContext).studentResult.findMany({
+        where:  { studentId, status: 'SENATE_PUBLISHED' },
         select: { courseOffering: { select: { courseId: true } }, grade: true, gradePoint: true },
       });
+      passedResults = publishedResults.filter(isPassingResult);
     } catch {
       this.logger.debug('studentResult not yet available (P5 migration pending) — prerequisites treated as unmet');
     }
@@ -847,14 +849,13 @@ export class StudentsService {
       select: { course: { select: { id: true, code: true, title: true } } },
     });
 
-    // "Passed" mirrors the exact test packages/utils/src/grades.ts's
-    // computeCgpa() already uses for counting earned credit units: a
-    // SENATE_PUBLISHED result with a grade other than 'F'. An absent/
-    // withheld/pending result does not count as passed.
-    const passedResults = await db.studentResult.findMany({
-      where: { studentId, status: 'SENATE_PUBLISHED', grade: { not: 'F' } },
-      select: { courseOffering: { select: { courseId: true } } },
+    // Use the same canonical predicate as CGPA earned-credit calculation.
+    // ABS, F, and any zero-grade-point special outcome are not passes.
+    const publishedResults = await db.studentResult.findMany({
+      where: { studentId, status: 'SENATE_PUBLISHED' },
+      select: { courseOffering: { select: { courseId: true } }, grade: true, gradePoint: true },
     });
+    const passedResults = publishedResults.filter(isPassingResult);
     const passedCourseIds = new Set(passedResults.map((r) => r.courseOffering.courseId));
 
     const missingCompulsoryCourses = compulsoryCourses
@@ -896,9 +897,10 @@ export class StudentsService {
       db.clearanceItem.findMany({ where: { isActive: true, isRequiredForGraduation: true }, select: { id: true } }),
       db.studentClearance.findMany({ where: { studentId }, select: { status: true, clearanceItemId: true } }),
     ]);
-    if (requiredItems.length === 0) return false;
-    const byItem = new Map(clearances.map(c => [c.clearanceItemId, c.status]));
-    return requiredItems.every(item => byItem.get(item.id) === 'CLEARED');
+    return evaluateAdministrativeClearance(
+      requiredItems.map((item) => item.id),
+      clearances,
+    ).administrativelyCleared;
   }
 
   async createGraduationCandidate(studentId: string, actorId: string) {

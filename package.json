@@ -34,7 +34,9 @@
     "p5:static-audit": "python tests/p5/static_security_audit.py",
     "p5:validate-contract": "python -m json.tool docs/P5_MODULE_COVERAGE.json > /dev/null",
     "p5:integration-contract-audit": "python tests/p5/integration_contract_audit.py",
-    "p5:execution-audit": "python tests/p5/static_security_audit.py && python tests/p5/integration_contract_audit.py"
+    "p5:execution-audit": "python tests/p5/static_security_audit.py && python tests/p5/integration_contract_audit.py",
+    "p5:direct-prisma-governance": "python3 scripts/verify/direct-prisma-governance.py",
+    "p5:academic-rls-governance": "python3 scripts/verify/academic-rls-identity.py"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",

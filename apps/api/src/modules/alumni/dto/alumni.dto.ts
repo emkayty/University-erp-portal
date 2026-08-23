@@ -1,6 +1,6 @@
 import {
   IsBoolean, IsDateString, IsDecimal, IsEnum, IsOptional,
-  IsString, IsUUID, Length,
+  IsString, IsUUID, Length, Matches,
 } from 'class-validator';
 import { CampaignStatus } from '@prisma/client';
 
@@ -35,7 +35,7 @@ export class UpdateCampaignStatusDto {
 export class CreateDonationDto {
   @IsUUID('4')                  campaignId: string;
   @IsOptional() @IsUUID('4')    alumniId?: string;
-  @IsDecimal()                  amount: string;
+  @IsDecimal() @Matches(/^\d+(?:\.\d{1,2})?$/) amount: string;
   @IsOptional() @IsBoolean()    isAnonymous?: boolean;
   @IsOptional() @IsString() @Length(1, 200) donorName?: string;
   @IsOptional() @IsString() @Length(1, 255) donorEmail?: string;

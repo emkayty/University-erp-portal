@@ -4,6 +4,7 @@ import type { JwtPayload } from '@uniportal/types';
 import { AuditService } from '../../common/audit/audit.service';
 import { OutboxService } from '../../common/outbox/outbox.service';
 import { PrismaService } from '../../database/prisma.service';
+import { evaluateAdministrativeClearance } from '../clearance/clearance-evaluator';
 import type {
   AnalyticsQueryDto, AuditLogQueryDto, CgpaDistributionQueryDto,
   EnrolmentQueryDto, GenerateReportDto, ResultsStatsQueryDto, RevenueQueryDto,
@@ -598,7 +599,7 @@ export class ReportsService {
   // ── Student Self-Service Dashboard ────────────────────────────────────────
 
   async getStudentDashboard(studentId: string, requestingUser: { sub: string; role: string }) {
-    const [student, results, clearances, activeFees, loans] = await Promise.all([
+    const [student, results, requiredClearanceItems, clearances, activeFees, loans] = await Promise.all([
       this.prisma.student.findUniqueOrThrow({
         where: { id: studentId },
         select: {
@@ -626,9 +627,13 @@ export class ReportsService {
           courseOffering: { select: { course: { select: { code: true, title: true, creditUnits: true } } } },
         },
       }),
+      this.prisma.clearanceItem.findMany({
+        where: { isActive: true, isRequiredForGraduation: true },
+        select: { id: true },
+      }),
       this.prisma.studentClearance.findMany({
         where:   { studentId },
-        include: { clearanceItem: { select: { name: true, isRequiredForGraduation: true } } },
+        include: { clearanceItem: { select: { name: true, isRequiredForGraduation: true, isActive: true } } },
       }),
       // Same issue: StudentFee has no amountDue/balance columns (the real
       // fields are amount/amountPaid/waiverAmount), and FeeSchedule has no
@@ -664,9 +669,11 @@ export class ReportsService {
       });
     }
 
-    const allCleared = clearances
-      .filter((c) => c.clearanceItem.isRequiredForGraduation)
-      .every((c) => c.status === 'CLEARED');
+    const clearanceEvaluation = evaluateAdministrativeClearance(
+      requiredClearanceItems.map((item) => item.id),
+      clearances.map((clearance) => ({ clearanceItemId: clearance.clearanceItemId, status: clearance.status })),
+    );
+    const allCleared = clearanceEvaluation.administrativelyCleared;
 
     const outstandingFees = activeFees.map((f) => ({
       ...f,
@@ -691,6 +698,10 @@ export class ReportsService {
         // only; it is not a graduation determination on its own.
         administrativelyCleared: allCleared,
         graduationEligible: allCleared,
+        requiredItemCount: clearanceEvaluation.requiredItemCount,
+        completedItemCount: clearanceEvaluation.completedItemCount,
+        pendingItemCount: clearanceEvaluation.pendingItemCount,
+        blockedItemCount: clearanceEvaluation.blockedItemCount,
       },
       outstandingFees,
       activeLoans:     loans,

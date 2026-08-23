@@ -83,18 +83,18 @@ export class AlumniController {
   @SelfScoped()
   @Post('donations')
   donate(@Body() dto: CreateDonationDto, @CurrentUser() user: JwtPayload) {
-    return this.alumni.createDonation(dto, user.sub);
+    return this.alumni.createDonation(dto, user.sub, user.role);
   }
 
-  /** Webhook-style endpoint: called after payment gateway confirms payment */
-  @Roles('SUPER_ADMIN', 'STAFF')
+  /** Manual reconciliation endpoint; completion requires verified external proof. */
+  @Roles('BURSAR', 'SUPER_ADMIN')
   @Patch('donations/:id/status')
   completeDonation(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateDonationStatusDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.alumni.completeDonation(id, dto, user.sub);
+    return this.alumni.completeDonation(id, dto, user.sub, user.role);
   }
 
   @Roles('VC', 'SUPER_ADMIN')

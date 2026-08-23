@@ -1,5 +1,5 @@
 import {
-  ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException,
+  BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnprocessableEntityException,
 } from '@nestjs/common';
 import { AuditAction, CampaignStatus, DonationStatus, Prisma } from '@prisma/client';
 import { getDegreeClass } from '@uniportal/utils';
@@ -264,11 +264,34 @@ export class AlumniService {
 
   // ── Donations ─────────────────────────────────────────────────────────────
 
-  async createDonation(dto: CreateDonationDto, actorId: string) {
+  async createDonation(dto: CreateDonationDto, actorId: string, actorRole?: string) {
     const campaign = await this.prisma.campaign.findUniqueOrThrow({ where: { id: dto.campaignId } });
 
     if (campaign.status !== CampaignStatus.ACTIVE) {
       throw new UnprocessableEntityException({ code: 'BUSINESS_RULE_INVALID_STATE', message: 'Donations are only accepted for active campaigns' });
+    }
+
+    let amount: Prisma.Decimal;
+    try {
+      amount = new Prisma.Decimal(dto.amount);
+    } catch {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Donation amount must be a valid decimal amount greater than zero' });
+    }
+    if (!amount.isFinite() || amount.lte(0)) {
+      throw new BadRequestException({ code: 'VALIDATION_ERROR', message: 'Donation amount must be greater than zero' });
+    }
+
+    // A self-service actor may only associate a donation with their own alumni
+    // record. Privileged Finance/administrative actors can record a donor on
+    // behalf of an alumnus, but completion remains a separate Finance action.
+    if (dto.alumniId && !['STAFF', 'BURSAR', 'VC', 'SUPER_ADMIN'].includes(actorRole ?? '')) {
+      const ownedAlumni = await this.prisma.alumni.findFirst({
+        where: { id: dto.alumniId, userId: actorId },
+        select: { id: true },
+      });
+      if (!ownedAlumni) {
+        throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'You may only associate a donation with your own alumni profile' });
+      }
     }
 
     const donation = await this.prisma.donation.create({
@@ -277,7 +300,7 @@ export class AlumniService {
         alumniId:    dto.alumniId    ?? null,
         donorName:   dto.isAnonymous ? null : (dto.donorName  ?? null),
         donorEmail:  dto.donorEmail  ?? null,
-        amount:      dto.amount,
+        amount,
         currency:    campaign.currency,
         isAnonymous: dto.isAnonymous ?? false,
         message:     dto.message     ?? null,
@@ -295,13 +318,30 @@ export class AlumniService {
       campaignId: donation.campaignId,
       amount:     donation.amount,
       status:     donation.status,
-      // In production: next step would be to initiate Remita/Paystack payment intent
-      // and return paymentUrl. For P8, donation is created in PENDING state.
-      message: 'Donation recorded. Proceed to payment gateway to complete.',
+      // No provider intent is created by the current schema/integration
+      // contract. Keep the response honest and leave public totals unchanged
+      // until audited Finance reconciliation supplies external proof.
+      message: 'Donation recorded as pending. No payment gateway was initiated; Finance reconciliation is required before it is counted as completed.',
     };
   }
 
-  async completeDonation(donationId: string, dto: UpdateDonationStatusDto, actorId: string) {
+  async completeDonation(donationId: string, dto: UpdateDonationStatusDto, actorId: string, actorRole?: string) {
+    if (actorRole !== 'BURSAR' && actorRole !== 'SUPER_ADMIN') {
+      throw new ForbiddenException({ code: 'RBAC_FORBIDDEN', message: 'Only Finance reconciliation officers may update donation settlement status' });
+    }
+    if (dto.status === 'REFUNDED') {
+      throw new UnprocessableEntityException({
+        code: 'DONATION_REFUND_LEDGER_REQUIRED',
+        message: 'Refunds require the donation ledger and provider reconciliation workflow; this endpoint cannot safely record a refund yet',
+      });
+    }
+    if (dto.status === 'COMPLETED' && !dto.providerRef?.trim()) {
+      throw new UnprocessableEntityException({
+        code: 'DONATION_PROVIDER_PROOF_REQUIRED',
+        message: 'A verified external provider or reconciliation reference is required before completion',
+      });
+    }
+
     const donation = await this.prisma.donation.findUniqueOrThrow({ where: { id: donationId } });
 
     if (donation.status !== DonationStatus.PENDING) {

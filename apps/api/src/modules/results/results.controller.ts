@@ -110,7 +110,7 @@ export class ResultsController {
     @CurrentUser() u: JwtPayload,
   ) {
     const targetId = resolveSelfOrTargetStudentId(u, id);
-    return { success: true, data: await this.svc.getStudentResults(targetId, semesterId) };
+    return { success: true, data: await this.svc.getStudentResults(targetId, semesterId, u.role) };
   }
 
   @Get('student/:id/transcript')

@@ -231,7 +231,11 @@ export class ExamsService {
       const student=await this.prisma.student.findUniqueOrThrow({where:{userId:requestingUser.sub},select:{id:true}});
       where.studentId=student.id;
     }
-    return this.prisma.examCandidate.findMany({where,orderBy:{studentId:'asc'}});
+    return this.prisma.examCandidate.findMany({
+      where,
+      orderBy: { studentId: 'asc' },
+      include: { student: { select: { matricNo: true, firstName: true, lastName: true } } },
+    });
   }
 
   async recordExamAttendance(examTimetableId:string,studentId:string,status:string,recordedByUserId:string,incidentNote?:string,actorRole: AcademicActorRole = 'STAFF'){

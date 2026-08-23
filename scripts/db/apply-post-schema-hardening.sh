@@ -153,7 +153,10 @@ DROP POLICY IF EXISTS academic_plan_insert ON academic_plans;
 DROP POLICY IF EXISTS academic_plan_update ON academic_plans;
 CREATE POLICY academic_plan_read ON academic_plans FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR "studentId" IN (
+    SELECT s.id FROM students s
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
       AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
 );
@@ -177,7 +180,11 @@ DROP POLICY IF EXISTS academic_plan_item_insert ON academic_plan_items;
 DROP POLICY IF EXISTS academic_plan_item_update ON academic_plan_items;
 CREATE POLICY academic_plan_item_read ON academic_plan_items FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "planId" IN (SELECT p.id FROM academic_plans p WHERE p."studentId"::text = current_setting('app.current_user_id', true))
+  OR "planId" IN (
+    SELECT p.id FROM academic_plans p
+    JOIN students s ON s.id = p."studentId"
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN') AND "planId" IN (
     SELECT p.id FROM academic_plans p JOIN students s ON s.id = p."studentId"
     WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)
@@ -208,7 +215,10 @@ DROP POLICY IF EXISTS degree_audit_read ON degree_audits;
 DROP POLICY IF EXISTS degree_audit_insert ON degree_audits;
 CREATE POLICY degree_audit_read ON degree_audits FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR "studentId" IN (
+    SELECT s.id FROM students s
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
       AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
 );
@@ -222,7 +232,10 @@ DROP POLICY IF EXISTS progression_evaluation_read ON progression_evaluations;
 DROP POLICY IF EXISTS progression_evaluation_insert ON progression_evaluations;
 CREATE POLICY progression_evaluation_read ON progression_evaluations FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR "studentId" IN (
+    SELECT s.id FROM students s
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
       AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
 );
@@ -236,7 +249,10 @@ DROP POLICY IF EXISTS academic_standing_read ON academic_standings;
 DROP POLICY IF EXISTS academic_standing_insert ON academic_standings;
 CREATE POLICY academic_standing_read ON academic_standings FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR "studentId" IN (
+    SELECT s.id FROM students s
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
       AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
 );
@@ -251,7 +267,10 @@ DROP POLICY IF EXISTS academic_placement_insert ON academic_placements;
 DROP POLICY IF EXISTS academic_placement_update ON academic_placements;
 CREATE POLICY academic_placement_read ON academic_placements FOR SELECT USING (
   current_setting('app.current_role', true) IN ('SUPER_ADMIN','VC','REGISTRAR')
-  OR "studentId"::text = current_setting('app.current_user_id', true)
+  OR "studentId" IN (
+    SELECT s.id FROM students s
+    WHERE s."userId"::text = current_setting('app.current_user_id', true)
+  )
   OR (current_setting('app.current_role', true) IN ('HOD','DEAN')
       AND "studentId" IN (SELECT s.id FROM students s WHERE s."departmentId"::text = current_setting('app.current_dept_id', true)))
 );

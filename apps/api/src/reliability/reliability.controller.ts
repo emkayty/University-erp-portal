@@ -37,6 +37,12 @@ export class ReliabilityController {
     return { status: healthy ? 'ok' : 'degraded' };
   }
 
+  @Get('queues')
+  @ApiOperation({ summary: 'Show BullMQ queue depth and failed-job counts' })
+  queueHealth() {
+    return this.reliability.queueHealth();
+  }
+
   @Get('dead-letters')
   @ApiOperation({ summary: 'List transactional outbox dead-letter events' })
   async deadLetters(

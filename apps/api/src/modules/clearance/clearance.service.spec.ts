@@ -45,22 +45,16 @@ describe('ClearanceService', () => {
   });
 
   describe('getStudentClearance — graduation eligibility', () => {
-    // AUDIT-H3 (partially fixed): documented gap from docs/CHANGELOG.md
-    // — "Clearance has no seeded default items in a truly fresh environment
-    // until `prisma db seed` is run... without that, eligibleForGraduation
-    // evaluates vacuously true against an empty checklist." This test makes
-    // that behavior explicit and regression-checked rather than a fact only
-    // documented in prose — if seeding is ever made non-mandatory (e.g. an
-    // "auto-clear if no items configured" shortcut is added elsewhere),
-    // this test will fail and force the assumption to be revisited.
-    it('is vacuously TRUE when no clearance items exist (unseeded environment) — known gap, not a fix', async () => {
+    it('is FALSE when no active required clearance items are configured', async () => {
       prisma.clearanceItem.findMany.mockResolvedValue([]);
       prisma.studentClearance.findMany.mockResolvedValue([]);
 
       const result = await svc.getStudentClearance('stu-1', 'user-student-1', 'STUDENT');
 
       expect(result.checklist).toHaveLength(0);
-      expect(result.eligibleForGraduation).toBe(true); // vacuous truth over an empty set — see note above
+      expect(result.administrativelyCleared).toBe(false);
+      expect(result.eligibleForGraduation).toBe(false);
+      expect(result.requiredItemCount).toBe(0);
     });
 
     it('is FALSE when a required item is still PENDING', async () => {
@@ -93,7 +87,7 @@ describe('ClearanceService', () => {
       expect(result.eligibleForGraduation).toBe(true);
     });
 
-    it('a non-required item being BLOCKED does not affect eligibility', async () => {
+    it('does not treat a blocked non-required item as a required clearance success', async () => {
       prisma.clearanceItem.findMany.mockResolvedValue([
         makeItem({ id: 'item-1', isRequiredForGraduation: false }),
       ]);
@@ -103,7 +97,8 @@ describe('ClearanceService', () => {
 
       const result = await svc.getStudentClearance('stu-1', 'user-student-1', 'STUDENT');
 
-      expect(result.eligibleForGraduation).toBe(true);
+      expect(result.administrativelyCleared).toBe(false);
+      expect(result.eligibleForGraduation).toBe(false);
     });
 
     it('a STUDENT may only view their own clearance', async () => {

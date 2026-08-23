@@ -435,10 +435,25 @@ describe('StudentsService', () => {
       ]);
       // Student has passed csc-100
       prisma.studentResult.findMany.mockResolvedValueOnce([
-        { courseOffering: { courseId: 'csc-100' } },
+        { courseOffering: { courseId: 'csc-100' }, grade: 'A', gradePoint: { toNumber: () => 5 } },
       ]);
       const result = await svc.registerCourses('stu-1', dto, 'stu-1');
       expect(result.registered).toBe(5);
+    });
+
+    it('does not treat ABS as a satisfied prerequisite', async () => {
+      prisma.courseOffering.findMany.mockResolvedValueOnce([
+        makeOffering('off-1','csc-301',3,[]),
+        makeOffering('off-2','csc-302',3,[]),
+        makeOffering('off-3','csc-303',3,[]),
+        makeOffering('off-4','csc-304',3,[]),
+        makeOffering('off-5','csc-305',3,['csc-100']),
+      ]);
+      prisma.studentResult.findMany.mockResolvedValueOnce([
+        { courseOffering: { courseId: 'csc-100' }, grade: 'ABS', gradePoint: { toNumber: () => 0 } },
+      ]);
+      await expect(svc.registerCourses('stu-1', dto, 'stu-1'))
+        .rejects.toThrow('Prerequisite not satisfied');
     });
 
     // ── P1-2 FIX: course-registration credit-limit advisory lock (this
@@ -514,7 +529,7 @@ describe('StudentsService', () => {
         { course: { id: 'c1', code: 'CSC101', title: 'Intro to CS' } },
       ]);
       prisma.studentResult.findMany.mockResolvedValueOnce([
-        { courseOffering: { courseId: 'c1' } },
+        { courseOffering: { courseId: 'c1' }, grade: 'A', gradePoint: decimal(5) },
       ]);
 
       const result = await svc.checkAcademicEligibility('stu-1');
@@ -555,13 +570,30 @@ describe('StudentsService', () => {
       ]);
       // Only c1 was passed — c2 (compulsory) is missing.
       prisma.studentResult.findMany.mockResolvedValueOnce([
-        { courseOffering: { courseId: 'c1' } },
+        { courseOffering: { courseId: 'c1' }, grade: 'A', gradePoint: decimal(5) },
       ]);
 
       const result = await svc.checkAcademicEligibility('stu-1');
       expect(result.eligible).toBe(false);
       expect(result.compulsoryCoursesOk).toBe(false);
       expect(result.missingCompulsoryCourses).toEqual([{ courseId: 'c2', code: 'CSC201', title: 'Data Structures' }]);
+    });
+
+    it('does not treat ABS as passing a compulsory course', async () => {
+      prisma.student.findUniqueOrThrow.mockResolvedValueOnce(
+        makeStudent({ programmeId: 'prog-1', cgpa: decimal(3.5), totalCreditUnitsEarned: 130 }));
+      prisma.programme.findUniqueOrThrow.mockResolvedValueOnce({ minCreditUnits: 120 });
+      prisma.programmeCourse.findMany.mockResolvedValueOnce([
+        { course: { id: 'c1', code: 'CSC101', title: 'Intro to CS' } },
+      ]);
+      prisma.studentResult.findMany.mockResolvedValueOnce([
+        { courseOffering: { courseId: 'c1' }, grade: 'ABS', gradePoint: decimal(0) },
+      ]);
+
+      const result = await svc.checkAcademicEligibility('stu-1');
+      expect(result.eligible).toBe(false);
+      expect(result.compulsoryCoursesOk).toBe(false);
+      expect(result.missingCompulsoryCourses).toEqual([{ courseId: 'c1', code: 'CSC101', title: 'Intro to CS' }]);
     });
   });
 

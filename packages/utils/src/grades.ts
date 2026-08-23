@@ -34,6 +34,24 @@ export function computeGradeForSystem(score: number, system: GradingSystem, abse
 export type CourseRepeatPolicy = 'REPLACE' | 'INCLUDE' | 'BEST';
 export interface ResultForCgpa { courseOfferingId: string; courseId?: string; semesterId?: string; gradePoint: number; creditUnits: number; grade: string; senatePublishedAt?: Date; attemptNumber?: number; }
 type NumericGradePoint = number | { toNumber(): number };
+
+/**
+ * A result is academically passed only when it is not a non-passing outcome
+ * and carries a positive grade point. Keep this predicate shared across
+ * prerequisites, degree audits, graduation checks, and reporting so special
+ * outcomes such as ABS cannot drift into a pass in one module.
+ */
+export const NON_PASSING_GRADES = ['F', 'ABS'] as const;
+
+export function isPassingResult(result: { grade?: string | null; gradePoint?: NumericGradePoint | null }): boolean {
+  if (!result.grade || result.gradePoint == null) return false;
+  const grade = result.grade.trim().toUpperCase();
+  const gradePoint = typeof result.gradePoint === 'number' ? result.gradePoint : result.gradePoint.toNumber();
+  return !NON_PASSING_GRADES.includes(grade as (typeof NON_PASSING_GRADES)[number])
+    && Number.isFinite(gradePoint)
+    && gradePoint > 0;
+}
+
 export function applyRepeatPolicy(results: ResultForCgpa[], policy: CourseRepeatPolicy): ResultForCgpa[] {
   if (policy === 'INCLUDE' || results.length === 0) return results;
   const grouped = new Map<string, ResultForCgpa[]>();
@@ -52,7 +70,7 @@ export function computeCgpa(results: Array<{ gradePoint: NumericGradePoint; cred
     const gp = typeof r.gradePoint === 'number' ? r.gradePoint : r.gradePoint.toNumber();
     weighted += gp * r.creditUnits;
     total += r.creditUnits;
-    if (r.grade !== 'F' && r.grade !== 'ABS') earned += r.creditUnits;
+    if (isPassingResult(r)) earned += r.creditUnits;
   }
   return { cgpa: total ? Math.round((weighted/total)*100)/100 : 0, totalCreditUnitsEarned: earned };
 }

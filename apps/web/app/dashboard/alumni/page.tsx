@@ -235,7 +235,7 @@ export default function AlumniPage() {
                     Donate ₦{donateAmount ? parseFloat(donateAmount).toLocaleString() : '—'}
                   </Button>
                   <p className="text-xs text-muted-foreground text-center">
-                    You will be redirected to the payment gateway to complete your donation.
+                    Your donation is recorded as pending. Finance will reconcile the payment before it appears in campaign totals.
                   </p>
                 </div>
 

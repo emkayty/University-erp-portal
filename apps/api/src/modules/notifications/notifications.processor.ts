@@ -403,13 +403,14 @@ export class NotificationsProcessor extends WorkerHost {
     body:           string;
   }) {
     if (!data.recipientId) {
-      // NotificationLog.recipientId is a required FK to User — a handler
-      // with no resolvable recipient has nothing valid to log against.
-      // Emit visibly rather than silently dropping the notification.
-      this.logger.error(
-        `Cannot deliver "${data.templateKey}" to ${data.recipientEmail}: no recipientId resolved`,
-      );
-      return;
+      // NotificationLog.recipientId is a required FK to User. Applicant
+      // records are not User rows, so this is an integration/schema boundary,
+      // not a reason to pretend delivery succeeded. Throwing keeps the
+      // domain event retryable and ultimately visible in the outbox DLQ for
+      // operator action until an external-recipient delivery log exists.
+      const message = `Cannot deliver "${data.templateKey}" to ${data.recipientEmail}: no User recipientId resolved`;
+      this.logger.error(message);
+      throw new Error(`NOTIFICATION_RECIPIENT_UNRESOLVED: ${message}`);
     }
 
     if (!this.smtpConfigured || !this.mailer) {
