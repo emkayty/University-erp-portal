@@ -29,8 +29,29 @@ BEGIN
   END IF;
 END
 $$;
-CREATE UNIQUE INDEX IF NOT EXISTS "payment_receipt_claims_receipt_reference_key"
-  ON "payment_receipt_claims" ("receiptReference");
+DO $$
+BEGIN
+  -- Prisma normally owns this unique index. Create the historical baseline
+  -- index only when no equivalent unique single-column index exists, avoiding
+  -- duplicate indexes while still failing closed if uniqueness is absent.
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class t ON t.oid = i.indrelid
+    JOIN pg_namespace n ON n.oid = t.relnamespace
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = i.indkey[0]
+    WHERE n.nspname = 'public'
+      AND t.relname = 'payment_receipt_claims'
+      AND i.indisunique
+      AND i.indnkeyatts = 1
+      AND i.indnatts = 1
+      AND a.attname = 'receiptReference'
+  ) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS "payment_receipt_claims_receipt_reference_key"
+      ON "payment_receipt_claims" ("receiptReference");
+  END IF;
+END
+$$;
 CREATE INDEX IF NOT EXISTS "idx_payment_receipt_claim_payment"
   ON "payment_receipt_claims" ("paymentId");
 
