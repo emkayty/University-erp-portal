@@ -15,12 +15,15 @@ BEGIN
     RAISE EXCEPTION 'Fresh Neon partition baseline requires payslips to be empty';
   END IF;
 
-  -- Drop Prisma-created constraints and indexes from the empty plain parents so
-  -- their names cannot collide with the partitioned replacements.
+  -- Drop only user-defined constraints from the empty plain parents. PostgreSQL
+  -- exposes generated NOT NULL metadata as constraints in newer releases; those
+  -- constraints may participate in the primary key and must never be dropped.
   FOR relation_record IN
     SELECT conname
     FROM pg_constraint
     WHERE conrelid = 'payments'::regclass
+      AND contype IN ('p', 'f', 'u', 'c', 'x')
+      AND conname NOT LIKE '%_not_null'
   LOOP
     EXECUTE format('ALTER TABLE "payments" DROP CONSTRAINT %I', relation_record.conname);
   END LOOP;
@@ -28,6 +31,7 @@ BEGIN
     SELECT indexrelid::regclass AS index_name
     FROM pg_index
     WHERE indrelid = 'payments'::regclass
+      AND NOT indisprimary
   LOOP
     EXECUTE format('DROP INDEX IF EXISTS %s', relation_record.index_name);
   END LOOP;
@@ -36,6 +40,8 @@ BEGIN
     SELECT conname
     FROM pg_constraint
     WHERE conrelid = 'payslips'::regclass
+      AND contype IN ('p', 'f', 'u', 'c', 'x')
+      AND conname NOT LIKE '%_not_null'
   LOOP
     EXECUTE format('ALTER TABLE "payslips" DROP CONSTRAINT %I', relation_record.conname);
   END LOOP;
@@ -43,6 +49,7 @@ BEGIN
     SELECT indexrelid::regclass AS index_name
     FROM pg_index
     WHERE indrelid = 'payslips'::regclass
+      AND NOT indisprimary
   LOOP
     EXECUTE format('DROP INDEX IF EXISTS %s', relation_record.index_name);
   END LOOP;
